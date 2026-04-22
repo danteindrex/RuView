@@ -95,6 +95,12 @@ class Observatory {
     if (this.settings.scenario && this.settings.scenario !== 'auto') {
       this._demoData.setScenario(this.settings.scenario);
     }
+    // Live-only mode: keep WebSocket source enabled.
+    this.settings.dataSource = 'ws';
+    if (!this.settings.wsUrl) {
+      const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      this.settings.wsUrl = `${wsProto}//${window.location.host}/ws/sensing`;
+    }
     this._currentData = null;
     this._currentScenario = null;
 
@@ -400,7 +406,7 @@ class Observatory {
           this._autopilot = !this._autopilot;
           this._controls.enabled = !this._autopilot;
           break;
-        case 'd': this._demoData.cycleScenario(); break;
+        case 'd': break;
         case 'f':
           this._showFps = !this._showFps;
           document.getElementById('fps-counter').style.display = this._showFps ? 'block' : 'none';
@@ -408,7 +414,6 @@ class Observatory {
         case 's': this._hud.toggleSettings(); break;
         case ' ':
           e.preventDefault();
-          this._demoData.paused = !this._demoData.paused;
           break;
       }
     });
@@ -448,7 +453,8 @@ class Observatory {
 
     const tryNext = (i) => {
       if (i >= unique.length) {
-        console.log('[Observatory] No sensing server detected, using demo mode');
+        console.log('[Observatory] No sensing server detected, waiting for live stream');
+        this._hud.updateSourceBadge('ws', null);
         return;
       }
       const base = unique[i];
@@ -475,17 +481,24 @@ class Observatory {
   _connectWS(url) {
     this._disconnectWS();
     try {
+      this._wsTargetUrl = url;
       this._ws = new WebSocket(url);
       this._ws.onopen = () => {
         console.log('[Observatory] WebSocket connected');
+        if (this._wsReconnectTimer) {
+          clearTimeout(this._wsReconnectTimer);
+          this._wsReconnectTimer = null;
+        }
         this._hud.updateSourceBadge('ws', this._ws);
       };
       this._ws.onmessage = (evt) => { try { this._liveData = JSON.parse(evt.data); } catch {} };
       this._ws.onclose = () => {
-        console.log('[Observatory] WebSocket closed, falling back to demo');
+        console.log('[Observatory] WebSocket closed, retrying live connection');
         this._ws = null;
-        this.settings.dataSource = 'demo';
-        this._hud.updateSourceBadge('demo', null);
+        this._liveData = null;
+        this.settings.dataSource = 'ws';
+        this._hud.updateSourceBadge('ws', null);
+        this._scheduleWSReconnect();
       };
       this._ws.onerror = () => {};
     } catch {}
@@ -493,7 +506,35 @@ class Observatory {
 
   _disconnectWS() {
     if (this._ws) { this._ws.close(); this._ws = null; }
+    if (this._wsReconnectTimer) {
+      clearTimeout(this._wsReconnectTimer);
+      this._wsReconnectTimer = null;
+    }
     this._liveData = null;
+  }
+
+  _scheduleWSReconnect() {
+    if (this._wsReconnectTimer || this.settings.dataSource !== 'ws') return;
+    this._wsReconnectTimer = setTimeout(() => {
+      this._wsReconnectTimer = null;
+      const url = this.settings.wsUrl || this._wsTargetUrl;
+      if (url) this._connectWS(url);
+    }, 1500);
+  }
+
+  _emptyLiveFrame() {
+    return {
+      source: 'esp32',
+      tick: 0,
+      timestamp: Date.now() / 1000,
+      classification: { presence: false, motion_level: 'absent', confidence: 0 },
+      vital_signs: { breathing_rate_bpm: null, heart_rate_bpm: null, signal_quality: 0 },
+      features: { mean_rssi: -80, variance: 0, motion_band_power: 0 },
+      estimated_persons: 0,
+      persons: [],
+      nodes: [],
+      signal_field: { values: [] },
+    };
   }
 
   // ========================================
@@ -508,8 +549,8 @@ class Observatory {
     // Data source
     if (this.settings.dataSource === 'ws' && this._liveData) {
       this._currentData = this._liveData;
-    } else {
-      this._currentData = this._demoData.update(dt);
+    } else if (!this._currentData) {
+      this._currentData = this._emptyLiveFrame();
     }
     const data = this._currentData;
 

@@ -1,8 +1,9 @@
 //! RuvSense -- Sensing-First RF Mode for Multistatic WiFi DensePose (ADR-029)
 //!
 //! This bounded context implements the multistatic sensing pipeline that fuses
-//! CSI from multiple ESP32 nodes across multiple WiFi channels into a single
-//! coherent sensing frame per 50 ms TDMA cycle (20 Hz output).
+//! CSI from multiple WiFi sensing nodes (ESP32 or Raspberry Pi with Nexmon)
+//! across multiple WiFi channels into a single coherent sensing frame per
+//! 50 ms TDMA cycle (20 Hz output).
 //!
 //! # Architecture
 //!
@@ -159,6 +160,9 @@ pub struct RuvSenseConfig {
     pub max_stale_frames: u64,
     /// Embedding dimension for AETHER re-ID (default 128).
     pub embedding_dim: usize,
+    /// Number of subcarriers per CSI frame.
+    /// ESP32 = 56, Nexmon 20MHz = 64, 40MHz = 128, 80MHz = 256.
+    pub n_subcarriers: usize,
 }
 
 impl Default for RuvSenseConfig {
@@ -171,6 +175,7 @@ impl Default for RuvSenseConfig {
             coherence_drift: 0.5,
             max_stale_frames: 200,
             embedding_dim: 128,
+            n_subcarriers: 56, // ESP32 default; override for Nexmon Pi nodes
         }
     }
 }
@@ -196,7 +201,7 @@ impl RuvSensePipeline {
 
     /// Create a new pipeline with the given configuration.
     pub fn with_config(config: RuvSenseConfig) -> Self {
-        let n_sub = 56; // canonical subcarrier count
+        let n_sub = config.n_subcarriers; // use configured subcarrier count
         Self {
             phase_aligner: PhaseAligner::new(config.num_channels),
             coherence_state: CoherenceState::new(n_sub, config.coherence_accept),

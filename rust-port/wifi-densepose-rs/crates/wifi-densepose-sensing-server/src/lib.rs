@@ -13,3 +13,8 @@ pub mod dataset;
 pub mod sona;
 pub mod sparse_inference;
 pub mod embedding;
+pub mod protocol;
+pub mod types;
+pub mod adaptive_classifier;
+pub mod csi;
+pub mod field_bridge;

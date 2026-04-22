@@ -23,30 +23,24 @@ RuView Desktop provides a unified interface for node discovery, firmware managem
 
 ## Architecture
 
-```
+```text
 wifi-densepose-desktop/
-├── src/
-│   ├── main.rs              # Tauri app entry point
-│   ├── lib.rs               # Command registration
-│   ├── commands/            # Tauri IPC command handlers
-│   │   ├── discovery.rs     # Node discovery (mDNS/UDP probe)
-│   │   ├── flash.rs         # Serial firmware flashing
-│   │   ├── ota.rs           # OTA update (single + batch)
-│   │   ├── wasm.rs          # WASM module management
-│   │   └── server.rs        # Sensing server lifecycle
-│   └── domain/              # DDD domain models
-│       ├── node.rs           # DiscoveredNode, NodeRegistry, HealthStatus
-│       └── config.rs         # ProvisioningConfig with validation
-├── ui/                       # React + TypeScript frontend
-│   ├── src/
-│   │   ├── App.tsx           # Shell with sidebar nav, live status bar
-│   │   ├── design-system.css # ADR-053 design tokens and components
-│   │   ├── types.ts          # TypeScript types mirroring Rust domain
-│   │   ├── components/       # Shared UI components (StatusBadge, NodeCard)
-│   │   ├── hooks/            # React hooks (useServer, useNodes)
-│   │   └── pages/            # 8 page components
-│   └── index.html
-└── tauri.conf.json           # Tauri v2 configuration
+|-- src/
+|   |-- main.rs                   # Tauri app entry point
+|   |-- lib.rs                    # Command registration
+|   |-- commands/                 # Tauri IPC command handlers
+|   |   |-- discovery.rs          # Node discovery (mDNS/UDP probe)
+|   |   |-- flash.rs              # Serial firmware flashing
+|   |   |-- ota.rs                # OTA update (single + batch)
+|   |   |-- wasm.rs               # WASM module management
+|   |   `-- server.rs             # Sensing server lifecycle
+|   `-- domain/                   # DDD domain models
+|       |-- node.rs               # DiscoveredNode, NodeRegistry, HealthStatus
+|       `-- config.rs             # ProvisioningConfig with validation
+|-- ui/                           # Legacy React frontend (reference)
+|-- ui-v2/                        # Current production UI frontend
+|-- tauri.conf.json               # Default Tauri config (wired to ui-v2)
+`-- tauri.legacy-ui.conf.json     # Optional legacy UI config (wired to ui)
 ```
 
 ## Tauri Commands
@@ -108,9 +102,9 @@ Pre-built binaries are available on the [Releases](https://github.com/ruvnet/RuV
 The current release is a **debug build** that loads the frontend from a local Vite dev server. Follow these steps:
 
 ```bash
-# 1. Clone the repo (or download just the ui/ folder)
+# 1. Clone the repo (or download just the wifi-densepose-desktop folder)
 git clone https://github.com/ruvnet/RuView.git
-cd RuView/rust-port/wifi-densepose-rs/crates/wifi-densepose-desktop/ui
+cd RuView/rust-port/wifi-densepose-rs/crates/wifi-densepose-desktop/ui-v2
 
 # 2. Install frontend dependencies
 npm install
@@ -120,7 +114,7 @@ npx vite --host
 
 # 4. Download and run the exe from the release page
 #    (or run from the repo if you built it locally)
-#    The app window will open and connect to localhost:5173
+#    The app window will open and connect to localhost:5174
 ```
 
 > **Requirements:** Windows 10 (1803+) or Windows 11. WebView2 runtime is required (pre-installed on Windows 10 1803+ and all Windows 11).
@@ -141,11 +135,22 @@ npx vite --host
 ### Development mode
 
 ```bash
-# Install frontend dependencies
-cd ui && npm install
+# Install dependencies for the default v2 UI
+cd ui-v2 && npm install
 
-# Start in dev mode (hot-reload on both Rust and React)
+# Start desktop app in dev mode (uses tauri.conf.json -> ui-v2)
 cargo tauri dev
+
+# Run desktop against legacy UI when needed
+cargo tauri dev --config tauri.legacy-ui.conf.json
+```
+
+From `ui-v2/` you can also use helper scripts:
+
+```bash
+npm run tauri:dev
+npm run tauri:build
+npm run tauri:dev:legacy
 ```
 
 ### Production build
@@ -172,3 +177,4 @@ The installer/bundle will be in `target/release/bundle/` (`.msi` on Windows, `.d
 ## License
 
 MIT — see [LICENSE](../../LICENSE) for details.
+

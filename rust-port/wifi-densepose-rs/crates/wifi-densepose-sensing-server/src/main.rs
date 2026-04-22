@@ -11,6 +11,7 @@
 mod adaptive_classifier;
 pub mod cli;
 pub mod csi;
+pub mod protocol;
 mod field_bridge;
 mod multistatic_bridge;
 pub mod pose;
@@ -49,6 +50,8 @@ use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 use axum::http::HeaderValue;
 use tracing::{info, warn, debug, error};
+use crate::protocol::esp32_legacy::{Esp32CompressedPacket, Esp32FeaturePacket};
+use crate::types::Esp32Frame;
 
 use rvf_container::{RvfBuilder, RvfContainerInfo, RvfReader, VitalSignConfig};
 use rvf_pipeline::ProgressiveLoader;
@@ -78,9 +81,13 @@ struct Args {
     #[arg(long, default_value = "8765")]
     ws_port: u16,
 
-    /// UDP port for ESP32 CSI frames
+    /// UDP port for ESP32/Pi CSI frames
     #[arg(long, default_value = "5005")]
     udp_port: u16,
+
+    /// UDP port for Nexmon CSI frames (Raspberry Pi)
+    #[arg(long, default_value = "5500")]
+    nexmon_port: u16,
 
     /// Path to UI static files
     #[arg(long, default_value = "../../ui")]
@@ -94,9 +101,13 @@ struct Args {
     #[arg(long, default_value = "127.0.0.1", env = "SENSING_BIND_ADDR")]
     bind_addr: String,
 
-    /// Data source: auto, wifi, esp32, simulate
+    /// Data source: auto, wifi, esp32, nexmon, simulate
     #[arg(long, default_value = "auto")]
     source: String,
+
+    /// Show Pi/Nexmon diagnostics at startup
+    #[arg(long)]
+    pi_diag: bool,
 
     /// Run vital sign detection benchmark (1000 frames) and exit
     #[arg(long)]
@@ -169,21 +180,8 @@ struct Args {
 
 // ── Data types ───────────────────────────────────────────────────────────────
 
-/// ADR-018 ESP32 CSI binary frame header (20 bytes)
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-struct Esp32Frame {
-    magic: u32,
-    node_id: u8,
-    n_antennas: u8,
-    n_subcarriers: u8,
-    freq_mhz: u16,
-    sequence: u32,
-    rssi: i8,
-    noise_floor: i8,
-    amplitudes: Vec<f64>,
-    phases: Vec<f64>,
-}
+// Note: Esp32Frame is now defined as CsiFrame in types.rs.
+// The `use crate::types::*` import brings it in. This duplicate is removed.
 
 /// Sensing update broadcast to WebSocket clients
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -434,8 +432,9 @@ struct AppStateInner {
     frame_history: VecDeque<Vec<f64>>,
     tick: u64,
     source: String,
-    /// Instant of the last ESP32 UDP frame received (for offline detection).
-    last_esp32_frame: Option<std::time::Instant>,
+    /// Instant of the last CSI UDP frame received (for offline detection).
+    /// Applies to both ESP32 and Nexmon sources.
+    last_csi_frame: Option<std::time::Instant>,
     tx: broadcast::Sender<String>,
     total_detections: u64,
     start_time: std::time::Instant,
@@ -528,8 +527,9 @@ struct AppStateInner {
     field_model: Option<FieldModel>,
 }
 
-/// If no ESP32 frame arrives within this duration, source reverts to offline.
-const ESP32_OFFLINE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+/// If no CSI frame arrives within this duration, source reverts to offline.
+const CSI_OFFLINE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+const ESP32_OFFLINE_TIMEOUT: std::time::Duration = CSI_OFFLINE_TIMEOUT;
 
 impl AppStateInner {
     /// Return the effective data source, accounting for ESP32 frame timeout.
@@ -561,10 +561,10 @@ impl AppStateInner {
     }
 
     fn effective_source(&self) -> String {
-        if self.source == "esp32" {
-            if let Some(last) = self.last_esp32_frame {
-                if last.elapsed() > ESP32_OFFLINE_TIMEOUT {
-                    return "esp32:offline".to_string();
+        if self.source == "esp32" || self.source == "nexmon" {
+            if let Some(last) = self.last_csi_frame {
+                if last.elapsed() > CSI_OFFLINE_TIMEOUT {
+                    return format!("{}:offline", self.source);
                 }
             }
         }
@@ -598,36 +598,18 @@ struct Esp32VitalsPacket {
 
 /// Parse a 32-byte edge vitals packet (magic 0xC511_0002).
 fn parse_esp32_vitals(buf: &[u8]) -> Option<Esp32VitalsPacket> {
-    if buf.len() < 32 {
-        return None;
-    }
-    let magic = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-    if magic != 0xC511_0002 {
-        return None;
-    }
-
-    let node_id = buf[4];
-    let flags = buf[5];
-    let breathing_raw = u16::from_le_bytes([buf[6], buf[7]]);
-    let heartrate_raw = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
-    let rssi = buf[12] as i8;
-    let n_persons = buf[13];
-    let motion_energy = f32::from_le_bytes([buf[16], buf[17], buf[18], buf[19]]);
-    let presence_score = f32::from_le_bytes([buf[20], buf[21], buf[22], buf[23]]);
-    let timestamp_ms = u32::from_le_bytes([buf[24], buf[25], buf[26], buf[27]]);
-
-    Some(Esp32VitalsPacket {
-        node_id,
-        presence: (flags & 0x01) != 0,
-        fall_detected: (flags & 0x02) != 0,
-        motion: (flags & 0x04) != 0,
-        breathing_rate_bpm: breathing_raw as f64 / 100.0,
-        heartrate_bpm: heartrate_raw as f64 / 10000.0,
-        rssi,
-        n_persons,
-        motion_energy,
-        presence_score,
-        timestamp_ms,
+    protocol::esp32_legacy::parse_esp32_vitals_or_fused(buf).map(|pkt| Esp32VitalsPacket {
+        node_id: pkt.node_id,
+        presence: pkt.presence,
+        fall_detected: pkt.fall_detected,
+        motion: pkt.motion,
+        breathing_rate_bpm: pkt.breathing_rate_bpm,
+        heartrate_bpm: pkt.heartrate_bpm,
+        rssi: pkt.rssi,
+        n_persons: pkt.n_persons,
+        motion_energy: pkt.motion_energy,
+        presence_score: pkt.presence_score,
+        timestamp_ms: pkt.timestamp_ms,
     })
 }
 
@@ -650,102 +632,42 @@ struct WasmOutputPacket {
 
 /// Parse a WASM output packet (magic 0xC511_0004).
 fn parse_wasm_output(buf: &[u8]) -> Option<WasmOutputPacket> {
-    if buf.len() < 8 {
-        return None;
-    }
-    let magic = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-    if magic != 0xC511_0004 {
-        return None;
-    }
-
-    let node_id = buf[4];
-    let module_id = buf[5];
-    let event_count = u16::from_le_bytes([buf[6], buf[7]]) as usize;
-
-    let mut events = Vec::with_capacity(event_count);
-    let mut offset = 8;
-    for _ in 0..event_count {
-        if offset + 5 > buf.len() {
-            break;
-        }
-        let event_type = buf[offset];
-        let value = f32::from_le_bytes([
-            buf[offset + 1], buf[offset + 2], buf[offset + 3], buf[offset + 4],
-        ]);
-        events.push(WasmEvent { event_type, value });
-        offset += 5;
-    }
-
-    Some(WasmOutputPacket {
-        node_id,
-        module_id,
-        events,
+    protocol::esp32_legacy::parse_esp32_wasm_output(buf).map(|pkt| WasmOutputPacket {
+        node_id: pkt.node_id,
+        module_id: pkt.module_id,
+        events: pkt
+            .events
+            .into_iter()
+            .map(|e| WasmEvent {
+                event_type: e.event_type,
+                value: e.value,
+            })
+            .collect(),
     })
 }
 
 // ── ESP32 UDP frame parser ───────────────────────────────────────────────────
 
 fn parse_esp32_frame(buf: &[u8]) -> Option<Esp32Frame> {
-    if buf.len() < 20 {
-        return None;
-    }
+    protocol::esp32_legacy::parse_esp32_frame(buf)
+        .or_else(|| protocol::nexmon::parse_nexmon_as_esp32_frame(buf, 10))
+}
 
-    let magic = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-    if magic != 0xC511_0001 {
-        return None;
-    }
+fn parse_esp32_feature(buf: &[u8]) -> Option<Esp32FeaturePacket> {
+    protocol::esp32_legacy::parse_esp32_feature_packet(buf)
+}
 
-    // Frame layout (must match firmware csi_collector.c):
-    //   [0..3]   magic (u32 LE)
-    //   [4]      node_id (u8)
-    //   [5]      n_antennas (u8)
-    //   [6..7]   n_subcarriers (u16 LE)
-    //   [8..11]  freq_mhz (u32 LE)
-    //   [12..15] sequence (u32 LE)
-    //   [16]     rssi (i8)
-    //   [17]     noise_floor (i8)
-    //   [18..19] reserved
-    //   [20..]   I/Q data
-    let node_id = buf[4];
-    let n_antennas = buf[5];
-    let n_subcarriers = buf[6];
-    let freq_mhz = u16::from_le_bytes([buf[8], buf[9]]);
-    let sequence = u32::from_le_bytes([buf[10], buf[11], buf[12], buf[13]]);
-    let rssi_raw = buf[14] as i8;
-    // Fix RSSI sign: ensure it's always negative (dBm convention).
-    let rssi = if rssi_raw > 0 { rssi_raw.saturating_neg() } else { rssi_raw };
-    let noise_floor = buf[15] as i8;
+fn parse_esp32_compressed(buf: &[u8]) -> Option<Esp32CompressedPacket> {
+    protocol::esp32_legacy::parse_esp32_compressed_packet(buf)
+}
 
-    let iq_start = 20;
-    let n_pairs = n_antennas as usize * n_subcarriers as usize;
-    let expected_len = iq_start + n_pairs * 2;
-
-    if buf.len() < expected_len {
-        return None;
-    }
-
-    let mut amplitudes = Vec::with_capacity(n_pairs);
-    let mut phases = Vec::with_capacity(n_pairs);
-
-    for k in 0..n_pairs {
-        let i_val = buf[iq_start + k * 2] as i8 as f64;
-        let q_val = buf[iq_start + k * 2 + 1] as i8 as f64;
-        amplitudes.push((i_val * i_val + q_val * q_val).sqrt());
-        phases.push(q_val.atan2(i_val));
-    }
-
-    Some(Esp32Frame {
-        magic,
-        node_id,
-        n_antennas,
-        n_subcarriers,
-        freq_mhz,
-        sequence,
-        rssi,
-        noise_floor,
-        amplitudes,
-        phases,
-    })
+fn tracker_update_state(
+    state: &mut AppStateInner,
+    raw_persons: Vec<PersonDetection>,
+) -> Vec<PersonDetection> {
+    let (pose_tracker, last_tracker_instant) =
+        (&mut state.pose_tracker, &mut state.last_tracker_instant);
+    tracker_bridge::tracker_update(pose_tracker, last_tracker_instant, raw_persons)
 }
 
 // ── Signal field generation ──────────────────────────────────────────────────
@@ -1545,7 +1467,7 @@ async fn windows_wifi_task(state: SharedState, tick_ms: u64) {
             magic: 0xC511_0001,
             node_id: 0,
             n_antennas: 1,
-            n_subcarriers: obs_count.min(255) as u8,
+            n_subcarriers: obs_count.min(u16::MAX as usize) as u16,
             freq_mhz: 2437,
             sequence: seq,
             rssi: first_rssi.clamp(-128.0, 127.0) as i8,
@@ -1658,9 +1580,7 @@ async fn windows_wifi_task(state: SharedState, tick_ms: u64) {
 
         // Populate persons from the sensing update (Kalman-smoothed via tracker).
         let raw_persons = derive_pose_from_sensing(&update);
-        let tracked = tracker_bridge::tracker_update(
-            &mut s.pose_tracker, &mut s.last_tracker_instant, raw_persons,
-        );
+        let tracked = tracker_update_state(&mut s, raw_persons);
         if !tracked.is_empty() {
             update.persons = Some(tracked);
         }
@@ -1794,9 +1714,7 @@ async fn windows_wifi_fallback_tick(state: &SharedState, seq: u32) {
     };
 
     let raw_persons = derive_pose_from_sensing(&update);
-    let tracked = tracker_bridge::tracker_update(
-        &mut s.pose_tracker, &mut s.last_tracker_instant, raw_persons,
-    );
+    let tracked = tracker_update_state(&mut s, raw_persons);
     if !tracked.is_empty() {
         update.persons = Some(tracked);
     }
@@ -1837,11 +1755,42 @@ async fn probe_esp32(port: u16) -> bool {
     }
 }
 
+/// Probe if Nexmon CSI is streaming on UDP port (default 5500).
+async fn probe_nexmon(port: u16) -> bool {
+    let addr = format!("0.0.0.0:{port}");
+    match UdpSocket::bind(&addr).await {
+        Ok(sock) => {
+            let mut buf = [0u8; 2048];
+            match tokio::time::timeout(Duration::from_secs(2), sock.recv_from(&mut buf)).await {
+                Ok(Ok((len, _))) => protocol::nexmon::parse_nexmon_payload(&buf[..len]).is_some(),
+                _ => false,
+            }
+        }
+        Err(_) => false,
+    }
+}
+
+/// Probe if Linux WiFi is connected (for Raspberry Pi, Linux desktops).
+/// Uses `iw dev wlan0 info` which is available on most Linux distros.
+async fn probe_linux_wifi() -> bool {
+    match tokio::process::Command::new("iw")
+        .args(["dev", "wlan0", "info"])
+        .output()
+        .await
+    {
+        Ok(o) => {
+            let out = String::from_utf8_lossy(&o.stdout);
+            o.status.success() && out.contains("ssid")
+        }
+        Err(_) => false,
+    }
+}
+
 // ── Simulated data generator ─────────────────────────────────────────────────
 
 fn generate_simulated_frame(tick: u64) -> Esp32Frame {
     let t = tick as f64 * 0.1;
-    let n_sub = 56usize;
+    let n_sub = 56usize; // ESP32 default; Nexmon frames carry 64-256
     let mut amplitudes = Vec::with_capacity(n_sub);
     let mut phases = Vec::with_capacity(n_sub);
 
@@ -1856,7 +1805,7 @@ fn generate_simulated_frame(tick: u64) -> Esp32Frame {
         magic: 0xC511_0001,
         node_id: 1,
         n_antennas: 1,
-        n_subcarriers: n_sub as u8,
+        n_subcarriers: n_sub as u16,
         freq_mhz: 2437,
         sequence: tick as u32,
         rssi: (-40.0 + 5.0 * (t * 0.2).sin()) as i8,
@@ -2169,7 +2118,7 @@ fn estimate_persons_from_correlation(frame_history: &VecDeque<Vec<f64>>) -> usiz
     }
 
     let window: Vec<&Vec<f64>> = frame_history.iter().rev().take(20).collect();
-    let n_sub = window[0].len().min(56);
+    let n_sub = window[0].len(); // use all available subcarriers (ESP32=56, Nexmon=64-256)
     if n_sub < 4 {
         return 1;
     }
@@ -3214,7 +3163,7 @@ async fn adaptive_status(State(state): State<SharedState>) -> Json<serde_json::V
             "trained_frames": model.trained_frames,
             "accuracy": model.training_accuracy,
             "version": model.version,
-            "classes": adaptive_classifier::CLASSES,
+            "classes": model.class_names,
             "class_stats": model.class_stats,
         })),
         None => Json(serde_json::json!({
@@ -3509,7 +3458,7 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
     let addr = format!("0.0.0.0:{udp_port}");
     let socket = match UdpSocket::bind(&addr).await {
         Ok(s) => {
-            info!("UDP listening on {addr} for ESP32 CSI frames");
+            info!("UDP listening on {addr} for CSI frames (ESP32/Nexmon)");
             s
         }
         Err(e) => {
@@ -3549,8 +3498,10 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     // detections for ESP32 nodes running the edge DSP pipeline
                     // (Tier 2+).  Without this, vitals arrive but the UI shows
                     // "no detection" because it only renders sensing_update msgs.
-                    s.source = "esp32".to_string();
-                    s.last_esp32_frame = Some(std::time::Instant::now());
+                    if s.source != "nexmon" {
+                        s.source = "esp32".to_string();
+                    }
+                    s.last_csi_frame = Some(std::time::Instant::now());
 
                     // ── Per-node state for edge vitals (issue #249) ──────
                     let node_id = vitals.node_id;
@@ -3600,10 +3551,12 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     };
 
                     // Feed field model calibration if active (use per-node history for ESP32).
-                    if let Some(ref mut fm) = s.field_model {
-                        if let Some(ns) = s.node_states.get(&node_id) {
-                            field_bridge::maybe_feed_calibration(fm, &ns.frame_history);
-                        }
+                    let node_history = s
+                        .node_states
+                        .get(&node_id)
+                        .map(|ns| ns.frame_history.clone());
+                    if let (Some(fm), Some(history)) = (s.field_model.as_mut(), node_history.as_ref()) {
+                        field_bridge::maybe_feed_calibration(fm, history);
                     }
 
                     // Build nodes array with all active nodes.
@@ -3658,7 +3611,7 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     let mut update = SensingUpdate {
                         msg_type: "sensing_update".to_string(),
                         timestamp: chrono::Utc::now().timestamp_millis() as f64 / 1000.0,
-                        source: "esp32".to_string(),
+                        source: s.source.clone(),
                         tick,
                         nodes: active_nodes,
                         features: fused_features.clone(),
@@ -3685,9 +3638,7 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     };
 
                     let raw_persons = derive_pose_from_sensing(&update);
-                    let tracked = tracker_bridge::tracker_update(
-                        &mut s.pose_tracker, &mut s.last_tracker_instant, raw_persons,
-                    );
+                    let tracked = tracker_update_state(&mut s, raw_persons);
                     if !tracked.is_empty() {
                         update.persons = Some(tracked);
                     }
@@ -3700,7 +3651,7 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     continue;
                 }
 
-                // ADR-040: Try WASM output packet (magic 0xC511_0004).
+                // ADR-040/090: WASM output packets (legacy 0xC511_0004, v2 0xC511_0006).
                 if let Some(wasm_output) = parse_wasm_output(&buf[..len]) {
                     debug!("WASM output from {src}: node={} module={} events={}",
                            wasm_output.node_id, wasm_output.module_id,
@@ -3719,13 +3670,50 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     continue;
                 }
 
+                // ADR-069 feature vectors (0xC511_0003).
+                if let Some(feature) = parse_esp32_feature(&buf[..len]) {
+                    debug!("ESP32 feature from {src}: node={} seq={}",
+                           feature.node_id, feature.seq);
+                    let mut s = state.write().await;
+                    if let Ok(json) = serde_json::to_string(&serde_json::json!({
+                        "type": "edge_feature",
+                        "node_id": feature.node_id,
+                        "seq": feature.seq,
+                        "timestamp_us": feature.timestamp_us,
+                        "features": feature.features,
+                    })) {
+                        let _ = s.tx.send(json);
+                    }
+                    continue;
+                }
+
+                // ADR-069 compressed frames (0xC511_0005).
+                if let Some(compressed) = parse_esp32_compressed(&buf[..len]) {
+                    debug!("ESP32 compressed from {src}: node={} ch={} {}->{} bytes",
+                           compressed.node_id, compressed.channel,
+                           compressed.original_iq_len, compressed.compressed_len);
+                    let mut s = state.write().await;
+                    if let Ok(json) = serde_json::to_string(&serde_json::json!({
+                        "type": "edge_compressed",
+                        "node_id": compressed.node_id,
+                        "channel": compressed.channel,
+                        "original_iq_len": compressed.original_iq_len,
+                        "compressed_len": compressed.compressed_len,
+                    })) {
+                        let _ = s.tx.send(json);
+                    }
+                    continue;
+                }
+
                 if let Some(frame) = parse_esp32_frame(&buf[..len]) {
                     debug!("ESP32 frame from {src}: node={}, subs={}, seq={}",
                            frame.node_id, frame.n_subcarriers, frame.sequence);
 
                     let mut s = state.write().await;
-                    s.source = "esp32".to_string();
-                    s.last_esp32_frame = Some(std::time::Instant::now());
+                    if s.source != "nexmon" {
+                        s.source = "esp32".to_string();
+                    }
+                    s.last_csi_frame = Some(std::time::Instant::now());
 
                     // Also maintain global frame_history for backward compat
                     // (simulation path, REST endpoints, etc.).
@@ -3848,10 +3836,12 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     };
 
                     // Feed field model calibration if active (use per-node history for ESP32).
-                    if let Some(ref mut fm) = s.field_model {
-                        if let Some(ns) = s.node_states.get(&node_id) {
-                            field_bridge::maybe_feed_calibration(fm, &ns.frame_history);
-                        }
+                    let node_history = s
+                        .node_states
+                        .get(&node_id)
+                        .map(|ns| ns.frame_history.clone());
+                    if let (Some(fm), Some(history)) = (s.field_model.as_mut(), node_history.as_ref()) {
+                        field_bridge::maybe_feed_calibration(fm, history);
                     }
 
                     // Build nodes array with all active nodes.
@@ -3862,7 +3852,7 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                             rssi_dbm: n.rssi_history.back().copied().unwrap_or(0.0),
                             position: [2.0, 0.0, 1.5],
                             amplitude: n.frame_history.back()
-                                .map(|a| a.iter().take(56).cloned().collect())
+                                .map(|a| a.to_vec()) // send all subcarriers (ESP32=56, Nexmon=64-256)
                                 .unwrap_or_default(),
                             subcarrier_count: n.frame_history.back().map_or(0, |a| a.len()),
                         })
@@ -3871,7 +3861,7 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     let mut update = SensingUpdate {
                         msg_type: "sensing_update".to_string(),
                         timestamp: chrono::Utc::now().timestamp_millis() as f64 / 1000.0,
-                        source: "esp32".to_string(),
+                        source: s.source.clone(),
                         tick,
                         nodes: active_nodes,
                         features: fused_features.clone(),
@@ -3895,9 +3885,7 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     };
 
                     let raw_persons = derive_pose_from_sensing(&update);
-                    let tracked = tracker_bridge::tracker_update(
-                        &mut s.pose_tracker, &mut s.last_tracker_instant, raw_persons,
-                    );
+                    let tracked = tracker_update_state(&mut s, raw_persons);
                     if !tracked.is_empty() {
                         update.persons = Some(tracked);
                     }
@@ -4031,9 +4019,7 @@ async fn simulated_data_task(state: SharedState, tick_ms: u64) {
 
         // Populate persons from the sensing update (Kalman-smoothed via tracker).
         let raw_persons = derive_pose_from_sensing(&update);
-        let tracked = tracker_bridge::tracker_update(
-            &mut s.pose_tracker, &mut s.last_tracker_instant, raw_persons,
-        );
+        let tracked = tracker_update_state(&mut s, raw_persons);
         if !tracked.is_empty() {
             update.persons = Some(tracked);
         }
@@ -4507,9 +4493,21 @@ async fn main() {
     info!("WiFi-DensePose Sensing Server (Rust + Axum + RuVector)");
     info!("  HTTP:      http://localhost:{}", args.http_port);
     info!("  WebSocket: ws://localhost:{}/ws/sensing", args.ws_port);
-    info!("  UDP:       0.0.0.0:{} (ESP32 CSI)", args.udp_port);
+    info!("  UDP:       0.0.0.0:{} (ESP32/Pi CSI)", args.udp_port);
+    info!("  Nexmon:    0.0.0.0:{} (Nexmon CSI)", args.nexmon_port);
     info!("  UI path:   {}", args.ui_path.display());
     info!("  Source:    {}", args.source);
+
+    if args.pi_diag {
+        let esp32_seen = probe_esp32(args.udp_port).await;
+        let nexmon_seen = probe_nexmon(args.nexmon_port).await;
+        let windows_wifi = probe_windows_wifi().await;
+        let linux_wifi = probe_linux_wifi().await;
+        info!(
+            "Pi diagnostics: esp32_udp={} nexmon_udp={} windows_wifi={} linux_wifi={}",
+            esp32_seen, nexmon_seen, windows_wifi, linux_wifi
+        );
+    }
 
     // Auto-detect data source
     let source = match args.source.as_str() {
@@ -4518,8 +4516,14 @@ async fn main() {
             if probe_esp32(args.udp_port).await {
                 info!("  ESP32 CSI detected on UDP :{}", args.udp_port);
                 "esp32"
+            } else if probe_nexmon(args.nexmon_port).await {
+                info!("  Nexmon CSI detected on UDP :{}", args.nexmon_port);
+                "nexmon"
             } else if probe_windows_wifi().await {
                 info!("  Windows WiFi detected");
+                "wifi"
+            } else if probe_linux_wifi().await {
+                info!("  Linux WiFi detected");
                 "wifi"
             } else {
                 info!("  No hardware detected, using simulation");
@@ -4619,7 +4623,7 @@ async fn main() {
         frame_history: VecDeque::new(),
         tick: 0,
         source: source.into(),
-        last_esp32_frame: None,
+        last_csi_frame: None,
         tx,
         total_detections: 0,
         start_time: std::time::Instant::now(),
@@ -4693,6 +4697,10 @@ async fn main() {
     match source {
         "esp32" => {
             tokio::spawn(udp_receiver_task(state.clone(), args.udp_port));
+            tokio::spawn(broadcast_tick_task(state.clone(), args.tick_ms));
+        }
+        "nexmon" => {
+            tokio::spawn(udp_receiver_task(state.clone(), args.nexmon_port));
             tokio::spawn(broadcast_tick_task(state.clone(), args.tick_ms));
         }
         "wifi" => {

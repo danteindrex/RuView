@@ -9,7 +9,7 @@
 use std::collections::VecDeque;
 use wifi_densepose_signal::ruvsense::field_model::{CalibrationStatus, FieldModel, FieldModelConfig};
 
-use super::score_to_person_count;
+use crate::csi::score_to_person_count;
 
 /// Number of recent frames to feed into perturbation extraction.
 const OCCUPANCY_WINDOW: usize = 50;

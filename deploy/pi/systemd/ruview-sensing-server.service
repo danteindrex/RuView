@@ -1,0 +1,17 @@
+[Unit]
+Description=RuView Sensing Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ruview
+Group=ruview
+ExecStart=/usr/local/bin/sensing-server --source nexmon --http-port 8080 --ws-port 8765 --udp-port 5005 --nexmon-port 5500 --bind-addr 0.0.0.0
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

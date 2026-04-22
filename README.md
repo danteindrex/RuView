@@ -2315,3 +2315,27 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 **WiFi DensePose** — Privacy-preserving human pose estimation through WiFi signals.
+
+## Raspberry Pi Full-Feature Mode
+
+RuView supports full ESP32 feature parity on Raspberry Pi 4 with Nexmon.
+
+1. Configure Nexmon CSI on each Pi node.
+2. Run `wifi-densepose-pi-node-agent` on each node.
+3. Run sensing server with `--source nexmon` (native) or `--source esp32` (canonical bridge packets).
+
+### Migration Notes (ESP32 -> Pi)
+
+- `0xC5110006` is the canonical WASM event packet magic.
+- `scripts/nexmon_to_ruview_bridge.py` is compatibility-only. Use the native Pi node agent for production.
+- REST and WebSocket contracts remain unchanged.
+
+### Quick Commands
+
+```bash
+# server
+cargo run -p wifi-densepose-sensing-server -- --source nexmon --nexmon-port 5500
+
+# pi node agent
+cargo run -p wifi-densepose-pi-node-agent -- --listen 0.0.0.0:5500 --aggregator 127.0.0.1:5005 --tier 2
+```

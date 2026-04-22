@@ -243,6 +243,9 @@ pub struct FieldModelConfig {
 }
 
 impl Default for FieldModelConfig {
+    /// Default config uses ESP32's 56 subcarriers.
+    /// For Nexmon/Pi, construct with the actual subcarrier count:
+    /// 64 (20 MHz), 128 (40 MHz), or 256 (80 MHz).
     fn default() -> Self {
         Self {
             n_links: 6,

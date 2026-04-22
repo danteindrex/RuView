@@ -57,6 +57,8 @@ const DIMS_PER_KP: usize = 3;
 const N_TARGETS: usize = N_KEYPOINTS * DIMS_PER_KP;
 
 /// Default number of subcarriers when data is unavailable.
+/// ESP32 = 56, Nexmon 20MHz = 64, 40MHz = 128, 80MHz = 256.
+/// Actual count is auto-detected from the first frame at runtime.
 const DEFAULT_N_SUB: usize = 56;
 /// Sliding window size for computing per-subcarrier variance.
 const VARIANCE_WINDOW: usize = 10;

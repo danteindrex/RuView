@@ -4,10 +4,10 @@
   "version": "0.4.4",
   "identifier": "net.ruv.ruview",
   "build": {
-    "frontendDist": "ui/dist",
-    "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "cd ../ui && npm run dev",
-    "beforeBuildCommand": "cd ../ui && npm run build"
+    "frontendDist": "ui-v2/dist",
+    "devUrl": "http://localhost:5174",
+    "beforeDevCommand": "npm --prefix ./ui-v2 run dev",
+    "beforeBuildCommand": "npm --prefix ./ui-v2 run build"
   },
   "app": {
     "windows": [

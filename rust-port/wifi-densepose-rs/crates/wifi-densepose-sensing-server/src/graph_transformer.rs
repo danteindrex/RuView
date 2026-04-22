@@ -406,6 +406,8 @@ pub struct TransformerConfig {
 }
 
 impl Default for TransformerConfig {
+    /// Default config uses ESP32's 56 subcarriers.
+    /// For Nexmon/Pi, construct with the actual subcarrier count from the first frame.
     fn default() -> Self {
         Self { n_subcarriers: 56, n_keypoints: 17, d_model: 64, n_heads: 4, n_gnn_layers: 2 }
     }

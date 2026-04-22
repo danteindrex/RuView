@@ -5,6 +5,7 @@ use std::collections::{HashMap, VecDeque};
 use ruvector_mincut::{DynamicMinCut, MinCutBuilder};
 
 use crate::adaptive_classifier;
+use crate::protocol::esp32_legacy;
 use crate::types::*;
 use crate::vital_signs::VitalSigns;
 
@@ -12,88 +13,17 @@ use crate::vital_signs::VitalSigns;
 
 /// Parse a 32-byte edge vitals packet (magic 0xC511_0002).
 pub fn parse_esp32_vitals(buf: &[u8]) -> Option<Esp32VitalsPacket> {
-    if buf.len() < 32 { return None; }
-    let magic = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-    if magic != 0xC511_0002 { return None; }
-
-    let node_id = buf[4];
-    let flags = buf[5];
-    let breathing_raw = u16::from_le_bytes([buf[6], buf[7]]);
-    let heartrate_raw = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
-    let rssi = buf[12] as i8;
-    let n_persons = buf[13];
-    let motion_energy = f32::from_le_bytes([buf[16], buf[17], buf[18], buf[19]]);
-    let presence_score = f32::from_le_bytes([buf[20], buf[21], buf[22], buf[23]]);
-    let timestamp_ms = u32::from_le_bytes([buf[24], buf[25], buf[26], buf[27]]);
-
-    Some(Esp32VitalsPacket {
-        node_id,
-        presence: (flags & 0x01) != 0,
-        fall_detected: (flags & 0x02) != 0,
-        motion: (flags & 0x04) != 0,
-        breathing_rate_bpm: breathing_raw as f64 / 100.0,
-        heartrate_bpm: heartrate_raw as f64 / 10000.0,
-        rssi, n_persons, motion_energy, presence_score, timestamp_ms,
-    })
+    esp32_legacy::parse_esp32_vitals_or_fused(buf)
 }
 
 /// Parse a WASM output packet (magic 0xC511_0004).
 pub fn parse_wasm_output(buf: &[u8]) -> Option<WasmOutputPacket> {
-    if buf.len() < 8 { return None; }
-    let magic = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-    if magic != 0xC511_0004 { return None; }
-
-    let node_id = buf[4];
-    let module_id = buf[5];
-    let event_count = u16::from_le_bytes([buf[6], buf[7]]) as usize;
-
-    let mut events = Vec::with_capacity(event_count);
-    let mut offset = 8;
-    for _ in 0..event_count {
-        if offset + 5 > buf.len() { break; }
-        let event_type = buf[offset];
-        let value = f32::from_le_bytes([
-            buf[offset + 1], buf[offset + 2], buf[offset + 3], buf[offset + 4],
-        ]);
-        events.push(WasmEvent { event_type, value });
-        offset += 5;
-    }
-
-    Some(WasmOutputPacket { node_id, module_id, events })
+    esp32_legacy::parse_esp32_wasm_output(buf)
 }
 
 pub fn parse_esp32_frame(buf: &[u8]) -> Option<Esp32Frame> {
-    if buf.len() < 20 { return None; }
-    let magic = u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
-    if magic != 0xC511_0001 { return None; }
-
-    let node_id = buf[4];
-    let n_antennas = buf[5];
-    let n_subcarriers = buf[6];
-    let freq_mhz = u16::from_le_bytes([buf[8], buf[9]]);
-    let sequence = u32::from_le_bytes([buf[10], buf[11], buf[12], buf[13]]);
-    let rssi_raw = buf[14] as i8;
-    let rssi = if rssi_raw > 0 { rssi_raw.saturating_neg() } else { rssi_raw };
-    let noise_floor = buf[15] as i8;
-
-    let iq_start = 20;
-    let n_pairs = n_antennas as usize * n_subcarriers as usize;
-    let expected_len = iq_start + n_pairs * 2;
-    if buf.len() < expected_len { return None; }
-
-    let mut amplitudes = Vec::with_capacity(n_pairs);
-    let mut phases = Vec::with_capacity(n_pairs);
-    for k in 0..n_pairs {
-        let i_val = buf[iq_start + k * 2] as i8 as f64;
-        let q_val = buf[iq_start + k * 2 + 1] as i8 as f64;
-        amplitudes.push((i_val * i_val + q_val * q_val).sqrt());
-        phases.push(q_val.atan2(i_val));
-    }
-
-    Some(Esp32Frame {
-        magic, node_id, n_antennas, n_subcarriers, freq_mhz, sequence,
-        rssi, noise_floor, amplitudes, phases,
-    })
+    esp32_legacy::parse_esp32_frame(buf)
+        .or_else(|| crate::protocol::nexmon::parse_nexmon_as_esp32_frame(buf, 10))
 }
 
 // ── Signal field generation ─────────────────────────────────────────────────
@@ -557,7 +487,7 @@ pub fn estimate_persons_from_correlation(frame_history: &VecDeque<Vec<f64>>) -> 
     if n_frames < 10 { return 1; }
 
     let window: Vec<&Vec<f64>> = frame_history.iter().rev().take(20).collect();
-    let n_sub = window[0].len().min(56);
+    let n_sub = window[0].len(); // use all available subcarriers (ESP32=56, Nexmon=64-256)
     if n_sub < 4 { return 1; }
     let k = window.len() as f64;
 
@@ -646,10 +576,15 @@ pub fn score_to_person_count(smoothed_score: f64, prev_count: usize) -> usize {
     }
 }
 
-/// Generate a simulated ESP32 frame for testing/demo mode.
+/// Generate a simulated CSI frame for testing/demo mode.
+/// `n_sub` controls subcarrier count: 56 for ESP32, 64/128/256 for Nexmon.
 pub fn generate_simulated_frame(tick: u64) -> Esp32Frame {
+    generate_simulated_frame_with_subs(tick, 56)
+}
+
+/// Generate a simulated CSI frame with configurable subcarrier count.
+pub fn generate_simulated_frame_with_subs(tick: u64, n_sub: usize) -> Esp32Frame {
     let t = tick as f64 * 0.1;
-    let n_sub = 56usize;
     let mut amplitudes = Vec::with_capacity(n_sub);
     let mut phases = Vec::with_capacity(n_sub);
     for i in 0..n_sub {
@@ -659,7 +594,7 @@ pub fn generate_simulated_frame(tick: u64) -> Esp32Frame {
         phases.push((i as f64 * 0.2 + t * 0.5).sin() * std::f64::consts::PI);
     }
     Esp32Frame {
-        magic: 0xC511_0001, node_id: 1, n_antennas: 1, n_subcarriers: n_sub as u8,
+        magic: 0xC511_0001, node_id: 1, n_antennas: 1, n_subcarriers: n_sub as u16,
         freq_mhz: 2437, sequence: tick as u32,
         rssi: (-40.0 + 5.0 * (t * 0.2).sin()) as i8, noise_floor: -90,
         amplitudes, phases,

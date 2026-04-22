@@ -15,9 +15,13 @@ pub struct Args {
     #[arg(long, default_value = "8765")]
     pub ws_port: u16,
 
-    /// UDP port for ESP32 CSI frames
+    /// UDP port for ESP32/Pi canonical CSI frames
     #[arg(long, default_value = "5005")]
     pub udp_port: u16,
+
+    /// UDP port for native Nexmon CSI packets
+    #[arg(long, default_value = "5500")]
+    pub nexmon_port: u16,
 
     /// Path to UI static files
     #[arg(long, default_value = "../../ui")]
@@ -31,9 +35,13 @@ pub struct Args {
     #[arg(long, default_value = "127.0.0.1", env = "SENSING_BIND_ADDR")]
     pub bind_addr: String,
 
-    /// Data source: auto, wifi, esp32, simulate
+    /// Data source: auto, wifi, esp32, nexmon, simulate
     #[arg(long, default_value = "auto")]
     pub source: String,
+
+    /// Print Pi/Nexmon diagnostics at startup
+    #[arg(long)]
+    pub pi_diag: bool,
 
     /// Run vital sign detection benchmark (1000 frames) and exit
     #[arg(long)]

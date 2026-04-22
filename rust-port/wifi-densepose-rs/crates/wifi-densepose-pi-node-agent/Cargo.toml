@@ -1,0 +1,25 @@
+[package]
+name = "wifi-densepose-pi-node-agent"
+version = "0.3.0"
+edition = "2021"
+authors = ["rUv <ruv@ruv.net>", "WiFi-DensePose Contributors"]
+description = "Native Raspberry Pi Node Agent for RuView sensing platform"
+
+[features]
+default = []
+wasm-runtime = []
+
+[dependencies]
+tokio = { workspace = true, features = ["full"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+bytes = "1.5"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

@@ -17,15 +17,14 @@ use std::time::Duration;
 ///   [0..3]  magic: 0xC511_0001 (LE)
 ///   [4]     node_id
 ///   [5]     n_antennas (1)
-///   [6]     n_subcarriers (e.g., 32)
-///   [7]     reserved
-///   [8..9]  freq_mhz (2437 = channel 6)
-///   [10..13] sequence (LE u32)
-///   [14]    rssi (signed)
-///   [15]    noise_floor
-///   [16..19] reserved
+///   [6..7]  n_subcarriers (u16, e.g., 32)
+///   [8..11] freq_mhz (2437 = channel 6, u32)
+///   [12..15] sequence (LE u32)
+///   [16]    rssi (signed)
+///   [17]    noise_floor
+///   [18..19] reserved
 ///   [20..]  I/Q pairs (n_antennas * n_subcarriers * 2 bytes)
-fn build_csi_frame(node_id: u8, seq: u32, rssi: i8, n_sub: u8) -> Vec<u8> {
+fn build_csi_frame(node_id: u8, seq: u32, rssi: i8, n_sub: u16) -> Vec<u8> {
     let n_pairs = n_sub as usize;
     let mut buf = vec![0u8; 20 + n_pairs * 2];
 
@@ -35,18 +34,17 @@ fn build_csi_frame(node_id: u8, seq: u32, rssi: i8, n_sub: u8) -> Vec<u8> {
 
     buf[4] = node_id;
     buf[5] = 1; // n_antennas
-    buf[6] = n_sub;
-    buf[7] = 0;
+    buf[6..8].copy_from_slice(&n_sub.to_le_bytes());
 
     // freq = 2437 MHz (channel 6)
-    let freq: u16 = 2437;
-    buf[8..10].copy_from_slice(&freq.to_le_bytes());
+    let freq: u32 = 2437;
+    buf[8..12].copy_from_slice(&freq.to_le_bytes());
 
     // sequence
-    buf[10..14].copy_from_slice(&seq.to_le_bytes());
+    buf[12..16].copy_from_slice(&seq.to_le_bytes());
 
-    buf[14] = rssi as u8;
-    buf[15] = (-90i8) as u8; // noise floor
+    buf[16] = rssi as u8;
+    buf[17] = (-90i8) as u8; // noise floor
 
     // Generate I/Q pairs with node-specific patterns.
     // Different nodes produce different amplitude patterns so the server
@@ -98,7 +96,7 @@ fn test_csi_frame_builder_valid() {
     assert_eq!(u32::from_le_bytes([frame[0], frame[1], frame[2], frame[3]]), 0xC511_0001);
     assert_eq!(frame[4], 1); // node_id
     assert_eq!(frame[5], 1); // n_antennas
-    assert_eq!(frame[6], 32); // n_subcarriers
+    assert_eq!(u16::from_le_bytes([frame[6], frame[7]]), 32); // n_subcarriers
 }
 
 #[test]
@@ -129,7 +127,7 @@ fn test_multi_node_udp_send() {
     let sock = UdpSocket::bind("0.0.0.0:0").expect("bind");
     sock.set_write_timeout(Some(Duration::from_millis(100))).ok();
 
-    let n_sub = 32u8;
+    let n_sub = 32u16;
     let node_ids = [1u8, 2, 3, 5, 7];
 
     for &nid in &node_ids {
@@ -154,7 +152,7 @@ fn test_multi_node_udp_send() {
 /// size for various subcarrier counts (boundary testing).
 #[test]
 fn test_frame_sizes() {
-    for n_sub in [1u8, 16, 32, 52, 56, 64, 128] {
+    for n_sub in [1u16, 16, 32, 52, 56, 64, 128] {
         let frame = build_csi_frame(1, 0, -50, n_sub);
         let expected = 20 + (n_sub as usize) * 2;
         assert_eq!(frame.len(), expected, "wrong size for n_sub={n_sub}");

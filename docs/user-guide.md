@@ -1691,3 +1691,24 @@ ARM64 deployment is planned ([ADR-046](adr/ADR-046-android-tv-box-armbian-deploy
 - [Build Guide](build-guide.md) - Detailed build instructions
 - [RuVector](https://github.com/ruvnet/ruvector) - Signal intelligence crate ecosystem
 - [CMU DensePose From WiFi](https://arxiv.org/abs/2301.00250) - The foundational research paper
+
+## Raspberry Pi Full-Feature Workflow
+
+Run RuView in native Pi mode:
+
+1. Prepare Nexmon CSI on the Pi NIC.
+2. Start the sensing server with `--source nexmon`.
+3. Start `wifi-densepose-pi-node-agent` pointing to the server UDP port.
+
+```bash
+cargo run -p wifi-densepose-sensing-server -- --source nexmon --nexmon-port 5500 --udp-port 5005
+cargo run -p wifi-densepose-pi-node-agent -- --listen 0.0.0.0:5500 --aggregator 127.0.0.1:5005 --tier 2 --enable-wasm --mmwave-mock
+```
+
+### Migration Notes
+
+- `0xC5110006` is the new WASM event packet magic.
+- `scripts/nexmon_to_ruview_bridge.py` stays available for compatibility and supports `--compat-layout`.
+- Existing UI/API endpoints are unchanged.
+
+See `docs/pi-deployment-guide.md` for service deployment, performance gates, and ops checks.

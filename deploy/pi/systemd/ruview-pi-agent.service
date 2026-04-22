@@ -1,0 +1,17 @@
+[Unit]
+Description=RuView Raspberry Pi Node Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ruview
+Group=ruview
+ExecStart=/usr/local/bin/wifi-densepose-pi-node-agent --listen 0.0.0.0:5500 --aggregator 127.0.0.1:5005 --tier 2
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

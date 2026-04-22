@@ -21,8 +21,10 @@ use wifi_densepose_signal::ruvsense::field_model::FieldModel;
 /// Number of frames retained in `frame_history` for temporal analysis.
 pub const FRAME_HISTORY_CAPACITY: usize = 100;
 
-/// If no ESP32 frame arrives within this duration, source reverts to offline.
-pub const ESP32_OFFLINE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+/// If no CSI frame arrives within this duration, source reverts to offline.
+pub const CSI_OFFLINE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+/// Backward-compat alias.
+pub const ESP32_OFFLINE_TIMEOUT: std::time::Duration = CSI_OFFLINE_TIMEOUT;
 
 /// Default EMA alpha for temporal keypoint smoothing (RuVector Phase 2).
 pub const TEMPORAL_EMA_ALPHA_DEFAULT: f64 = 0.15;
@@ -55,16 +57,42 @@ pub const BR_MAX_JUMP: f64 = 2.0;
 pub const HR_DEAD_BAND: f64 = 2.0;
 pub const BR_DEAD_BAND: f64 = 0.5;
 
-// ── ESP32 Frame ─────────────────────────────────────────────────────────────
+// ── CSI Frame ───────────────────────────────────────────────────────────────
 
-/// ADR-018 ESP32 CSI binary frame header (20 bytes)
+/// Data source hardware type for distinguishing ESP32 vs Raspberry Pi nodes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SourceType {
+    Esp32,
+    Nexmon,
+    WindowsWifi,
+    LinuxWifi,
+    Simulated,
+}
+
+impl std::fmt::Display for SourceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SourceType::Esp32 => write!(f, "esp32"),
+            SourceType::Nexmon => write!(f, "nexmon"),
+            SourceType::WindowsWifi => write!(f, "wifi"),
+            SourceType::LinuxWifi => write!(f, "wifi"),
+            SourceType::Simulated => write!(f, "simulated"),
+        }
+    }
+}
+
+/// CSI binary frame — unified type for ESP32 and Nexmon/Pi sources.
+///
+/// ESP32 frames carry 56 subcarriers (20 MHz, int8 I/Q).
+/// Nexmon/Pi frames carry 64-256 subcarriers (20/40/80 MHz, int16 I/Q).
+/// `n_subcarriers` is u16 to accommodate both.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-pub struct Esp32Frame {
+pub struct CsiFrame {
     pub magic: u32,
     pub node_id: u8,
     pub n_antennas: u8,
-    pub n_subcarriers: u8,
+    pub n_subcarriers: u16,
     pub freq_mhz: u16,
     pub sequence: u32,
     pub rssi: i8,
@@ -72,6 +100,9 @@ pub struct Esp32Frame {
     pub amplitudes: Vec<f64>,
     pub phases: Vec<f64>,
 }
+
+/// Backward-compatibility alias — existing code referencing Esp32Frame still compiles.
+pub type Esp32Frame = CsiFrame;
 
 // ── Sensing Update ──────────────────────────────────────────────────────────
 
@@ -186,11 +217,11 @@ pub struct PerNodeFeatureInfo {
     pub stale: bool,
 }
 
-// ── ESP32 Edge Vitals Packet (ADR-039) ──────────────────────────────────────
+// ── Edge Vitals Packet (ADR-039) ────────────────────────────────────────────
 
-/// Decoded vitals packet from ESP32 edge processing pipeline.
+/// Decoded vitals packet from edge processing pipeline (ESP32 or Pi Node Agent).
 #[derive(Debug, Clone, Serialize)]
-pub struct Esp32VitalsPacket {
+pub struct EdgeVitalsPacket {
     pub node_id: u8,
     pub presence: bool,
     pub fall_detected: bool,
@@ -204,6 +235,9 @@ pub struct Esp32VitalsPacket {
     pub timestamp_ms: u32,
 }
 
+/// Backward-compatibility alias.
+pub type Esp32VitalsPacket = EdgeVitalsPacket;
+
 /// Single WASM event (type + value).
 #[derive(Debug, Clone, Serialize)]
 pub struct WasmEvent {
@@ -211,7 +245,7 @@ pub struct WasmEvent {
     pub value: f32,
 }
 
-/// Decoded WASM output packet from ESP32 Tier 3 runtime.
+/// Decoded WASM output packet from edge runtime (ESP32 WASM3 or Pi wasmtime).
 #[derive(Debug, Clone, Serialize)]
 pub struct WasmOutputPacket {
     pub node_id: u8,
@@ -222,6 +256,7 @@ pub struct WasmOutputPacket {
 // ── Per-node state ──────────────────────────────────────────────────────────
 
 /// Per-node sensing state for multi-node deployments (issue #249).
+/// Works for both ESP32 and Raspberry Pi Nexmon nodes.
 pub struct NodeState {
     pub frame_history: VecDeque<Vec<f64>>,
     pub smoothed_person_score: f64,
@@ -242,7 +277,7 @@ pub struct NodeState {
     pub vital_detector: VitalSignDetector,
     pub latest_vitals: VitalSigns,
     pub last_frame_time: Option<std::time::Instant>,
-    pub edge_vitals: Option<Esp32VitalsPacket>,
+    pub edge_vitals: Option<EdgeVitalsPacket>,
     pub latest_features: Option<FeatureInfo>,
     pub prev_keypoints: Option<Vec<[f64; 3]>>,
     pub motion_energy_history: VecDeque<f64>,
@@ -319,7 +354,9 @@ pub struct AppStateInner {
     pub frame_history: VecDeque<Vec<f64>>,
     pub tick: u64,
     pub source: String,
-    pub last_esp32_frame: Option<std::time::Instant>,
+    /// Instant of the last CSI frame received via UDP (for offline detection).
+    /// Applies to both ESP32 and Nexmon sources.
+    pub last_csi_frame: Option<std::time::Instant>,
     pub tx: broadcast::Sender<String>,
     pub total_detections: u64,
     pub start_time: std::time::Instant,
@@ -344,7 +381,7 @@ pub struct AppStateInner {
     pub smoothed_br_conf: f64,
     pub hr_buffer: VecDeque<f64>,
     pub br_buffer: VecDeque<f64>,
-    pub edge_vitals: Option<Esp32VitalsPacket>,
+    pub edge_vitals: Option<EdgeVitalsPacket>,
     pub latest_wasm_events: Option<WasmOutputPacket>,
     pub discovered_models: Vec<serde_json::Value>,
     pub active_model_id: Option<String>,
@@ -364,12 +401,14 @@ pub struct AppStateInner {
 }
 
 impl AppStateInner {
-    /// Return the effective data source, accounting for ESP32 frame timeout.
+    /// Return the effective data source, accounting for CSI frame timeout.
+    /// If the source is "esp32" or "nexmon" but no frame has arrived in 5 seconds,
+    /// returns "<source>:offline" so the UI can distinguish active vs stale connections.
     pub fn effective_source(&self) -> String {
-        if self.source == "esp32" {
-            if let Some(last) = self.last_esp32_frame {
-                if last.elapsed() > ESP32_OFFLINE_TIMEOUT {
-                    return "esp32:offline".to_string();
+        if self.source == "esp32" || self.source == "nexmon" {
+            if let Some(last) = self.last_csi_frame {
+                if last.elapsed() > CSI_OFFLINE_TIMEOUT {
+                    return format!("{}:offline", self.source);
                 }
             }
         }

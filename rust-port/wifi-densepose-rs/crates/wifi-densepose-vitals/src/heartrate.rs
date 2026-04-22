@@ -80,6 +80,13 @@ impl HeartRateExtractor {
         Self::new(56, 100.0, 15.0)
     }
 
+    /// Create with Nexmon/Pi defaults (64 subcarriers at 20 MHz, 100 Hz, 15 s window).
+    /// For 40/80 MHz channels, use `new(128, ...)` or `new(256, ...)` directly.
+    #[must_use]
+    pub fn nexmon_default() -> Self {
+        Self::new(64, 100.0, 15.0)
+    }
+
     /// Extract heart rate from per-subcarrier residuals and phase data.
     ///
     /// - `residuals`: amplitude residuals from the preprocessor.
