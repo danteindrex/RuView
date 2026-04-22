@@ -7,6 +7,7 @@
 //! - Serves the static UI files (port 8080)
 //!
 //! Replaces both ws_server.py and the Python HTTP server.
+#![allow(dead_code)]
 
 mod adaptive_classifier;
 pub mod cli;
@@ -1580,7 +1581,11 @@ async fn windows_wifi_task(state: SharedState, tick_ms: u64) {
 
         // Populate persons from the sensing update (Kalman-smoothed via tracker).
         let raw_persons = derive_pose_from_sensing(&update);
-        let tracked = tracker_update_state(&mut s, raw_persons);
+        let mut last_tracker_instant = s.last_tracker_instant.take();
+        let tracked = tracker_bridge::tracker_update(
+            &mut s.pose_tracker, &mut last_tracker_instant, raw_persons,
+        );
+        s.last_tracker_instant = last_tracker_instant;
         if !tracked.is_empty() {
             update.persons = Some(tracked);
         }
@@ -1714,7 +1719,11 @@ async fn windows_wifi_fallback_tick(state: &SharedState, seq: u32) {
     };
 
     let raw_persons = derive_pose_from_sensing(&update);
-    let tracked = tracker_update_state(&mut s, raw_persons);
+    let mut last_tracker_instant = s.last_tracker_instant.take();
+    let tracked = tracker_bridge::tracker_update(
+        &mut s.pose_tracker, &mut last_tracker_instant, raw_persons,
+    );
+    s.last_tracker_instant = last_tracker_instant;
     if !tracked.is_empty() {
         update.persons = Some(tracked);
     }
@@ -2746,7 +2755,7 @@ async fn delete_model(
     if safe_id.is_empty() || safe_id != id {
         return Json(serde_json::json!({ "error": "invalid model id", "success": false }));
     }
-    let path = PathBuf::from("data/models").join(format!("{}.rvf", safe_id));
+    let path = effective_models_dir().join(format!("{}.rvf", safe_id));
     if path.exists() {
         if let Err(e) = std::fs::remove_file(&path) {
             warn!("Failed to delete model file {:?}: {}", path, e);
@@ -2791,9 +2800,18 @@ async fn activate_lora_profile(
     Json(serde_json::json!({ "success": true, "profile": profile }))
 }
 
-/// Scan `data/models/` for `.rvf` files and return metadata.
+/// Return the effective models directory, respecting the `MODELS_DIR`
+/// environment variable.  Defaults to `data/models`.
+fn effective_models_dir() -> PathBuf {
+    PathBuf::from(
+        std::env::var("MODELS_DIR").unwrap_or_else(|_| "data/models".to_string()),
+    )
+}
+
+/// Scan the models directory for `.rvf` files and return metadata.
+/// Respects the `MODELS_DIR` environment variable.
 fn scan_model_files() -> Vec<serde_json::Value> {
-    let dir = PathBuf::from("data/models");
+    let dir = effective_models_dir();
     let mut models = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&dir) {
         for entry in entries.flatten() {
@@ -2823,9 +2841,10 @@ fn scan_model_files() -> Vec<serde_json::Value> {
     models
 }
 
-/// Scan `data/models/` for `.lora.json` LoRA profile files.
+/// Scan the models directory for `.lora.json` LoRA profile files.
+/// Respects the `MODELS_DIR` environment variable.
 fn scan_lora_profiles() -> Vec<serde_json::Value> {
-    let dir = PathBuf::from("data/models");
+    let dir = effective_models_dir();
     let mut profiles = Vec::new();
     if let Ok(entries) = std::fs::read_dir(&dir) {
         for entry in entries.flatten() {
@@ -3551,12 +3570,10 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     };
 
                     // Feed field model calibration if active (use per-node history for ESP32).
-                    let node_history = s
-                        .node_states
-                        .get(&node_id)
-                        .map(|ns| ns.frame_history.clone());
-                    if let (Some(fm), Some(history)) = (s.field_model.as_mut(), node_history.as_ref()) {
-                        field_bridge::maybe_feed_calibration(fm, history);
+                    if let Some(frame_history) = s.node_states.get(&node_id).map(|ns| ns.frame_history.clone()) {
+                        if let Some(ref mut fm) = s.field_model {
+                            field_bridge::maybe_feed_calibration(fm, &frame_history);
+                        }
                     }
 
                     // Build nodes array with all active nodes.
@@ -3638,7 +3655,11 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     };
 
                     let raw_persons = derive_pose_from_sensing(&update);
-                    let tracked = tracker_update_state(&mut s, raw_persons);
+                    let mut last_tracker_instant = s.last_tracker_instant.take();
+                    let tracked = tracker_bridge::tracker_update(
+                        &mut s.pose_tracker, &mut last_tracker_instant, raw_persons,
+                    );
+                    s.last_tracker_instant = last_tracker_instant;
                     if !tracked.is_empty() {
                         update.persons = Some(tracked);
                     }
@@ -3836,12 +3857,10 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     };
 
                     // Feed field model calibration if active (use per-node history for ESP32).
-                    let node_history = s
-                        .node_states
-                        .get(&node_id)
-                        .map(|ns| ns.frame_history.clone());
-                    if let (Some(fm), Some(history)) = (s.field_model.as_mut(), node_history.as_ref()) {
-                        field_bridge::maybe_feed_calibration(fm, history);
+                    if let Some(frame_history) = s.node_states.get(&node_id).map(|ns| ns.frame_history.clone()) {
+                        if let Some(ref mut fm) = s.field_model {
+                            field_bridge::maybe_feed_calibration(fm, &frame_history);
+                        }
                     }
 
                     // Build nodes array with all active nodes.
@@ -3885,7 +3904,11 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     };
 
                     let raw_persons = derive_pose_from_sensing(&update);
-                    let tracked = tracker_update_state(&mut s, raw_persons);
+                    let mut last_tracker_instant = s.last_tracker_instant.take();
+                    let tracked = tracker_bridge::tracker_update(
+                        &mut s.pose_tracker, &mut last_tracker_instant, raw_persons,
+                    );
+                    s.last_tracker_instant = last_tracker_instant;
                     if !tracked.is_empty() {
                         update.persons = Some(tracked);
                     }
@@ -4019,7 +4042,11 @@ async fn simulated_data_task(state: SharedState, tick_ms: u64) {
 
         // Populate persons from the sensing update (Kalman-smoothed via tracker).
         let raw_persons = derive_pose_from_sensing(&update);
-        let tracked = tracker_update_state(&mut s, raw_persons);
+        let mut last_tracker_instant = s.last_tracker_instant.take();
+        let tracked = tracker_bridge::tracker_update(
+            &mut s.pose_tracker, &mut last_tracker_instant, raw_persons,
+        );
+        s.last_tracker_instant = last_tracker_instant;
         if !tracked.is_empty() {
             update.persons = Some(tracked);
         }
@@ -4608,7 +4635,8 @@ async fn main() {
     }
 
     // Ensure data directories exist for models and recordings
-    let _ = std::fs::create_dir_all("data/models");
+    let models_dir = effective_models_dir();
+    let _ = std::fs::create_dir_all(&models_dir);
     let _ = std::fs::create_dir_all("data/recordings");
 
     // Discover model and recording files on startup
