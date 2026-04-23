@@ -1,13 +1,44 @@
+use std::collections::VecDeque;
+use std::io::{BufRead, BufReader, Read};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use serde::{Deserialize, Serialize};
 use sysinfo::{Pid, ProcessesToUpdate, System};
 use tauri::{AppHandle, Manager, State};
 
-use crate::state::AppState;
+use crate::state::{AppState, ServerLogBuffer};
 
 /// Default binary name for the sensing server.
 const DEFAULT_SERVER_BIN: &str = "sensing-server";
+const MAX_SERVER_LOG_LINES: usize = 500;
+
+fn push_bounded_line(lines: &mut VecDeque<String>, line: String) {
+    lines.push_back(line);
+    while lines.len() > MAX_SERVER_LOG_LINES {
+        lines.pop_front();
+    }
+}
+
+fn spawn_log_reader<R>(reader: R, logs: Arc<Mutex<ServerLogBuffer>>, stdout: bool)
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let reader = BufReader::new(reader);
+        for line in reader.lines() {
+            let Ok(line) = line else { break };
+            if let Ok(mut buffer) = logs.lock() {
+                if stdout {
+                    push_bounded_line(&mut buffer.stdout, line);
+                } else {
+                    push_bounded_line(&mut buffer.stderr, line);
+                }
+            }
+        }
+    });
+}
 
 /// Find the sensing server binary path.
 ///
@@ -77,12 +108,17 @@ pub async fn start_server(
     state: State<'_, AppState>,
 ) -> Result<ServerStartResult, String> {
     // Check if already running
-    {
+    let logs = {
         let srv = state.server.lock().map_err(|e| e.to_string())?;
         if srv.running {
             return Err("Server is already running".into());
         }
-    }
+        let logs = srv.logs.clone();
+        if let Ok(mut buffer) = logs.lock() {
+            buffer.clear();
+        }
+        logs
+    };
 
     // Find server binary
     let server_path = find_server_binary(&app, config.server_path.as_deref())?;
@@ -101,26 +137,116 @@ pub async fn start_server(
     if let Some(port) = config.udp_port {
         cmd.args(["--udp-port", &port.to_string()]);
     }
-    if let Some(ref bind_addr) = config.bind_address {
-        cmd.args(["--bind", bind_addr]);
+    if let Some(port) = config.nexmon_port {
+        cmd.args(["--nexmon-port", &port.to_string()]);
     }
-    if let Some(ref log_level) = config.log_level {
-        cmd.args(["--log-level", log_level]);
+    if let Some(ref ui_path) = config.ui_path {
+        if !ui_path.trim().is_empty() {
+            cmd.args(["--ui-path", ui_path]);
+        }
+    }
+    if let Some(tick_ms) = config.tick_ms {
+        cmd.args(["--tick-ms", &tick_ms.to_string()]);
+    }
+    if let Some(ref bind_addr) = config.bind_address {
+        if !bind_addr.trim().is_empty() {
+            cmd.args(["--bind-addr", bind_addr]);
+        }
     }
 
-    // Set data source (default to "simulate" if not specified for demo mode)
-    let source = config.source.as_deref().unwrap_or("simulate");
+    // Set data source (default to "auto" if not specified).
+    let source = config.source.as_deref().unwrap_or("auto");
     cmd.args(["--source", source]);
+    if config.pi_diag.unwrap_or(false) {
+        cmd.arg("--pi-diag");
+    }
+
+    if let Some(ref path) = config.load_rvf {
+        if !path.trim().is_empty() {
+            cmd.args(["--load-rvf", path]);
+        }
+    }
+    if let Some(ref path) = config.save_rvf {
+        if !path.trim().is_empty() {
+            cmd.args(["--save-rvf", path]);
+        }
+    }
+    if let Some(ref path) = config.model {
+        if !path.trim().is_empty() {
+            cmd.args(["--model", path]);
+        }
+    }
+    if config.progressive.unwrap_or(false) {
+        cmd.arg("--progressive");
+    }
+    if let Some(ref path) = config.export_rvf {
+        if !path.trim().is_empty() {
+            cmd.args(["--export-rvf", path]);
+        }
+    }
+    if config.train.unwrap_or(false) {
+        cmd.arg("--train");
+    }
+    if let Some(ref dataset) = config.dataset {
+        if !dataset.trim().is_empty() {
+            cmd.args(["--dataset", dataset]);
+        }
+    }
+    if let Some(ref dataset_type) = config.dataset_type {
+        if !dataset_type.trim().is_empty() {
+            cmd.args(["--dataset-type", dataset_type]);
+        }
+    }
+    if let Some(epochs) = config.epochs {
+        cmd.args(["--epochs", &epochs.to_string()]);
+    }
+    if let Some(ref checkpoint_dir) = config.checkpoint_dir {
+        if !checkpoint_dir.trim().is_empty() {
+            cmd.args(["--checkpoint-dir", checkpoint_dir]);
+        }
+    }
+    if config.pretrain.unwrap_or(false) {
+        cmd.arg("--pretrain");
+    }
+    if let Some(pretrain_epochs) = config.pretrain_epochs {
+        cmd.args(["--pretrain-epochs", &pretrain_epochs.to_string()]);
+    }
+    if config.embed.unwrap_or(false) {
+        cmd.arg("--embed");
+    }
+    if let Some(ref idx) = config.build_index {
+        if !idx.trim().is_empty() {
+            cmd.args(["--build-index", idx]);
+        }
+    }
+    if let Some(ref node_positions) = config.node_positions {
+        if !node_positions.trim().is_empty() {
+            cmd.args(["--node-positions", node_positions]);
+        }
+    }
+    if config.calibrate.unwrap_or(false) {
+        cmd.arg("--calibrate");
+    }
+    if config.benchmark.unwrap_or(false) {
+        cmd.arg("--benchmark");
+    }
 
     // Redirect stdout/stderr to pipes for monitoring
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
     // Spawn the child process
-    let child = cmd.spawn()
+    let mut child = cmd.spawn()
         .map_err(|e| format!("Failed to start server: {}. Is '{}' installed?", e, server_path))?;
 
     let pid = child.id();
+
+    if let Some(stdout) = child.stdout.take() {
+        spawn_log_reader(stdout, logs.clone(), true);
+    }
+    if let Some(stderr) = child.stderr.take() {
+        spawn_log_reader(stderr, logs.clone(), false);
+    }
 
     // Store the child process in state
     {
@@ -130,7 +256,11 @@ pub async fn start_server(
         srv.http_port = config.http_port;
         srv.ws_port = config.ws_port;
         srv.udp_port = config.udp_port;
+        srv.nexmon_port = config.nexmon_port;
+        srv.bind_address = config.bind_address.clone();
+        srv.source = Some(source.to_string());
         srv.child = Some(child);
+        srv.start_time = Some(std::time::Instant::now());
     }
 
     tracing::info!("Started sensing server with PID {}", pid);
@@ -140,6 +270,7 @@ pub async fn start_server(
         http_port: config.http_port,
         ws_port: config.ws_port,
         udp_port: config.udp_port,
+        nexmon_port: config.nexmon_port,
     })
 }
 
@@ -223,7 +354,11 @@ pub async fn stop_server(state: State<'_, AppState>) -> Result<(), String> {
         srv.http_port = None;
         srv.ws_port = None;
         srv.udp_port = None;
+        srv.nexmon_port = None;
+        srv.bind_address = None;
+        srv.source = None;
         srv.child = None;
+        srv.start_time = None;
     }
 
     // Verify process is dead
@@ -256,9 +391,12 @@ pub async fn server_status(state: State<'_, AppState>) -> Result<ServerStatusRes
             http_port: None,
             ws_port: None,
             udp_port: None,
+            nexmon_port: None,
             memory_mb: None,
             cpu_percent: None,
             uptime_secs: None,
+            source: None,
+            bind_address: None,
         });
     }
 
@@ -286,9 +424,12 @@ pub async fn server_status(state: State<'_, AppState>) -> Result<ServerStatusRes
         http_port: srv.http_port,
         ws_port: srv.ws_port,
         udp_port: srv.udp_port,
+        nexmon_port: srv.nexmon_port,
         memory_mb,
         cpu_percent,
         uptime_secs,
+        source: srv.source.clone(),
+        bind_address: srv.bind_address.clone(),
     })
 }
 
@@ -308,10 +449,30 @@ pub async fn restart_server(
             http_port: srv.http_port,
             ws_port: srv.ws_port,
             udp_port: srv.udp_port,
-            log_level: None,
-            bind_address: None,
+            nexmon_port: srv.nexmon_port,
+            ui_path: None,
+            tick_ms: None,
+            bind_address: srv.bind_address.clone(),
             server_path: None,
-            source: None, // Use default (simulate)
+            source: srv.source.clone(),
+            pi_diag: None,
+            benchmark: None,
+            load_rvf: None,
+            save_rvf: None,
+            model: None,
+            progressive: None,
+            export_rvf: None,
+            train: None,
+            dataset: None,
+            dataset_type: None,
+            epochs: None,
+            checkpoint_dir: None,
+            pretrain: None,
+            pretrain_epochs: None,
+            embed: None,
+            build_index: None,
+            node_positions: None,
+            calibrate: None,
         }
     };
 
@@ -331,14 +492,38 @@ pub async fn server_logs(
     _lines: Option<usize>,
     state: State<'_, AppState>,
 ) -> Result<ServerLogsResponse, String> {
-    let _srv = state.server.lock().map_err(|e| e.to_string())?;
+    let logs = {
+        let srv = state.server.lock().map_err(|e| e.to_string())?;
+        srv.logs.clone()
+    };
 
-    // For now, return empty logs - full implementation would capture stdout/stderr
-    // to ring buffer during process lifetime
+    let lines = _lines.unwrap_or(200);
+    let buffer = logs.lock().map_err(|e| e.to_string())?;
+    let stdout = buffer
+        .stdout
+        .iter()
+        .rev()
+        .take(lines)
+        .cloned()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    let stderr = buffer
+        .stderr
+        .iter()
+        .rev()
+        .take(lines)
+        .cloned()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+
     Ok(ServerLogsResponse {
-        stdout: Vec::new(),
-        stderr: Vec::new(),
-        truncated: false,
+        truncated: buffer.stdout.len() > lines || buffer.stderr.len() > lines,
+        stdout,
+        stderr,
     })
 }
 
@@ -347,11 +532,31 @@ pub struct ServerConfig {
     pub http_port: Option<u16>,
     pub ws_port: Option<u16>,
     pub udp_port: Option<u16>,
-    pub log_level: Option<String>,
+    pub nexmon_port: Option<u16>,
+    pub ui_path: Option<String>,
+    pub tick_ms: Option<u64>,
     pub bind_address: Option<String>,
     pub server_path: Option<String>,
-    /// Data source: "auto", "wifi", "esp32", "simulate"
+    /// Data source: "auto", "wifi", "esp32", "nexmon", "simulate"
     pub source: Option<String>,
+    pub pi_diag: Option<bool>,
+    pub benchmark: Option<bool>,
+    pub load_rvf: Option<String>,
+    pub save_rvf: Option<String>,
+    pub model: Option<String>,
+    pub progressive: Option<bool>,
+    pub export_rvf: Option<String>,
+    pub train: Option<bool>,
+    pub dataset: Option<String>,
+    pub dataset_type: Option<String>,
+    pub epochs: Option<usize>,
+    pub checkpoint_dir: Option<String>,
+    pub pretrain: Option<bool>,
+    pub pretrain_epochs: Option<usize>,
+    pub embed: Option<bool>,
+    pub build_index: Option<String>,
+    pub node_positions: Option<String>,
+    pub calibrate: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -360,6 +565,7 @@ pub struct ServerStartResult {
     pub http_port: Option<u16>,
     pub ws_port: Option<u16>,
     pub udp_port: Option<u16>,
+    pub nexmon_port: Option<u16>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -369,9 +575,12 @@ pub struct ServerStatusResponse {
     pub http_port: Option<u16>,
     pub ws_port: Option<u16>,
     pub udp_port: Option<u16>,
+    pub nexmon_port: Option<u16>,
     pub memory_mb: Option<f64>,
     pub cpu_percent: Option<f32>,
     pub uptime_secs: Option<u64>,
+    pub source: Option<String>,
+    pub bind_address: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -391,13 +600,34 @@ mod tests {
             http_port: Some(8080),
             ws_port: Some(8765),
             udp_port: Some(5005),
-            log_level: None,
+            nexmon_port: Some(5500),
+            ui_path: None,
+            tick_ms: None,
             bind_address: None,
             server_path: None,
             source: Some("simulate".to_string()),
+            pi_diag: None,
+            benchmark: None,
+            load_rvf: None,
+            save_rvf: None,
+            model: None,
+            progressive: None,
+            export_rvf: None,
+            train: None,
+            dataset: None,
+            dataset_type: None,
+            epochs: None,
+            checkpoint_dir: None,
+            pretrain: None,
+            pretrain_epochs: None,
+            embed: None,
+            build_index: None,
+            node_positions: None,
+            calibrate: None,
         };
 
         assert_eq!(config.http_port, Some(8080));
         assert_eq!(config.ws_port, Some(8765));
+        assert_eq!(config.nexmon_port, Some(5500));
     }
 }

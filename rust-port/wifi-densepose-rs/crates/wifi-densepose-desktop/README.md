@@ -1,4 +1,4 @@
-# RuView Desktop
+# Wave Desktop
 
 > **Work in Progress** — This crate is under active development. APIs and UI are subject to change.
 
@@ -6,7 +6,7 @@ Cross-platform desktop application for managing ESP32 WiFi sensing networks. Bui
 
 ## Overview
 
-RuView Desktop provides a unified interface for node discovery, firmware management, over-the-air updates, WASM edge module deployment, real-time sensing data visualization, and mesh network topology monitoring — all from a single native application.
+Wave Desktop provides a unified interface for node discovery, firmware management, over-the-air updates, WASM edge module deployment, real-time sensing data visualization, and mesh network topology monitoring — all from a single native application.
 
 ## Pages
 

@@ -1,5 +1,5 @@
-import type React from "react";
-import { MoonStar, SunMedium } from "lucide-react";
+import React from "react";
+import { MoonStar, PanelLeftClose, PanelLeftOpen, SunMedium } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -23,6 +23,7 @@ interface AppShellProps {
   totalNodes: number;
   theme: "dark" | "light";
   onThemeToggle: () => void;
+  immersive?: boolean;
 }
 
 export function AppShell({
@@ -37,14 +38,38 @@ export function AppShell({
   totalNodes,
   theme,
   onThemeToggle,
+  immersive = false,
 }: AppShellProps) {
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(() => localStorage.getItem("wave-v2-sidebar") === "collapsed");
+
+  React.useEffect(() => {
+    localStorage.setItem("wave-v2-sidebar", sidebarCollapsed ? "collapsed" : "expanded");
+  }, [sidebarCollapsed]);
+
   return (
     <div className="flex h-full w-full overflow-hidden">
-      <aside className="hidden w-72 shrink-0 border-r border-border/60 bg-card/40 p-4 backdrop-blur md:flex md:flex-col">
-        <div className="mb-6 space-y-1">
-          <p className="text-xs uppercase tracking-[0.2em] text-primary">RuView</p>
-          <h1 className="text-xl font-semibold tracking-tight">Control Plane v2</h1>
-          <p className="text-sm text-muted-foreground">{subtitle}</p>
+      <aside
+        className={cn(
+          "hidden shrink-0 border-r border-border/60 bg-card/40 p-4 backdrop-blur transition-[width] duration-300 md:flex md:flex-col",
+          sidebarCollapsed ? "w-[76px]" : "w-72",
+        )}
+      >
+        <div className={cn("mb-6 flex items-start gap-2", sidebarCollapsed ? "justify-center" : "justify-between")}>
+          {!sidebarCollapsed ? (
+            <div className="space-y-1">
+              <p className="text-xs uppercase tracking-[0.2em] text-primary">Wave</p>
+              <h1 className="text-xl font-semibold tracking-tight">Control Plane v2</h1>
+              <p className="text-sm text-muted-foreground">{subtitle}</p>
+            </div>
+          ) : null}
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setSidebarCollapsed((current) => !current)}
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </Button>
         </div>
 
         <nav className="space-y-1">
@@ -57,20 +82,22 @@ export function AppShell({
                 type="button"
                 className={cn(
                   "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                  sidebarCollapsed && "justify-center px-2",
                   active
                     ? "bg-primary/20 text-primary ring-1 ring-primary/40"
                     : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
                 )}
                 onClick={() => onPageChange(page.id)}
+                title={sidebarCollapsed ? page.label : undefined}
               >
                 <Icon className="h-4 w-4" />
-                <span>{page.label}</span>
+                {!sidebarCollapsed ? <span>{page.label}</span> : null}
               </button>
             );
           })}
         </nav>
 
-        <div className="mt-auto space-y-4">
+        <div className={cn("mt-auto space-y-4", sidebarCollapsed && "hidden")}>
           <Separator />
           <div className="space-y-2 text-xs">
             <div className="flex items-center justify-between">
@@ -88,7 +115,7 @@ export function AppShell({
       </aside>
 
       <section className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 border-b border-border/60 bg-background/70 px-4 py-3 backdrop-blur md:px-6">
+        <header className={cn("sticky top-0 z-20 border-b border-border/60 bg-background/70 px-4 py-3 backdrop-blur md:px-6", immersive && "md:hidden")}>
           <div className="mb-3 md:hidden">
             <label className="mb-1 block text-xs text-muted-foreground" htmlFor="mobile-page-select">
               Navigation
@@ -116,7 +143,7 @@ export function AppShell({
             </Button>
           </div>
         </header>
-        <main className="min-h-0 flex-1 overflow-auto p-4 md:p-6">{children}</main>
+        <main className={cn("min-h-0 flex-1 overflow-auto", immersive ? "p-0" : "p-4 md:p-6")}>{children}</main>
       </section>
     </div>
   );

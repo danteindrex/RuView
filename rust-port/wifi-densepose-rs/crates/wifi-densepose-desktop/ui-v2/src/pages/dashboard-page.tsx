@@ -70,7 +70,7 @@ export function DashboardPage({ nodes, serverStatus, onRefreshNodes, onRefreshSe
         </div>
       </PageSection>
 
-      <PageSection title="Release Controls" description="This rewrite removes demo behaviors from production surfaces and keeps operational actions explicit.">
+      <PageSection title="Release Controls" description="Live sensing is the default path; demo scenarios are available only as an explicit visual validation mode.">
         <ul className="space-y-2 text-sm text-muted-foreground">
           <li className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-primary" />
@@ -82,11 +82,10 @@ export function DashboardPage({ nodes, serverStatus, onRefreshNodes, onRefreshSe
           </li>
           <li className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-primary" />
-            Deterministic 3D pose view driven by explicit landmark data.
+            3D observability supports live WebSocket data and explicit demo scenarios.
           </li>
         </ul>
       </PageSection>
     </div>
   );
 }
-

@@ -1,18 +1,24 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
-  "productName": "RuView Desktop",
+  "productName": "Wave Desktop",
   "version": "0.4.4",
-  "identifier": "net.ruv.ruview",
+  "identifier": "net.ruv.wave",
   "build": {
     "frontendDist": "ui-v2/dist",
     "devUrl": "http://localhost:5174",
-    "beforeDevCommand": "npm --prefix ./ui-v2 run dev",
-    "beforeBuildCommand": "npm --prefix ./ui-v2 run build"
+    "beforeDevCommand": {
+      "script": "npm run dev",
+      "cwd": "ui-v2"
+    },
+    "beforeBuildCommand": {
+      "script": "npm run build",
+      "cwd": "ui-v2"
+    }
   },
   "app": {
     "windows": [
       {
-        "title": "RuView Desktop",
+        "title": "Wave Desktop",
         "width": 1200,
         "height": 800,
         "minWidth": 900,

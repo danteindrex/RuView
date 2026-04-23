@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Blocks,
+  Cpu,
+  GitBranch,
   Gauge,
   Network,
   Radar,
@@ -16,14 +18,16 @@ import { NetworkPage } from "@/pages/network-page";
 import { FlashPage } from "@/pages/flash-page";
 import { OtaPage } from "@/pages/ota-page";
 import { ModulesPage } from "@/pages/modules-page";
+import { PiNodesPage } from "@/pages/pi-nodes-page";
 import { SensingPage } from "@/pages/sensing-page";
 import { ProvisioningPage } from "@/pages/provisioning-page";
 import { Pose3DPage } from "@/pages/pose3d-page";
+import { MeshPage } from "@/pages/mesh-page";
 import { SettingsPage } from "@/pages/settings-page";
 import { tauriApi } from "@/lib/tauri-api";
 import type { DiscoveredNode, ServerStatusResponse } from "@/types";
 
-type PageId = "dashboard" | "network" | "flash" | "ota" | "modules" | "sensing" | "provisioning" | "pose3d" | "settings";
+type PageId = "dashboard" | "network" | "flash" | "ota" | "modules" | "pi-nodes" | "sensing" | "mesh" | "provisioning" | "pose3d" | "settings";
 
 const PAGES: ShellPage[] = [
   { id: "dashboard", label: "Overview", icon: Gauge },
@@ -31,14 +35,16 @@ const PAGES: ShellPage[] = [
   { id: "flash", label: "Firmware Flash", icon: Upload },
   { id: "ota", label: "OTA Rollout", icon: RadioTower },
   { id: "modules", label: "Edge Modules", icon: Blocks },
+  { id: "pi-nodes", label: "Pi Nodes", icon: Cpu },
   { id: "sensing", label: "Sensing Server", icon: Radar },
+  { id: "mesh", label: "Mesh View", icon: GitBranch },
   { id: "provisioning", label: "Provisioning", icon: Wrench },
   { id: "pose3d", label: "3D Pose", icon: Sparkles },
   { id: "settings", label: "Settings", icon: Settings2 },
 ];
 
 function loadTheme(): "light" | "dark" {
-  const stored = localStorage.getItem("ruview-v2-theme");
+  const stored = localStorage.getItem("wave-v2-theme");
   return stored === "light" ? "light" : "dark";
 }
 
@@ -60,7 +66,7 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
-    localStorage.setItem("ruview-v2-theme", theme);
+    localStorage.setItem("wave-v2-theme", theme);
   }, [theme]);
 
   useEffect(() => {
@@ -78,7 +84,7 @@ export default function App() {
     return page?.label ?? "Overview";
   }, [activePage]);
 
-  const subtitle = "Production command center with deterministic state, grouped advanced controls, and no simulated production paths.";
+  const subtitle = "Production command center for Wave sensing, firmware, mesh, and observability controls.";
 
   return (
     <AppShell
@@ -92,17 +98,19 @@ export default function App() {
       totalNodes={nodes.length}
       theme={theme}
       onThemeToggle={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+      immersive={activePage === "pose3d"}
     >
       {activePage === "dashboard" ? <DashboardPage nodes={nodes} serverStatus={serverStatus} onRefreshNodes={refreshNodes} onRefreshServer={refreshServer} /> : null}
       {activePage === "network" ? <NetworkPage nodes={nodes} onNodesUpdate={setNodes} /> : null}
       {activePage === "flash" ? <FlashPage /> : null}
       {activePage === "ota" ? <OtaPage /> : null}
       {activePage === "modules" ? <ModulesPage /> : null}
+      {activePage === "pi-nodes" ? <PiNodesPage /> : null}
       {activePage === "sensing" ? <SensingPage status={serverStatus} onStatusRefresh={refreshServer} /> : null}
+      {activePage === "mesh" ? <MeshPage nodes={nodes} onRefreshNodes={refreshNodes} /> : null}
       {activePage === "provisioning" ? <ProvisioningPage /> : null}
-      {activePage === "pose3d" ? <Pose3DPage /> : null}
+      {activePage === "pose3d" ? <Pose3DPage status={serverStatus} onStatusRefresh={refreshServer} /> : null}
       {activePage === "settings" ? <SettingsPage theme={theme} onThemeChange={setTheme} /> : null}
     </AppShell>
   );
 }
-

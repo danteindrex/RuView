@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Loader2, Wifi } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Wifi } from "lucide-react";
 import { tauriApi } from "@/lib/tauri-api";
 import { PageSection } from "@/components/layout/page-section";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ interface NetworkPageProps {
 export function NetworkPage({ nodes, onNodesUpdate }: NetworkPageProps) {
   const [loading, setLoading] = useState(false);
   const [ports, setPorts] = useState<SerialPortInfo[]>([]);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [timeoutMs, setTimeoutMs] = useState("3000");
   const [wifiPort, setWifiPort] = useState("");
   const [ssid, setSsid] = useState("");
@@ -76,6 +77,25 @@ export function NetworkPage({ nodes, onNodesUpdate }: NetworkPageProps) {
     }
   }
 
+  function keyForNode(node: DiscoveredNode) {
+    return node.mac ?? node.ip;
+  }
+
+  function formatUptime(seconds: number | null) {
+    if (seconds == null) return "N/A";
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return `${hours}h ${minutes}m`;
+  }
+
+  function capabilityText(node: DiscoveredNode) {
+    if (!node.capabilities) return "N/A";
+    const enabled = Object.entries(node.capabilities)
+      .filter(([, value]) => value)
+      .map(([key]) => key.toUpperCase());
+    return enabled.length > 0 ? enabled.join(", ") : "None";
+  }
+
   return (
     <div className="space-y-6">
       <PageSection title="Discovery Control" description="Discover ESP32 nodes and inspect serial devices for provisioning readiness.">
@@ -102,33 +122,62 @@ export function NetworkPage({ nodes, onNodesUpdate }: NetworkPageProps) {
       <PageSection title="Node Registry" description="Current nodes in scope with health, firmware, and capability indicators.">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>IP</TableHead>
-              <TableHead>Host</TableHead>
-              <TableHead>Health</TableHead>
-              <TableHead>Chip</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Firmware</TableHead>
+              <TableRow>
+                <TableHead></TableHead>
+                <TableHead>IP</TableHead>
+                <TableHead>MAC</TableHead>
+                <TableHead>Host</TableHead>
+                <TableHead>Health</TableHead>
+                <TableHead>Chip</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Firmware</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {nodes.map((node) => (
-              <TableRow key={`${node.ip}-${node.mac ?? "macless"}`}>
-                <TableCell>{node.ip}</TableCell>
-                <TableCell>{node.hostname ?? "N/A"}</TableCell>
-                <TableCell>
-                  <Badge variant={node.health === "online" ? "success" : node.health === "degraded" ? "warning" : "danger"}>
-                    {node.health}
-                  </Badge>
-                </TableCell>
-                <TableCell>{node.chip}</TableCell>
-                <TableCell>{node.mesh_role}</TableCell>
-                <TableCell>{node.firmware_version ?? "unknown"}</TableCell>
-              </TableRow>
-            ))}
+            {nodes.map((node) => {
+              const key = keyForNode(node);
+              const expanded = expandedKey === key;
+              return (
+                <>
+                  <TableRow key={key} className="cursor-pointer" onClick={() => setExpandedKey(expanded ? null : key)}>
+                    <TableCell className="w-10">
+                      {expanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                    </TableCell>
+                    <TableCell>{node.ip}</TableCell>
+                    <TableCell>{node.mac ?? "N/A"}</TableCell>
+                    <TableCell>{node.hostname ?? "N/A"}</TableCell>
+                    <TableCell>
+                      <Badge variant={node.health === "online" ? "success" : node.health === "degraded" ? "warning" : "danger"}>
+                        {node.health}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{node.chip}</TableCell>
+                    <TableCell>{node.mesh_role}</TableCell>
+                    <TableCell>{node.firmware_version ?? "unknown"}</TableCell>
+                  </TableRow>
+                  {expanded ? (
+                    <TableRow key={`${key}-details`}>
+                      <TableCell colSpan={8}>
+                        <div className="grid gap-3 rounded-md border border-border/60 bg-background/70 p-4 text-sm md:grid-cols-3">
+                          <Detail label="Node ID" value={String(node.node_id)} />
+                          <Detail label="Last Seen" value={node.last_seen} />
+                          <Detail label="Discovery" value={node.discovery_method} />
+                          <Detail label="TDM Slot" value={node.tdm_slot != null && node.tdm_total != null ? `${node.tdm_slot} / ${node.tdm_total}` : "N/A"} />
+                          <Detail label="Edge Tier" value={node.edge_tier != null ? String(node.edge_tier) : "N/A"} />
+                          <Detail label="Uptime" value={formatUptime(node.uptime_secs)} />
+                          <Detail label="Capabilities" value={capabilityText(node)} />
+                          <Detail label="Friendly Name" value={node.friendly_name ?? "N/A"} />
+                          <Detail label="Notes" value={node.notes ?? "N/A"} />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </>
+              );
+            })}
             {nodes.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                <TableCell colSpan={8} className="text-center text-muted-foreground">
                   No nodes discovered yet.
                 </TableCell>
               </TableRow>
@@ -197,3 +246,11 @@ export function NetworkPage({ nodes, onNodesUpdate }: NetworkPageProps) {
   );
 }
 
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs uppercase text-muted-foreground">{label}</p>
+      <p className="truncate font-medium">{value}</p>
+    </div>
+  );
+}

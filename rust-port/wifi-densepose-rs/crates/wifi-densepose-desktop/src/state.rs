@@ -1,5 +1,6 @@
+use std::collections::VecDeque;
 use std::process::Child;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::domain::node::DiscoveredNode;
@@ -18,8 +19,26 @@ pub struct ServerState {
     pub http_port: Option<u16>,
     pub ws_port: Option<u16>,
     pub udp_port: Option<u16>,
+    pub nexmon_port: Option<u16>,
+    pub bind_address: Option<String>,
+    pub source: Option<String>,
     pub child: Option<Child>,
     pub start_time: Option<Instant>,
+    pub logs: Arc<Mutex<ServerLogBuffer>>,
+}
+
+/// Bounded stdout/stderr capture for the managed sensing server.
+#[derive(Default)]
+pub struct ServerLogBuffer {
+    pub stdout: VecDeque<String>,
+    pub stderr: VecDeque<String>,
+}
+
+impl ServerLogBuffer {
+    pub fn clear(&mut self) {
+        self.stdout.clear();
+        self.stderr.clear();
+    }
 }
 
 impl Default for ServerState {
@@ -30,8 +49,12 @@ impl Default for ServerState {
             http_port: None,
             ws_port: None,
             udp_port: None,
+            nexmon_port: None,
+            bind_address: None,
+            source: None,
             child: None,
             start_time: None,
+            logs: Arc::new(Mutex::new(ServerLogBuffer::default())),
         }
     }
 }

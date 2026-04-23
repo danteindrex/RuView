@@ -2,7 +2,7 @@ pub mod commands;
 pub mod domain;
 pub mod state;
 
-use commands::{discovery, flash, ota, provision, server, settings, wasm};
+use commands::{discovery, flash, ota, pi_node, provision, server, settings, wasm};
 
 pub fn run() {
     tauri::Builder::default()
@@ -31,6 +31,15 @@ pub fn run() {
             wasm::wasm_info,
             wasm::wasm_stats,
             wasm::check_wasm_support,
+            // Pi node management
+            pi_node::pi_node_probe,
+            pi_node::pi_node_build_agent,
+            pi_node::pi_node_deploy_binary,
+            pi_node::pi_node_check_prereqs,
+            pi_node::pi_node_csi_health,
+            pi_node::pi_node_push_config,
+            pi_node::pi_node_install_service,
+            pi_node::pi_node_service,
             // Server
             server::start_server,
             server::stop_server,

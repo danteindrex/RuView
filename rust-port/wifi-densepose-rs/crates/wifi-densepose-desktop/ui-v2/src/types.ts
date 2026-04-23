@@ -2,7 +2,7 @@ export type HealthStatus = "online" | "offline" | "degraded";
 export type DiscoveryMethod = "mdns" | "udp_probe" | "http_sweep" | "manual";
 export type Chip = "esp32" | "esp32s2" | "esp32s3" | "esp32c3" | "esp32c6";
 export type MeshRole = "coordinator" | "node" | "aggregator";
-export type DataSource = "auto" | "wifi" | "esp32" | "simulate";
+export type DataSource = "auto" | "wifi" | "esp32" | "nexmon" | "simulate";
 
 export interface NodeCapabilities {
   wasm: boolean;
@@ -156,10 +156,30 @@ export interface ServerConfig {
   http_port?: number | null;
   ws_port?: number | null;
   udp_port?: number | null;
-  log_level?: string | null;
+  nexmon_port?: number | null;
+  ui_path?: string | null;
+  tick_ms?: number | null;
   bind_address?: string | null;
   server_path?: string | null;
-  source?: string | null;
+  source?: DataSource | string | null;
+  pi_diag?: boolean | null;
+  benchmark?: boolean | null;
+  load_rvf?: string | null;
+  save_rvf?: string | null;
+  model?: string | null;
+  progressive?: boolean | null;
+  export_rvf?: string | null;
+  train?: boolean | null;
+  dataset?: string | null;
+  dataset_type?: string | null;
+  epochs?: number | null;
+  checkpoint_dir?: string | null;
+  pretrain?: boolean | null;
+  pretrain_epochs?: number | null;
+  embed?: boolean | null;
+  build_index?: string | null;
+  node_positions?: string | null;
+  calibrate?: boolean | null;
 }
 
 export interface ServerStartResult {
@@ -167,6 +187,7 @@ export interface ServerStartResult {
   http_port: number | null;
   ws_port: number | null;
   udp_port: number | null;
+  nexmon_port: number | null;
 }
 
 export interface ServerStatusResponse {
@@ -175,15 +196,55 @@ export interface ServerStatusResponse {
   http_port: number | null;
   ws_port: number | null;
   udp_port: number | null;
+  nexmon_port: number | null;
   memory_mb: number | null;
   cpu_percent: number | null;
   uptime_secs: number | null;
+  source: string | null;
+  bind_address: string | null;
 }
 
 export interface ServerLogsResponse {
   stdout: string[];
   stderr: string[];
   truncated: boolean;
+}
+
+export interface PiNodeTarget {
+  host: string;
+  user?: string | null;
+  port?: number | null;
+  identity_file?: string | null;
+  connect_timeout_secs?: number | null;
+}
+
+export interface PiAgentConfig {
+  listen: string;
+  aggregator: string;
+  node_base: number;
+  tier: number;
+  default_rssi: number;
+  noise_floor: number;
+  mmwave_mock: boolean;
+  enable_wasm: boolean;
+  wasm_path?: string | null;
+  wasm_module_id: number;
+}
+
+export type PiServiceAction = "start" | "stop" | "restart" | "status";
+
+export interface PiNodeCommandResult {
+  success: boolean;
+  command: string;
+  stdout: string;
+  stderr: string;
+  exit_code: number | null;
+}
+
+export interface PiNodeBuildRequest {
+  workspace_path?: string | null;
+  target_triple?: string | null;
+  release?: boolean | null;
 }
 
 export interface ProvisioningConfig {
@@ -231,12 +292,44 @@ export interface AppSettings {
   server_http_port: number;
   server_ws_port: number;
   server_udp_port: number;
+  server_nexmon_port: number;
   bind_address: string;
+  server_source: DataSource | string;
+  server_tick_ms: number;
   ui_path: string;
+  server_pi_diag: boolean;
+  server_model_path: string;
+  server_load_rvf_path: string;
+  server_save_rvf_path: string;
+  server_progressive: boolean;
+  server_node_positions: string;
+  server_calibrate_on_boot: boolean;
+  server_dataset_path: string;
+  server_dataset_type: string;
+  server_epochs: number;
+  server_pretrain_epochs: number;
+  server_checkpoint_dir: string;
+  server_export_rvf_path: string;
+  server_build_index: string;
+  server_enable_benchmark: boolean;
+  server_enable_train: boolean;
+  server_enable_pretrain: boolean;
+  server_enable_embed: boolean;
   ota_psk: string;
   auto_discover: boolean;
   discover_interval_ms: number;
   theme: "light" | "dark" | string;
+  pi_agent_enabled: boolean;
+  pi_agent_listen: string;
+  pi_agent_aggregator: string;
+  pi_agent_node_base: number;
+  pi_agent_tier: number;
+  pi_agent_default_rssi: number;
+  pi_agent_noise_floor: number;
+  pi_agent_mmwave_mock: boolean;
+  pi_agent_enable_wasm: boolean;
+  pi_agent_wasm_path: string;
+  pi_agent_wasm_module_id: number;
 }
 
 export interface PoseLandmark {
@@ -247,3 +340,37 @@ export interface PoseLandmark {
   presence?: number;
 }
 
+export interface SignalField {
+  grid_size: [number, number, number];
+  values: number[];
+}
+
+export interface PoseSceneNode {
+  node_id: number | string;
+  rssi_dbm?: number | null;
+  position?: [number, number, number] | null;
+  subcarrier_count?: number | null;
+  health?: string | null;
+  role?: string | null;
+}
+
+export interface PosePersonSummary {
+  id: number | string;
+  confidence?: number | null;
+  zone?: string | null;
+  bbox?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null;
+  keypoints?: PoseLandmark[] | null;
+}
+
+export interface PoseVitals {
+  breathingRateHz?: number | null;
+  heartRateBpm?: number | null;
+  confidence?: number | null;
+  breathingConfidence?: number | null;
+  heartbeatConfidence?: number | null;
+}
