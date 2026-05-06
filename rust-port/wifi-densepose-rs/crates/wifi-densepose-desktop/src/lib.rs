@@ -1,15 +1,60 @@
+pub mod auth;
 pub mod commands;
 pub mod domain;
 pub mod state;
 
-use commands::{discovery, flash, ota, pi_node, provision, server, settings, wasm};
+use commands::{discovery, flash, license, ota, pi_node, provision, server, settings, wasm};
+use commands::auth as auth_cmd;
+use commands::users;
+use commands::roles;
+use std::sync::Arc;
+use tauri::Manager;
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(state::AppState::default())
+        .setup(|app| {
+            let app_handle = app.handle().clone();
+            // Initialize auth system in background
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = init_auth_system(app_handle).await {
+                    println!("CRITICAL AUTH INIT ERROR: {}", e);
+                    tracing::error!("Failed to initialize auth system: {}", e);
+                }
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
+            // Auth
+            auth_cmd::login,
+            auth_cmd::logout,
+            auth_cmd::refresh_token,
+            auth_cmd::get_current_user,
+            auth_cmd::change_password,
+            // User management
+            users::list_users,
+            users::get_user,
+            users::create_user,
+            users::update_user,
+            users::delete_user,
+            users::assign_user_role,
+            // Roles & permissions
+            roles::list_roles,
+            roles::get_role,
+            roles::create_role,
+            roles::delete_role,
+            roles::set_role_permissions,
+            roles::list_modules,
+            roles::list_tenant_modules,
+            // License & Tenants
+            license::license_status,
+            license::activate_license,
+            license::list_tenants,
+            license::create_tenant,
+            license::assign_tenant_modules,
+            license::delete_tenant,
             // Discovery
             discovery::discover_nodes,
             discovery::list_serial_ports,
@@ -58,4 +103,46 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Initialize the auth subsystem: SQLite pool, JWT secret, module seeding.
+async fn init_auth_system(app_handle: tauri::AppHandle) -> Result<(), String> {
+    use crate::auth::{db, jwt, rate_limiter::RateLimiter, seed};
+
+    // Get app data directory via Manager trait
+    let app_data_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Cannot resolve app data dir: {}", e))?;
+
+    // Ensure directory exists
+    std::fs::create_dir_all(&app_data_dir)
+        .map_err(|e| format!("Cannot create app data dir: {}", e))?;
+
+    // Initialize SQLite pool
+    let pool = db::init_pool(&app_data_dir)
+        .await
+        .map_err(|e| format!("Database init failed: {}", e))?;
+
+    // Get or create JWT secret
+    let jwt_secret = jwt::get_or_create_jwt_secret(&pool)
+        .await
+        .map_err(|e| format!("JWT secret init failed: {}", e))?;
+
+    // Seed access modules
+    seed::seed_modules(&pool)
+        .await
+        .map_err(|e| format!("Module seeding failed: {}", e))?;
+
+    // Create the auth manager and register it as Tauri state
+    let auth_manager = Arc::new(auth_cmd::AuthManager {
+        pool,
+        jwt_secret,
+        login_limiter: RateLimiter::default_login(),
+    });
+
+    app_handle.manage(auth_manager);
+
+    tracing::info!("Auth system initialized successfully");
+    Ok(())
 }

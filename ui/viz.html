@@ -84,9 +84,15 @@
     <div id="stats-container"></div>
   </div>
 
-  <!-- Three.js and OrbitControls from CDN -->
+  <!-- Three.js, OrbitControls, GLTFLoader, and PostProcessing from CDN -->
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
   <script src="https://unpkg.com/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/examples/js/postprocessing/EffectComposer.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/examples/js/postprocessing/RenderPass.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+  <script src="https://unpkg.com/three@0.160.0/examples/js/shaders/CopyShader.js"></script>
   <!-- Stats.js for performance monitoring -->
   <script src="https://unpkg.com/stats.js@0.17.0/build/stats.min.js"></script>
 
@@ -94,12 +100,15 @@
   <script type="module">
     // Import all modules
     import { Scene } from './components/scene.js';
-    import { BodyModel, BodyModelManager } from './components/body-model.js';
+    import { BodyModel } from './components/body-model.js';
+    import { RealisticBodyModelManager } from './components/realistic-body.js';
     import { SignalVisualization } from './components/signal-viz.js';
     import { Environment } from './components/environment.js';
     import { DashboardHUD } from './components/dashboard-hud.js';
     import { WebSocketClient } from './services/websocket-client.js';
     import { DataProcessor } from './services/data-processor.js';
+    import { PostProcessing } from './components/post-processing.js';
+    import { ParticleSystem, AmbientParticles } from './components/particle-effects.js';
 
     // -- Application State --
     const state = {
@@ -111,6 +120,8 @@
       wsClient: null,
       dataProcessor: null,
       stats: null,
+      postProcessing: null,
+      ambientParticles: null,
       isDemoMode: true,
       startTime: Date.now()
     };
@@ -185,6 +196,39 @@
 
         // Attempt connection (will fall back to demo mode if server unavailable)
         state.wsClient.connect();
+        setLoadingProgress(85, 'Setting up post-processing...');
+
+        // 8b. Post-processing (bloom effect)
+        try {
+          state.postProcessing = new PostProcessing(
+            state.scene.getRenderer(),
+            state.scene.getScene(),
+            state.scene.getCamera()
+          );
+        } catch (e) {
+          console.warn('[VIZ] Post-processing not available:', e.message);
+        }
+        setLoadingProgress(90, 'Creating ambient effects...');
+
+        // 9. Ambient particles
+        state.ambientParticles = new AmbientParticles(state.scene.getScene(), {
+          count: 300,
+          spread: 8,
+          height: 4,
+          color: 0x00aaff
+        });
+        setLoadingProgress(92, 'Loading 3D model...');
+
+        // 9b. Load realistic body model
+        state.bodyModelManager = new RealisticBodyModelManager(state.scene.getScene());
+        const modelUrl = './assets/models/CesiumMan.glb';
+        try {
+          await state.bodyModelManager.loadModel(modelUrl);
+          state.bodyModelManager.setModelUrl(modelUrl);
+          console.log('[VIZ] Loaded realistic body model');
+        } catch (e) {
+          console.warn('[VIZ] Could not load model, using fallback:', e.message);
+        }
         setLoadingProgress(95, 'Starting render loop...');
 
         // 9. Register the main update loop
@@ -244,6 +288,17 @@
 
       // Update signal visualization animations
       state.signalViz.update(delta, elapsed);
+
+      // Update ambient particles
+      if (state.ambientParticles) {
+        state.ambientParticles.update(elapsed);
+      }
+
+      // Update post-processing
+      if (state.postProcessing) {
+        state.postProcessing.render();
+        return; // Skip default render if using post-processing
+      }
 
       // Update HUD
       if (state.hud) {

@@ -1,11 +1,12 @@
 /* ============================================================
    RuView Observatory — Foundation Color Scheme
-   Warm dark background, electric green wireframe, amber data
+   Supports Light/Dark themes
    ============================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
 :root {
+  /* Dark theme (default) */
   --bg-deep:     #080c14;
   --bg-panel:    rgba(8, 16, 28, 0.85);
   --bg-panel-border: rgba(0, 210, 120, 0.2);
@@ -21,6 +22,25 @@
   --text-primary:   #e8ece0;
   --text-secondary: rgba(232,236,224, 0.55);
   --text-label:     rgba(232,236,224, 0.4);
+}
+
+/* Light theme */
+[data-theme="light"] {
+  --bg-deep:     #f5f5f7;
+  --bg-panel:    rgba(245, 245, 247, 0.9);
+  --bg-panel-border: rgba(0, 100, 60, 0.15);
+  --green-glow:  #1a7a3a;
+  --green-bright:#2d9a4a;
+  --green-dim:   #0a5030;
+  --amber:       #c48500;
+  --amber-dim:   #806000;
+  --blue-signal: #0a70c0;
+  --blue-dim:    #0a4080;
+  --red-alert:   #cc2040;
+  --red-heart:   #dd3060;
+  --text-primary:   #1a1a1a;
+  --text-secondary: rgba(26, 26, 26, 0.7);
+  --text-label:     rgba(26, 26, 26, 0.5);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }

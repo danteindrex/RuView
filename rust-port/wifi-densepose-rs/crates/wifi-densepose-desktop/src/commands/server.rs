@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use sysinfo::{Pid, ProcessesToUpdate, System};
 use tauri::{AppHandle, Manager, State};
 
+use crate::commands::auth::AuthManager;
+use crate::commands::guard;
 use crate::state::{AppState, ServerLogBuffer};
 
 /// Default binary name for the sensing server.
@@ -103,10 +105,14 @@ fn find_server_binary(app: &AppHandle, custom_path: Option<&str>) -> Result<Stri
 /// 4. System PATH
 #[tauri::command]
 pub async fn start_server(
+    access_token: String,
     app: AppHandle,
     config: ServerConfig,
     state: State<'_, AppState>,
+    auth: State<'_, Arc<AuthManager>>,
 ) -> Result<ServerStartResult, String> {
+    guard::require_auth(&access_token, &auth)?;
+
     // Check if already running
     let logs = {
         let srv = state.server.lock().map_err(|e| e.to_string())?;
@@ -278,7 +284,12 @@ pub async fn start_server(
 ///
 /// First attempts graceful termination (SIGTERM), then SIGKILL after timeout.
 #[tauri::command]
-pub async fn stop_server(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn stop_server(
+    access_token: String,
+    state: State<'_, AppState>,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<(), String> {
+    guard::require_auth(&access_token, &auth)?;
     // Extract child process and take ownership for killing
     let (child_id, mut child_process) = {
         let mut srv = state.server.lock().map_err(|e| e.to_string())?;
@@ -381,7 +392,12 @@ pub async fn stop_server(state: State<'_, AppState>) -> Result<(), String> {
 
 /// Get sensing server status including resource usage.
 #[tauri::command]
-pub async fn server_status(state: State<'_, AppState>) -> Result<ServerStatusResponse, String> {
+pub async fn server_status(
+    access_token: String,
+    state: State<'_, AppState>,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<ServerStatusResponse, String> {
+    guard::require_auth(&access_token, &auth)?;
     let srv = state.server.lock().map_err(|e| e.to_string())?;
 
     if !srv.running || srv.pid.is_none() {
@@ -436,10 +452,13 @@ pub async fn server_status(state: State<'_, AppState>) -> Result<ServerStatusRes
 /// Restart the sensing server with the same or new configuration.
 #[tauri::command]
 pub async fn restart_server(
+    access_token: String,
     app: AppHandle,
     config: Option<ServerConfig>,
     state: State<'_, AppState>,
+    auth: State<'_, Arc<AuthManager>>,
 ) -> Result<ServerStartResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     // Get current config if no new config provided
     let restart_config = if let Some(cfg) = config {
         cfg
@@ -476,22 +495,35 @@ pub async fn restart_server(
         }
     };
 
-    // Stop existing server
-    let _ = stop_server(state.clone()).await;
+    // Stop if running
+    let _ = stop_server(
+        access_token.clone(),
+        app.state::<AppState>(),
+        app.state::<std::sync::Arc<AuthManager>>()
+    ).await;
 
-    // Brief delay to ensure port is released
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // Wait a moment for port to release
+    thread::sleep(std::time::Duration::from_millis(500));
 
-    // Start with new config
-    start_server(app, restart_config, state).await
+    // Start with config
+    start_server(
+        access_token,
+        app.clone(),
+        restart_config,
+        app.state::<AppState>(),
+        app.state::<std::sync::Arc<AuthManager>>()
+    ).await
 }
 
 /// Get server logs (last N lines from stdout/stderr).
 #[tauri::command]
 pub async fn server_logs(
+    access_token: String,
     _lines: Option<usize>,
     state: State<'_, AppState>,
+    auth: State<'_, Arc<AuthManager>>,
 ) -> Result<ServerLogsResponse, String> {
+    guard::require_auth(&access_token, &auth)?;
     let logs = {
         let srv = state.server.lock().map_err(|e| e.to_string())?;
         srv.logs.clone()

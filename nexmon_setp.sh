@@ -44,7 +44,7 @@ sudo -E make install USE_VENDOR_CMD=1
 sudo setcap cap_net_admin+ep /usr/bin/nexutil
 
 # 8. Fetch the nexmon_csi repository
-cd $NEXMON_ROOT/patches/bcm43455c0/7_45_189 # it must be executed from this directory, as the scripts in the next step are built for this version. 
+cd $NEXMON_ROOT/patches/bcm43455c0/7_45_189 # it must be executed from this directory, as the scripts in the next step are built for this version.
 git clone --depth=1 https://github.com/seemoo-lab/nexmon_csi.git
 cd nexmon_csi
 
@@ -61,8 +61,8 @@ make -f Makefile.rpi install-firmware
 make: *** [Makefile.rpi:76: obj/console.o] Fehler 127
 
 # 10. Resume the remainder of the patch
-# NOTE: Running unmanage will take the wifi interface down. Thus, if you are connected to your pi via wifi and there are no other SSIDs it can connect to, conect it via ethenet, otherwise you will lose access to your pi unless you connect peripherals to it. 
-make -f Makefile.rpi unmanage 
+# NOTE: Running unmanage will take the wifi interface down. Thus, if you are connected to your pi via wifi and there are no other SSIDs it can connect to, conect it via ethenet, otherwise you will lose access to your pi unless you connect peripherals to it.
+make -f Makefile.rpi unmanage
 make -f Makefile.rpi reload-full
 
 # 13. Go to makecsiparams in nexmon_csi utils to generate and copy the config string you'll need for the next step.
@@ -84,7 +84,7 @@ make -f Makefile.rpi restore-wifi
 # 17. Reboot the system
 sudo reboot
 
-# 18. After reboot, the wifi interface should be back up and working, but it will still be unmanaged. 
+# 18. After reboot, the wifi interface should be back up and working, but it will still be unmanaged.
 # This means that you won't be able to connect to wifi networks using network manager, but you can still use the interface for monitor mode and CSI extraction. You can verify this by running:
 nmcli device status # this should show that wlan0 is unmanaged
 dmesg | grep "Firmware: BCM4345" # you'll notice that the firmware version is now 7_45_189. This is expected as it does the firmware swap for us
@@ -97,5 +97,4 @@ sudo ip link set wlan0 up
 # 20. Repeat steps 14 and 16 to start streaming CSI on the terminal again.
 
 # TODOs:
-# - A shell script that auto starts CSI capture and sstreaming on device startup, and another one to stop it and restore the firmware to its default state. 
-
+# - A shell script that auto starts CSI capture and sstreaming on device startup, and another one to stop it and restore the firmware to its default state.

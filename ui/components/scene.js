@@ -87,25 +87,38 @@ export class Scene {
     const keyLight = new THREE.DirectionalLight(0xffeedd, 0.8);
     keyLight.position.set(5, 10, 5);
     keyLight.castShadow = true;
-    keyLight.shadow.mapSize.width = 1024;
-    keyLight.shadow.mapSize.height = 1024;
+    keyLight.shadow.mapSize.width = 2048;
+    keyLight.shadow.mapSize.height = 2048;
     keyLight.shadow.camera.near = 0.5;
-    keyLight.shadow.camera.far = 30;
-    keyLight.shadow.camera.left = -10;
-    keyLight.shadow.camera.right = 10;
-    keyLight.shadow.camera.top = 10;
-    keyLight.shadow.camera.bottom = -10;
+    keyLight.shadow.camera.far = 50;
+    keyLight.shadow.camera.left = -15;
+    keyLight.shadow.camera.right = 15;
+    keyLight.shadow.camera.top = 15;
+    keyLight.shadow.camera.bottom = -15;
+    keyLight.shadow.bias = -0.0001;
     this.scene.add(keyLight);
 
     // Fill light - cool from left
-    const fillLight = new THREE.DirectionalLight(0x88aaff, 0.3);
-    fillLight.position.set(-5, 6, -3);
+    const fillLight = new THREE.DirectionalLight(0x88aaff, 0.4);
+    fillLight.position.set(-8, 8, -5);
     this.scene.add(fillLight);
 
+    // Rim light - cyan backlight for edge definition
+    const rimLight = new THREE.SpotLight(0x00ffff, 0.6, 20, Math.PI / 4, 0.5);
+    rimLight.position.set(0, 8, -8);
+    rimLight.target.position.set(0, 1, 0);
+    this.scene.add(rimLight);
+    this.scene.add(rimLight.target);
+
     // Point light under the body for a soft uplight glow
-    const uplight = new THREE.PointLight(0x0066ff, 0.4, 8);
+    const uplight = new THREE.PointLight(0x0066ff, 0.5, 10);
     uplight.position.set(0, 0.1, 0);
     this.scene.add(uplight);
+
+    // Secondary uplight - warm accent
+    const uplightWarm = new THREE.PointLight(0xff6600, 0.3, 8);
+    uplightWarm.position.set(2, 0.1, 2);
+    this.scene.add(uplightWarm);
   }
 
   // Register a callback that runs each frame with (deltaTime, elapsedTime)

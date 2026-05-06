@@ -1,7 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use std::sync::Arc;
+use tauri::{AppHandle, Manager, State};
+
+use crate::commands::auth::AuthManager;
+use crate::commands::guard;
 
 /// Application settings that persist across restarts.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,7 +119,12 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
 
 /// Load settings from disk.
 #[tauri::command]
-pub async fn get_settings(app: AppHandle) -> Result<Option<AppSettings>, String> {
+pub async fn get_settings(
+    access_token: String,
+    app: AppHandle,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<Option<AppSettings>, String> {
+    guard::require_auth(&access_token, &auth)?;
     let path = settings_path(&app)?;
 
     if !path.exists() {
@@ -133,7 +142,13 @@ pub async fn get_settings(app: AppHandle) -> Result<Option<AppSettings>, String>
 
 /// Save settings to disk.
 #[tauri::command]
-pub async fn save_settings(app: AppHandle, settings: AppSettings) -> Result<(), String> {
+pub async fn save_settings(
+    access_token: String,
+    app: AppHandle,
+    settings: AppSettings,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<(), String> {
+    guard::require_auth(&access_token, &auth)?;
     let path = settings_path(&app)?;
 
     let contents = serde_json::to_string_pretty(&settings)

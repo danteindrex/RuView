@@ -1,44 +1,53 @@
-import { Activity, Network, Server, ShieldCheck } from "lucide-react";
+import { useState } from "react";
 import { MetricCard } from "@/components/layout/metric-card";
 import { PageSection } from "@/components/layout/page-section";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import type { DiscoveredNode, ServerStatusResponse } from "@/types";
+import type { LicenseStatus } from "@/lib/auth-api";
 
 interface DashboardPageProps {
   nodes: DiscoveredNode[];
   serverStatus: ServerStatusResponse | null;
   onRefreshNodes: () => Promise<void>;
   onRefreshServer: () => Promise<void>;
+  license: LicenseStatus | null;
+  isLicenseModalOpen: boolean;
+  onLicenseModalChange: (open: boolean) => void;
 }
 
-export function DashboardPage({ nodes, serverStatus, onRefreshNodes, onRefreshServer }: DashboardPageProps) {
+export function DashboardPage({ 
+  nodes, 
+  serverStatus, 
+  onRefreshNodes, 
+  onRefreshServer, 
+  license,
+  isLicenseModalOpen,
+  onLicenseModalChange
+}: DashboardPageProps) {
   const online = nodes.filter((node) => node.health === "online").length;
   const degraded = nodes.filter((node) => node.health === "degraded").length;
+  const isLicensed = license?.is_licensed ?? false;
 
   return (
     <div className="space-y-6">
       <div className="panel-grid">
         <MetricCard title="Registered Nodes" value={String(nodes.length)} subtitle="Discovery scope" />
         <MetricCard title="Online Nodes" value={String(online)} subtitle={online > 0 ? "Active telemetry" : "No telemetry"} tone={online > 0 ? "success" : "warning"} />
-        <MetricCard title="Degraded Nodes" value={String(degraded)} subtitle={degraded > 0 ? "Requires attention" : "No degraded nodes"} tone={degraded > 0 ? "danger" : "success"} />
       </div>
 
       <PageSection title="Control Plane Status" description="Instant operational state across server runtime and network discovery.">
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <Badge variant={serverStatus?.running ? "success" : "danger"}>
-              <Server className="mr-1 h-3 w-3" />
-              {serverStatus?.running ? "Server Running" : "Server Stopped"}
+              {serverStatus?.running ? "SERVER: RUNNING" : "SERVER: STOPPED"}
             </Badge>
             <Badge variant={online > 0 ? "success" : "warning"}>
-              <Network className="mr-1 h-3 w-3" />
-              {online} Online
+              {online} NODES ONLINE
             </Badge>
             <Badge variant={degraded > 0 ? "danger" : "success"}>
-              <Activity className="mr-1 h-3 w-3" />
-              {degraded} Degraded
+              {degraded} DEGRADED
             </Badge>
           </div>
 
@@ -60,30 +69,21 @@ export function DashboardPage({ nodes, serverStatus, onRefreshNodes, onRefreshSe
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={onRefreshNodes}>
+            <Button variant="secondary" onClick={onRefreshNodes} className="text-xs font-medium px-4">
               Refresh Nodes
             </Button>
-            <Button variant="outline" onClick={onRefreshServer}>
-              Refresh Server Status
+            <Button variant="outline" onClick={onRefreshServer} className="text-xs font-medium px-4">
+              Refresh Server
             </Button>
           </div>
         </div>
       </PageSection>
 
-      <PageSection title="Release Controls" description="Live sensing is the default path; demo scenarios are available only as an explicit visual validation mode.">
-        <ul className="space-y-2 text-sm text-muted-foreground">
-          <li className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-primary" />
-            No emoji/icon glyph shortcuts in operational controls.
-          </li>
-          <li className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-primary" />
-            Advanced settings grouped under one dedicated settings surface.
-          </li>
-          <li className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-primary" />
-            3D observability supports live WebSocket data and explicit demo scenarios.
-          </li>
+      <PageSection title="Operational Guidelines" description="Sensing telemetry is the primary data path. All interface controls are optimized for high-density administrative oversight.">
+        <ul className="space-y-2 text-xs text-muted-foreground list-disc pl-4">
+          <li>System utilizes a text-only interface to maximize information density.</li>
+          <li>Management surfaces (Users, Roles, Tenants) are gated by role-based access.</li>
+          <li>Performance metrics are polled at 8-second intervals across the local node grid.</li>
         </ul>
       </PageSection>
     </div>

@@ -1,5 +1,5 @@
 // Real-time CSI Signal Visualization - WiFi DensePose
-// Amplitude heatmap, Phase plot, Doppler spectrum, Motion energy
+// Enhanced with custom shaders, amplitude heatmap, phase plot, doppler spectrum, motion energy
 
 export class SignalVisualization {
   constructor(scene) {
@@ -8,7 +8,7 @@ export class SignalVisualization {
     this.group.name = 'signal-visualization';
     this.group.position.set(-5.5, 0, -3);
 
-    // Configuration
+    // Enhanced configuration
     this.config = {
       subcarriers: 30,
       timeSlots: 40,
@@ -18,7 +18,11 @@ export class SignalVisualization {
       phaseHeight: 1.0,
       dopplerBars: 16,
       dopplerWidth: 2.0,
-      dopplerHeight: 1.0
+      dopplerHeight: 1.0,
+      // New: Wave visualization config
+      waveParticles: 500,
+      waveAmplitude: 0.8,
+      waveFrequency: 2.0
     };
 
     // Data buffers
@@ -38,9 +42,94 @@ export class SignalVisualization {
     this._buildPhasePlot();
     this._buildDopplerSpectrum();
     this._buildMotionIndicator();
+    this._buildWiFiWaveVisualization();
     this._buildLabels();
 
     this.scene.add(this.group);
+  }
+
+  // NEW: WiFi wave particle visualization
+  _buildWiFiWaveVisualization() {
+    const { waveParticles, waveAmplitude, waveFrequency } = this.config;
+    
+    this._waveGroup = new THREE.Group();
+    this._waveGroup.position.set(0, 5.5, 0);
+    
+    // Particle geometry
+    const particleCount = waveParticles;
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    const sizes = new Float32Array(particleCount);
+    
+    // Distribute particles in concentric rings (WiFi-like pattern)
+    for (let i = 0; i < particleCount; i++) {
+      const ring = Math.floor(i / 50);
+      const angle = (i % 50) / 50 * Math.PI * 2 + ring * 0.3;
+      const radius = 0.5 + ring * 0.15;
+      
+      positions[i * 3] = Math.cos(angle) * radius;
+      positions[i * 3 + 1] = Math.sin(angle * waveFrequency) * waveAmplitude * 0.2;
+      positions[i * 3 + 2] = Math.sin(angle) * radius;
+      
+      // Cyan to magenta gradient
+      const t = i / particleCount;
+      colors[i * 3] = t;
+      colors[i * 3 + 1] = 1 - t * 0.5;
+      colors[i * 3 + 2] = 1;
+      
+      sizes[i] = 0.02 + Math.random() * 0.03;
+    }
+    
+    const waveGeo = new THREE.BufferGeometry();
+    waveGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    waveGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    waveGeo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+    
+    // Custom shader material for glowing particles
+    const waveMat = new THREE.PointsMaterial({
+      size: 0.05,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.8,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      sizeAttenuation: true
+    });
+    
+    this._waveParticles = new THREE.Points(waveGeo, waveMat);
+    this._waveGroup.add(this._waveParticles);
+    this.group.add(this._waveGroup);
+    
+    // Store initial positions for animation
+    this._waveInitialPositions = positions.slice();
+  }
+
+  _updateWiFiWaves(elapsed, motionEnergy) {
+    if (!this._waveParticles) return;
+    
+    const posAttr = this._waveParticles.geometry.getAttribute('position');
+    const positions = posAttr.array;
+    const initial = this._waveInitialPositions;
+    const { waveFrequency, waveAmplitude } = this.config;
+    
+    // Motion affects wave intensity
+    const intensity = 0.5 + motionEnergy * 0.5;
+    
+    for (let i = 0; i < positions.length / 3; i++) {
+      const ring = Math.floor(i / 50);
+      const angle = (i % 50) / 50 * Math.PI * 2 + ring * 0.3;
+      const radius = 0.5 + ring * 0.15;
+      
+      // Animate with expanding waves
+      const phase = elapsed * 2 + ring * 0.5;
+      const wave = Math.sin(phase) * waveAmplitude * intensity;
+      
+      positions[i * 3] = Math.cos(angle + elapsed * 0.5) * (radius + wave * 0.1);
+      positions[i * 3 + 1] = Math.sin(angle * waveFrequency + elapsed * 3) * waveAmplitude * 0.3 * intensity;
+      positions[i * 3 + 2] = Math.sin(angle + elapsed * 0.5) * (radius + wave * 0.1);
+    }
+    
+    posAttr.needsUpdate = true;
   }
 
   _buildAmplitudeHeatmap() {
@@ -311,6 +400,7 @@ export class SignalVisualization {
     this._updatePhasePlot();
     this._updateDoppler(delta);
     this._updateMotionIndicator(delta, elapsed);
+    this._updateWiFiWaves(elapsed, this.motionEnergy);
   }
 
   _updateHeatmap() {

@@ -1,97 +1,72 @@
-# Nexmon CSI Setup Guide for Raspberry Pi 4B
+# Nexmon CSI Setup Guide for Raspberry Pi 4B on Kernel 6.12
 
-A step-by-step guide to setting up [Nexmon CSI](https://github.com/seemoo-lab/nexmon_csi) on a Raspberry Pi 4B running a recent kernel (5.15+). This enables Channel State Information (CSI) extraction over WiFi for sensing applications.
+This guide is for Raspberry Pi 4B systems using the `bcm43455c0` Wi-Fi chip on Raspberry Pi OS with kernel `6.12.x`.
+
+The important correction is this:
+- the stock upstream `nexmon_csi` firmware patch was not enough by itself in live testing on `6.12.75+rpt-rpi-v8`
+- the Pi also needs the replacement `brcmfmac` driver path that is now staged in this workspace under `nexmon_csi/brcmfmac_6.12.y-nexmon`
+
+Use Ethernet while doing this. CSI setup deliberately takes normal Wi-Fi management down.
 
 ---
 
 ## Prerequisites
 
-- Raspberry Pi 4B (the BCM4345C0 chip is required — other Pi models use different chips)
-- Raspbian/Raspberry Pi OS installed (32-bit or 64-bit)
-- Internet access (Ethernet recommended — WiFi will be taken down during setup)
-- A second terminal/SSH session available, or a physical keyboard + monitor connected
-
-> **Warning:** Step 10 (`unmanage`) takes the WiFi interface down. If you are connected via WiFi only, you will lose SSH access. Connect via Ethernet before proceeding past Step 9.
+- Raspberry Pi 4B with `bcm43455c0`
+- Raspberry Pi OS with kernel `6.12.x`
+- Ethernet access to the Pi
+- `nexmon_csi` from this workspace, not only a fresh upstream clone
 
 ---
 
-## Step 1 — Verify Kernel Version
-
-Nexmon CSI requires kernel 5.15 or newer on recent Raspberry Pi OS builds.
+## Step 1 - Verify Kernel and Firmware
 
 ```bash
 uname -r
-```
-
-Expected output example: `6.1.21-v8+`
-
----
-
-## Step 1.1 — Verify BCM4345 Firmware Version
-
-The firmware version on your device should be higher than `7_45_189`. Confirm it:
-
-```bash
 dmesg | grep "Firmware: BCM4345"
 ```
 
-Note the version string returned — you'll need it when selecting the correct patch directory in Step 8.
+You want to confirm:
+- the Pi is really on `6.12.x`
+- the firmware family is `7.45.189`
 
 ---
 
-## Step 2 — Kill wpa_supplicant
-
-Stop the wireless supplicant so it does not interfere with the build:
-
-```bash
-sudo pkill wpa_supplicant
-```
-
----
-
-## Step 3 — Update System and Install Dependencies
+## Step 2 - Install Dependencies
 
 ```bash
 sudo apt update
 sudo apt full-upgrade
 sudo apt install git libgmp3-dev gawk qpdf bison flex make autoconf libtool texinfo xxd \
-  libnl-3-dev libnl-genl-3-dev bc libssl-dev tcpdump
+  libnl-3-dev libnl-genl-3-dev bc libssl-dev tcpdump raspberrypi-kernel-headers dkms
 ```
 
----
-
-## Step 4 — Add 32-bit (armhf) Architecture Support (64-bit OS Only)
-
-Skip this step if you are running a 32-bit OS image.
+If you are on 64-bit Raspberry Pi OS, also add the old armhf runtime libs used by the firmware build tools:
 
 ```bash
 sudo dpkg --add-architecture armhf
 sudo apt update
-sudo apt-get install libc6:armhf libisl23:armhf libmpfr6:armhf libmpc3:armhf libstdc++6:armhf
-sudo ln -s /usr/lib/arm-linux-gnueabihf/libisl.so.23  /usr/lib/arm-linux-gnueabihf/libisl.so.10
-sudo ln -s /usr/lib/arm-linux-gnueabihf/libmpfr.so.6  /usr/lib/arm-linux-gnueabihf/libmpfr.so.4
+sudo apt install libc6:armhf libisl23:armhf libmpfr6:armhf libmpc3:armhf libstdc++6:armhf
+sudo ln -sf /usr/lib/arm-linux-gnueabihf/libisl.so.23 /usr/lib/arm-linux-gnueabihf/libisl.so.10
+sudo ln -sf /usr/lib/arm-linux-gnueabihf/libmpfr.so.6 /usr/lib/arm-linux-gnueabihf/libmpfr.so.4
 ```
 
 ---
 
-## Step 5 — Install Python 2.7
-
-Python 2.7 is required by the `bcm43` build tool used inside Nexmon. It is no longer in current Debian/Raspbian repos, so you must temporarily add the Debian Stretch archive:
+## Step 3 - Install Python 2.7 for the Old Build Tool
 
 ```bash
-sudo cp /etc/apt/sources.list /tmp/
+sudo cp /etc/apt/sources.list /tmp/sources.list
 echo 'deb http://archive.debian.org/debian/ stretch contrib main non-free' | sudo tee -a /etc/apt/sources.list
 sudo apt update
 sudo apt install python2.7
-sudo mv /tmp/sources.list /etc/apt/
+sudo mv /tmp/sources.list /etc/apt/sources.list
 sudo apt update
 ```
 
-> **Note:** The `sources.list` is restored immediately after installation so your system continues to use current repos.
-
 ---
 
-## Step 6 — Clone and Initialise the Nexmon Repository
+## Step 4 - Build Nexmon Base Tools
 
 ```bash
 git clone --depth=1 https://github.com/seemoo-lab/nexmon.git
@@ -101,13 +76,11 @@ sed -i '1 s/$/2.7/' $NEXMON_ROOT/buildtools/b43-v3/debug/b43-beautifier
 make
 ```
 
-`source setup_env.sh` sets the `$NEXMON_ROOT` environment variable and other build environment variables needed by subsequent steps.
-
-> **Note:** `make` will display a number of warnings. As long as it completes without actual error messages, this is fine. If you see `arm-none-eabi-gcc: not found`, go back and complete Step 4 — ensure the armhf architecture and its libraries are properly installed.
+If you see `arm-none-eabi-gcc: not found`, the armhf compatibility libraries are still incomplete.
 
 ---
 
-## Step 7 — Build and Install nexutil
+## Step 5 - Build and Install nexutil
 
 ```bash
 cd $NEXMON_ROOT/utilities/nexutil
@@ -115,120 +88,41 @@ sudo -E make install USE_VENDOR_CMD=1
 sudo setcap cap_net_admin+ep /usr/bin/nexutil
 ```
 
-`setcap` grants `nexutil` the `CAP_NET_ADMIN` capability so it can run without `sudo`.
+---
+
+## Step 6 - Stage the Patched nexmon_csi Tree
+
+Do not rely on a plain upstream `git clone` of `nexmon_csi` for kernel `6.12`.
+
+The Pi should use the patched tree from this workspace, which already contains:
+- `brcmfmac_6.12.y-nexmon`
+- the updated `Makefile.rpi`
+
+Place that tree at:
+
+```bash
+$NEXMON_ROOT/patches/bcm43455c0/7_45_189/nexmon_csi
+```
 
 ---
 
-## Step 8 — Clone the nexmon_csi Repository
+## Step 7 - Install the 6.12 Driver and CSI Firmware
 
 ```bash
-cd $NEXMON_ROOT/patches/bcm43455c0/7_45_189
-git clone --depth=1 https://github.com/seemoo-lab/nexmon_csi.git
-cd nexmon_csi
-```
-
-> **Note:** This command must be run from the `7_45_189` directory, as the Makefile scripts in the next step are built for this firmware version. If your firmware version differs, adjust the directory path accordingly.
-
----
-
-## Step 9 — Install the nexmon_csi Firmware Patch
-
-```bash
-make -f Makefile.rpi install-firmware
-```
-
-### Troubleshooting 9.1 — "recipe commences before first target"
-
-If you see:
-
-```
-Makefile.rpi:2: *** recipe commences before first target.  Stop.
-```
-
-The build environment was lost. Re-source `setup_env.sh` and retry:
-
-```bash
+cd $NEXMON_ROOT/patches/bcm43455c0/7_45_189/nexmon_csi
 source $NEXMON_ROOT/setup_env.sh
-make -f Makefile.rpi install-firmware
+make -f Makefile.rpi install-all-6.12
 ```
 
-### Troubleshooting 9.2 — `arm-none-eabi-gcc: not found`
+This does two things:
+- builds and installs the replacement `brcmfmac` module for kernel `6.12`
+- installs the CSI firmware image
 
-If you see:
-
-```
-/home/pi/nexmon/buildtools/gcc-arm-none-eabi-5_4-2016q2-linux-armv7l/bin/arm-none-eabi-gcc: not found
-make: *** [Makefile.rpi:76: obj/console.o] Fehler 127
-```
-
-This means the 32-bit ARM cross-compiler cannot execute. Go back and complete **Step 4** (adding `armhf` architecture and its libraries).
+Use a reboot after this step. In live testing, hot-reloading the old `brcmfmac_wcc` stack was unstable.
 
 ---
 
-## Step 10 — Unmanage Interface and Reload Firmware
-
-> **Warning:** Running `unmanage` takes `wlan0` down. If you are connected via WiFi only and there are no other SSIDs the Pi can connect to, you will lose access unless peripherals are connected. Connect via Ethernet before running this step.
-
-```bash
-make -f Makefile.rpi unmanage
-make -f Makefile.rpi reload-full
-```
-
----
-
-## Step 13 — Generate CSI Parameters
-
-Navigate to the `makecsiparams` utility and compile it:
-
-```bash
-cd utils/makecsiparams
-make
-```
-
-Generate a config string for your desired channel and bandwidth. For example, channel 36, 80 MHz, 1 core, 1 spatial stream:
-
-```bash
-./makecsiparams -c 36/80 -C 1 -N 1
-```
-
-This outputs a Base64 config string and closes immediately, for example:
-
-```
-KuABEQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==
-```
-
-Return to the `nexmon_csi` root:
-
-```bash
-cd ../..
-```
-
-Copy this string — you will need it in Step 14.
-
----
-
-## Step 14 — Configure CSI Extractor and Enable Monitor Mode
-
-```bash
-nexutil -s500 -b -l34 -v<your-config-generated-with-makecsiparams>
-nexutil -m1
-```
-
-Replace `<your-config-generated-with-makecsiparams>` with the Base64 string from Step 13.
-
----
-
-## Step 16 — Capture CSI UDP Packets (Demo)
-
-```bash
-sudo tcpdump -i wlan0 dst port 5500
-```
-
-CSI packets are sent as UDP to port 5500 and will be printed to the terminal.
-
----
-
-## Step 17 — Reboot
+## Step 8 - Reboot into the New Driver
 
 ```bash
 sudo reboot
@@ -236,83 +130,98 @@ sudo reboot
 
 ---
 
-## Step 18 — Post-Reboot Verification
+## Step 9 - Verify the Replacement Driver Loaded
 
-After the Pi comes back up, the WiFi interface will still be present but **unmanaged** — you won't be able to join WiFi networks via NetworkManager, but monitor mode and CSI extraction still work.
-
-Verify the state:
-
-```bash
-nmcli device status
-```
-
-`wlan0` should show as `unmanaged`.
-
-Check the active firmware version:
+After reconnecting over Ethernet:
 
 ```bash
 dmesg | grep "Firmware: BCM4345"
+modinfo brcmfmac | grep ^version
 ```
 
-The firmware version will now show as `7_45_189` — this is expected; the patch swaps the firmware for you.
+You want to see:
+- `nexmon.org/csi` in the firmware string
+- a Nexmon-flavoured `brcmfmac` module version
 
 ---
 
-## Step 19 — Unblock wlan0 with rfkill
-
-After reboot, the interface may be blocked by rfkill and appear down. Unblock it and bring it up:
+## Step 10 - Disable Normal Wi-Fi Management
 
 ```bash
-rfkill list                  # confirm wlan0 is blocked
-sudo rfkill unblock all      # unblock all wireless interfaces
-sudo ip link set wlan0 up    # bring the interface up
+cd $NEXMON_ROOT/patches/bcm43455c0/7_45_189/nexmon_csi
+make -f Makefile.rpi unmanage
+sudo rfkill unblock wifi
+sudo ip link set wlan0 up
+sudo iw dev wlan0 set power_save off
+nexutil -s86 -i -v0
 ```
+
+At this point, `wlan0` should stay unmanaged and usable for CSI work.
 
 ---
 
-## Step 20 — Repeat CSI Capture
-
-Repeat Steps 14 and 16 to configure the CSI extractor and start streaming again:
+## Step 11 - Generate CSI Parameters
 
 ```bash
-# Step 14 — apply config and enable monitor mode
-nexutil -s500 -b -l34 -v<your-config-string>
-nexutil -m1
-
-# Step 16 — capture CSI UDP packets
-sudo tcpdump -i wlan0 dst port 5500
+cd utils/makecsiparams
+make
+./makecsiparams -c 7/20 -C 1 -N 1
+cd ../..
 ```
+
+Use a channel and bandwidth that match the traffic you expect to capture. For example, if `iw dev` shows channel `7` and width `20 MHz`, then `7/20` is the correct starting point.
 
 ---
 
-## Resetting to Default Firmware
-
-To restore the original WiFi firmware and hand control back to NetworkManager:
+## Step 12 - Configure the Extractor and Create mon0
 
 ```bash
-make -f Makefile.rpi restore-wifi
+nexutil -Iwlan0 -s500 -b -l34 -v<your-config-string>
+iw phy `iw dev wlan0 info | gawk '/wiphy/ {printf "phy" $2}'` interface add mon0 type monitor
+sudo ifconfig mon0 up
+```
+
+Important:
+- `mon0` is used to switch the chip into monitor mode on this path
+- CSI packets are still captured on `wlan0`, not `mon0`
+
+If `iw phy ... interface add mon0 type monitor` fails with `Operation not supported (-95)`, the replacement driver did not load correctly.
+
+---
+
+## Step 13 - Confirm CSI Output
+
+```bash
+sudo timeout 20 tcpdump -n -i wlan0 udp dst port 5500
+```
+
+Working output means at least one UDP packet appears before timeout.
+
+If you still get `0 packets captured`, check:
+- the `makecsiparams` channel matches the actual Wi-Fi channel
+- traffic is really present on that channel
+- `mon0` creation succeeded
+- `wlan0` is still up and unmanaged
+
+---
+
+## Step 14 - Restore Normal Wi-Fi
+
+```bash
+cd $NEXMON_ROOT/patches/bcm43455c0/7_45_189/nexmon_csi
+make -f Makefile.rpi restore-wifi-6.12
 ```
 
 ---
 
-## Quick Reference
+## Quick Verification Commands
 
-| Step | What it does |
-|------|--------------|
-| 1–1.1 | Verify kernel (5.15+) and firmware version (> 7_45_189) |
-| 2 | Stop wpa_supplicant |
-| 3 | Install build dependencies |
-| 4 | Add armhf support (64-bit OS only) |
-| 5 | Install Python 2.7 from Debian Stretch |
-| 6 | Clone + init Nexmon (warnings in make are expected) |
-| 7 | Build + install nexutil |
-| 8 | Clone nexmon_csi patch (must run from 7_45_189 dir) |
-| 9 | Patch and flash CSI firmware |
-| 10 | Unmanage interface, reload firmware |
-| 13 | Generate CSI config params |
-| 14 | Apply config + enable monitor mode |
-| 16 | Capture CSI packets with tcpdump |
-| 17 | Reboot |
-| 18 | Verify unmanaged state + firmware version post-reboot |
-| 19 | rfkill unblock + bring wlan0 up |
-| 20 | Repeat steps 14 & 16 to resume capture |
+```bash
+uname -r
+dmesg | grep "Firmware: BCM4345"
+modinfo brcmfmac | grep ^version
+nmcli device status
+iw dev
+ip link show wlan0
+sudo timeout 20 tcpdump -n -i wlan0 udp dst port 5500
+```

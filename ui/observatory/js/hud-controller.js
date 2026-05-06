@@ -163,8 +163,34 @@ export class HudController {
   initSettings() {
     const overlay = document.getElementById('settings-overlay');
     const btn = document.getElementById('settings-btn');
+    const themeBtn = document.getElementById('theme-btn');
     const closeBtn = document.getElementById('settings-close');
+    
     btn.addEventListener('click', () => this.toggleSettings());
+    
+    // Light/dark theme toggle
+    let currentTheme = 'dark';
+    themeBtn.addEventListener('click', () => {
+      currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      document.body.setAttribute('data-theme', currentTheme);
+      themeBtn.innerHTML = currentTheme === 'dark' ? '&#9788;' : '&#9790;';
+      // Update scene
+      if (this._obs._realisticFigures) {
+        this._obs._realisticFigures.setTheme(currentTheme);
+      }
+      // Update scene background colors
+      if (this._obs._scene) {
+        const bg = currentTheme === 'dark' ? 0x080c14 : 0xf5f5f7;
+        this._obs._scene.background = new THREE.Color(bg);
+        this._obs._scene.fog = new THREE.FogExp2(bg, currentTheme === 'dark' ? 0.005 : 0.008);
+      }
+      // Update grid color
+      if (this._obs._grid) {
+        const gridColor = currentTheme === 'dark' ? 0x1a4830 : 0xd0d0d0;
+        this._obs._grid.material.color.setHex(gridColor);
+      }
+    });
+    
     closeBtn.addEventListener('click', () => this.toggleSettings());
     overlay.addEventListener('click', (e) => { if (e.target === overlay) this.toggleSettings(); });
 

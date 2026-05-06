@@ -1,7 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
+use tauri::State;
+
+use crate::commands::auth::AuthManager;
+use crate::commands::guard;
 
 const DEFAULT_SERVICE_NAME: &str = "ruview-pi-node-agent";
 const DEFAULT_BINARY_PATH: &str = "/usr/local/bin/wifi-densepose-pi-node-agent";
@@ -277,7 +282,12 @@ WantedBy=multi-user.target
 }
 
 #[tauri::command]
-pub async fn pi_node_probe(target: PiNodeTarget) -> Result<PiNodeCommandResult, String> {
+pub async fn pi_node_probe(
+    access_token: String,
+    target: PiNodeTarget,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<PiNodeCommandResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     let script = r#"set -u
 echo "hostname=$(hostname 2>/dev/null || true)"
 echo "user=$(id -un 2>/dev/null || true)"
@@ -292,7 +302,12 @@ echo "udp_5500=$(ss -lun 2>/dev/null | grep -c ':5500' || true)"
 }
 
 #[tauri::command]
-pub async fn pi_node_build_agent(request: PiNodeBuildRequest) -> Result<PiNodeCommandResult, String> {
+pub async fn pi_node_build_agent(
+    access_token: String,
+    request: PiNodeBuildRequest,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<PiNodeCommandResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     let release = request.release.unwrap_or(true);
     let mut cmd = Command::new("cargo");
     cmd.arg("build").arg("-p").arg("wifi-densepose-pi-node-agent");
@@ -316,7 +331,12 @@ pub async fn pi_node_build_agent(request: PiNodeBuildRequest) -> Result<PiNodeCo
 }
 
 #[tauri::command]
-pub async fn pi_node_deploy_binary(request: PiNodeDeployBinaryRequest) -> Result<PiNodeCommandResult, String> {
+pub async fn pi_node_deploy_binary(
+    access_token: String,
+    request: PiNodeDeployBinaryRequest,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<PiNodeCommandResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     validate_target(&request.target)?;
     validate_path(&request.local_binary_path, "Local binary path")?;
     let remote_binary_path = request.remote_binary_path.as_deref().unwrap_or(DEFAULT_BINARY_PATH);
@@ -358,7 +378,12 @@ pub async fn pi_node_deploy_binary(request: PiNodeDeployBinaryRequest) -> Result
 }
 
 #[tauri::command]
-pub async fn pi_node_check_prereqs(request: PiNodePrereqRequest) -> Result<PiNodeCommandResult, String> {
+pub async fn pi_node_check_prereqs(
+    access_token: String,
+    request: PiNodePrereqRequest,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<PiNodeCommandResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     let install_packages = request.install_packages.unwrap_or(false);
     let install_script = if install_packages {
         r#"
@@ -396,7 +421,12 @@ fi
 }
 
 #[tauri::command]
-pub async fn pi_node_csi_health(request: PiNodeHealthRequest) -> Result<PiNodeCommandResult, String> {
+pub async fn pi_node_csi_health(
+    access_token: String,
+    request: PiNodeHealthRequest,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<PiNodeCommandResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     let port = request.nexmon_port.unwrap_or(5500);
     let seconds = request.capture_seconds.unwrap_or(6).clamp(1, 30);
     let service_name = request.service_name.as_deref().unwrap_or(DEFAULT_SERVICE_NAME);
@@ -430,7 +460,12 @@ fi
 }
 
 #[tauri::command]
-pub async fn pi_node_push_config(request: PiNodeConfigRequest) -> Result<PiNodeCommandResult, String> {
+pub async fn pi_node_push_config(
+    access_token: String,
+    request: PiNodeConfigRequest,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<PiNodeCommandResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     let env_path = request.env_path.as_deref().unwrap_or(DEFAULT_ENV_PATH);
     let remote_command = format!(
         "sudo mkdir -p {} && sudo tee {} >/dev/null",
@@ -446,7 +481,12 @@ pub async fn pi_node_push_config(request: PiNodeConfigRequest) -> Result<PiNodeC
 }
 
 #[tauri::command]
-pub async fn pi_node_install_service(request: PiNodeInstallRequest) -> Result<PiNodeCommandResult, String> {
+pub async fn pi_node_install_service(
+    access_token: String,
+    request: PiNodeInstallRequest,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<PiNodeCommandResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     let service_name = request.service_name.as_deref().unwrap_or(DEFAULT_SERVICE_NAME);
     let binary_path = request.binary_path.as_deref().unwrap_or(DEFAULT_BINARY_PATH);
     let env_path = request.env_path.as_deref().unwrap_or(DEFAULT_ENV_PATH);
@@ -482,7 +522,12 @@ sudo systemctl status {service_name}.service --no-pager --lines=20 || true
 }
 
 #[tauri::command]
-pub async fn pi_node_service(request: PiNodeServiceRequest) -> Result<PiNodeCommandResult, String> {
+pub async fn pi_node_service(
+    access_token: String,
+    request: PiNodeServiceRequest,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<PiNodeCommandResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     let service_name = request.service_name.as_deref().unwrap_or(DEFAULT_SERVICE_NAME);
     let action = match request.action {
         PiServiceAction::Start => "start",

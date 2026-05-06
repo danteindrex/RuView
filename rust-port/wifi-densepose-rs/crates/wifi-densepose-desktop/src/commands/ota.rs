@@ -1,12 +1,16 @@
 use std::fs::File;
 use std::io::Read;
+use std::sync::Arc;
 use std::time::Duration;
 
 use hmac::{Hmac, Mac};
 use reqwest::multipart::{Form, Part};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager, State};
+
+use crate::commands::auth::AuthManager;
+use crate::commands::guard;
 
 /// OTA update port on ESP32 nodes.
 const OTA_PORT: u16 = 8032;
@@ -29,11 +33,14 @@ type HmacSha256 = Hmac<Sha256>;
 /// 5. Wait for reboot confirmation
 #[tauri::command]
 pub async fn ota_update(
+    access_token: String,
     app: AppHandle,
     node_ip: String,
     firmware_path: String,
     psk: Option<String>,
+    auth: State<'_, Arc<AuthManager>>,
 ) -> Result<OtaResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     let start_time = std::time::Instant::now();
 
     // Emit progress
@@ -178,13 +185,16 @@ pub async fn ota_update(
 /// - TdmSafe: Respects TDM slots to avoid disruption
 #[tauri::command]
 pub async fn batch_ota_update(
+    access_token: String,
     app: AppHandle,
     node_ips: Vec<String>,
     firmware_path: String,
     psk: Option<String>,
     strategy: Option<String>,
     max_concurrent: Option<usize>,
+    auth: State<'_, Arc<AuthManager>>,
 ) -> Result<BatchOtaResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     let start_time = std::time::Instant::now();
     let total_nodes = node_ips.len();
     let strategy = strategy.unwrap_or_else(|| "sequential".into());
@@ -212,19 +222,24 @@ pub async fn batch_ota_update(
             let psk = std::sync::Arc::new(psk);
             let app = std::sync::Arc::new(app.clone());
 
+            let access_token_arc = std::sync::Arc::new(access_token);
+            
             let tasks: Vec<_> = node_ips.into_iter().map(|ip| {
                 let sem = semaphore.clone();
                 let fw_path = firmware_path.clone();
                 let psk_clone = psk.clone();
                 let app_clone = app.clone();
+                let token_clone = access_token_arc.clone();
 
                 async move {
                     let _permit = sem.acquire().await.unwrap();
                     ota_update(
+                        (*token_clone).clone(),
                         (*app_clone).clone(),
                         ip,
                         (*fw_path).clone(),
                         (*psk_clone).clone(),
+                        app_clone.state::<std::sync::Arc<AuthManager>>(),
                     ).await
                 }
             }).collect();
@@ -266,10 +281,12 @@ pub async fn batch_ota_update(
                 });
 
                 match ota_update(
+                    access_token.clone(),
                     app.clone(),
                     ip.clone(),
                     firmware_path.clone(),
                     psk.clone(),
+                    app.state::<std::sync::Arc<AuthManager>>(),
                 ).await {
                     Ok(r) => {
                         if r.success {
@@ -315,7 +332,12 @@ pub async fn batch_ota_update(
 
 /// Check if a node's OTA endpoint is accessible.
 #[tauri::command]
-pub async fn check_ota_endpoint(node_ip: String) -> Result<OtaEndpointInfo, String> {
+pub async fn check_ota_endpoint(
+    access_token: String,
+    node_ip: String,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<OtaEndpointInfo, String> {
+    guard::require_auth(&access_token, &auth)?;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
         .build()

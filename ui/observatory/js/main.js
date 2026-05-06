@@ -111,6 +111,21 @@ class Observatory {
     this._buildRouter();
     this._poseSystem = new PoseSystem();
     this._figurePool = new FigurePool(this._scene, this.settings, this._poseSystem);
+    
+    // Try to load realistic GLTF model
+    const modelUrl = new URLSearchParams(window.location.search).get('modelUrl');
+    if (modelUrl || true) {  // Always try to load
+      import('./realistic-figures.js').then(({ RealisticFigures }) => {
+        this._realisticFigures = new RealisticFigures(this._scene, {
+          theme: 'dark',
+          modelUrl: './models/CesiumMan.glb',
+          maxFigures: 4,
+          scale: 0.8
+        });
+        console.log('[Observatory] RealisticFigures initialized');
+      }).catch(e => console.warn('[Observatory] GLTF not available:', e));
+    }
+    
     this._scenarioProps = new ScenarioProps(this._scene);
     this._buildDotMatrixMist();
     this._buildParticleTrail();

@@ -59,6 +59,13 @@ regex = "1.10"
 # Serial port for WiFi configuration
 serialport.workspace = true
 
+# Auth system — user management, tenancy, RBAC
+sqlx = { workspace = true }
+argon2 = "0.5"
+jsonwebtoken = "9"
+rand = "0.8"
+machine-uid = "0.5"
+
 # Unix signals for graceful process termination
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

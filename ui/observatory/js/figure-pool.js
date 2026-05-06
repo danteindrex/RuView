@@ -10,8 +10,10 @@
  * - Natural bone thickness taper (thicker at shoulder/hip, thinner at extremities)
  * - Secondary motion with slight delay/overshoot for organic feel
  * - Pose-adaptive aura shape (wider for exercise, narrower for crouching)
+ * - Optional GLTF model support for realistic rendering
  */
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // 17-keypoint COCO skeleton connectivity
 export const SKELETON_PAIRS = [
@@ -197,7 +199,7 @@ export class FigurePool {
       geo.rotateX(Math.PI / 2);
       const mat = new THREE.MeshStandardMaterial({
         color: wireColor, emissive: wireColor, emissiveIntensity: 0.3,
-        transparent: true, opacity: 0, roughness: 0.4, metalness: 0.1,
+        transparent: true, opacity: 0, roughness: 0.3, metalness: 0.5,
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.castShadow = true;
