@@ -15,6 +15,7 @@ void main() {
 const BG_FRAGMENT = `
 uniform float uTime;
 uniform float uOctaves;
+uniform float uLightMode;
 varying vec3 vWorldPos;
 
 vec3 hash33(vec3 p) {
@@ -50,28 +51,35 @@ float fbm(vec3 p, float octaves) {
 void main() {
   vec3 dir = normalize(vWorldPos);
 
-  // Warm dark atmosphere with subtle color variation
   float n1 = fbm(dir * 2.5 + uTime * 0.008, uOctaves);
   float n2 = fbm(dir * 4.0 - uTime * 0.005, max(1.0, uOctaves - 1.0));
 
-  // Foundation palette: deep blue-black with warm undertones
-  vec3 deepBlack  = vec3(0.03, 0.04, 0.06);
-  vec3 warmNavy   = vec3(0.04, 0.05, 0.10);
-  vec3 greenTint  = vec3(0.01, 0.06, 0.04);
-
-  vec3 bg = mix(deepBlack, warmNavy, n1 * 0.5);
-  bg = mix(bg, greenTint, n2 * 0.15);
-
-  // Subtle top-down gradient (lighter ceiling)
-  float upFactor = max(0.0, dir.y) * 0.08;
-  bg += vec3(0.02, 0.03, 0.05) * upFactor;
-
-  // Very subtle dim stars (distant)
-  vec3 c = floor(dir * 200.0);
-  vec3 h = hash33(c);
-  float star = step(0.998, h.x) * h.y * 0.15;
-  star *= 0.7 + 0.3 * sin(uTime * 1.5 + h.z * 80.0);
-  bg += vec3(0.6, 0.7, 0.8) * star;
+  vec3 bg;
+  if (uLightMode > 0.5) {
+    // Light mode: very subtle blue-gray sky, no harsh white
+    vec3 softBlue   = vec3(0.86, 0.90, 0.94);
+    vec3 warmGray   = vec3(0.90, 0.88, 0.84);
+    vec3 paleGreen  = vec3(0.84, 0.89, 0.85);
+    bg = mix(softBlue, warmGray, n1 * 0.4);
+    bg = mix(bg, paleGreen, n2 * 0.12);
+    float upFactor = max(0.0, dir.y) * 0.06;
+    bg += vec3(0.03, 0.04, 0.05) * upFactor;
+  } else {
+    // Dark mode: deep blue-black with warm undertones
+    vec3 deepBlack  = vec3(0.03, 0.04, 0.06);
+    vec3 warmNavy   = vec3(0.04, 0.05, 0.10);
+    vec3 greenTint  = vec3(0.01, 0.06, 0.04);
+    bg = mix(deepBlack, warmNavy, n1 * 0.5);
+    bg = mix(bg, greenTint, n2 * 0.15);
+    float upFactor = max(0.0, dir.y) * 0.08;
+    bg += vec3(0.02, 0.03, 0.05) * upFactor;
+    // Subtle dim stars for dark mode only
+    vec3 c = floor(dir * 200.0);
+    vec3 h = hash33(c);
+    float star = step(0.998, h.x) * h.y * 0.15;
+    star *= 0.7 + 0.3 * sin(uTime * 1.5 + h.z * 80.0);
+    bg += vec3(0.6, 0.7, 0.8) * star;
+  }
 
   gl_FragColor = vec4(bg, 1.0);
 }
@@ -84,6 +92,7 @@ export class NebulaBackground {
     this.uniforms = {
       uTime: { value: 0 },
       uOctaves: { value: this._octaves },
+      uLightMode: { value: 0.0 },
     };
 
     const geo = new THREE.SphereGeometry(150, 32, 32);
@@ -106,6 +115,10 @@ export class NebulaBackground {
   setQuality(level) {
     this._octaves = [2, 3, 4][level] || 4;
     this.uniforms.uOctaves.value = this._octaves;
+  }
+
+  setTheme(lightMode) {
+    this.uniforms.uLightMode.value = lightMode ? 1.0 : 0.0;
   }
 
   dispose() {

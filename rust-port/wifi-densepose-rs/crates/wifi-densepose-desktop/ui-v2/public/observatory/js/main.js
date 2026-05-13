@@ -20,7 +20,7 @@ import { ScenarioProps } from './scenario-props.js';
 import { HudController, DEFAULTS, SETTINGS_VERSION, PRESETS, SCENARIO_NAMES } from './hud-controller.js';
 
 // ---- Palette ----
-const C = {
+const DARK_PALETTE = {
   greenGlow:  0x00d878,
   greenBright:0x3eff8a,
   greenDim:   0x0a6b3a,
@@ -29,7 +29,30 @@ const C = {
   redAlert:   0xff3040,
   redHeart:   0xff4060,
   bgDeep:     0x080c14,
+  gridPrimary: 0x1a4830,
+  gridSecondary: 0x0c2818,
+  floorColor: 0x101810,
+  floorEmissive: 0x020404,
 };
+
+const LIGHT_PALETTE = {
+  greenGlow:  0x1a5c3a,
+  greenBright:0x228b5c,
+  greenDim:   0x4a9e7a,
+  amber:      0x8c5a10,
+  blueSignal: 0x0a6090,
+  redAlert:   0xaa2230,
+  redHeart:   0xb83050,
+  bgDeep:     0xdde4ea,
+  gridPrimary: 0x7a9e8a,
+  gridSecondary: 0xa8c4b8,
+  floorColor: 0xb8c4cc,
+  floorEmissive: 0xd0dce8,
+};
+
+const C_DARK = { ...DARK_PALETTE };
+const C_LIGHT = { ...LIGHT_PALETTE };
+let C = { ...C_DARK };
 
 // SCENARIO_NAMES, DEFAULTS, SETTINGS_VERSION, PRESETS imported from hud-controller.js
 
@@ -46,6 +69,7 @@ class Observatory {
       : new URLSearchParams(window.location.search);
     this._forcedWsUrl = options.wsUrl ?? this._query.get('wsUrl');
     this._forcedMode = options.mode ?? this._query.get('mode');
+    this._theme = options.theme ?? 'dark';
     this._destroyed = false;
     this._rafId = null;
     this._resizeHandler = () => this._onResize();
@@ -141,6 +165,9 @@ class Observatory {
     this._postProcessing = new PostProcessing(this._renderer, this._scene, this._camera);
     this._applyPostSettings();
 
+    // Apply theme AFTER scene, nebula, and all scene objects exist
+    this._applyThemePalette(this._theme);
+
     // HUD controller (settings dialog, sparkline, vital displays)
     this._hud = new HudController(this);
 
@@ -213,10 +240,86 @@ class Observatory {
     rim.position.set(0, 6, -5);
     this._scene.add(rim);
 
-    // Overhead room light â€” general illumination
+    // Overhead room light — general illumination
     const overhead = new THREE.PointLight(0x8899aa, 1.0, 20, 1.0);
     overhead.position.set(0, 3.8, 0);
     this._scene.add(overhead);
+
+    this._keyLight = key;
+    this._fillLight = fill;
+    this._rimLight = rim;
+    this._overheadLight = overhead;
+  }
+
+  _applyThemePalette(theme) {
+    const isDark = theme !== 'light';
+    C = isDark ? { ...C_DARK } : { ...C_LIGHT };
+    // Scene background
+    this._scene.background = new THREE.Color(C.bgDeep);
+    this._scene.fog = new THREE.FogExp2(C.bgDeep, isDark ? 0.005 : 0.012);
+    // Nebula background shader
+    if (this._nebula) {
+      this._nebula.setTheme(!isDark);
+    }
+    // Post-processing (bloom)
+    if (this._postProcessing) {
+      this._postProcessing.setTheme(!isDark);
+    }
+    // Grid
+    if (this._grid) {
+      this._grid.material.color.setHex(C.gridPrimary);
+      this._grid.material.opacity = isDark ? 0.5 : 0.25;
+      this._grid.material.transparent = true;
+    }
+    // Room wire
+    if (this._roomWire) {
+      this._roomWire.material.color.setHex(C.greenDim);
+    }
+    // Floor
+    if (this._floorMat) {
+      this._floorMat.color.setHex(C.floorColor);
+      this._floorMat.emissive.setHex(C.floorEmissive);
+    }
+    // WiFi waves — update existing materials
+    if (this._wifiWaves) {
+      for (const w of this._wifiWaves) {
+        w.mat.color.setHex(C.blueSignal);
+      }
+    }
+    // Signal field
+    if (this._fieldMat) {
+      this._fieldMat.opacity = this.settings.field;
+    }
+    // Router LED & light
+    if (this._routerLed) {
+      this._routerLed.material.color.setHex(C.greenGlow);
+    }
+    if (this._routerLight) {
+      this._routerLight.color.setHex(C.blueSignal);
+    }
+    // Wire colors for figures — must be darker in light mode
+    this.settings.wireColor = isDark ? '#00d878' : '#1a5c3a';
+    this.settings.jointColor = isDark ? '#ff4060' : '#aa2230';
+    this._applyColors();
+    // Lighting — soften for light mode
+    if (this._keyLight) {
+      this._keyLight.intensity = isDark ? 1.2 : 0.6;
+      this._keyLight.color.setHex(isDark ? 0xffeedd : 0xfff8f0);
+    }
+    if (this._fillLight) {
+      this._fillLight.intensity = isDark ? 0.7 : 0.4;
+      this._fillLight.color.setHex(isDark ? 0x8899bb : 0xaabbcc);
+    }
+    if (this._rimLight) {
+      this._rimLight.intensity = isDark ? 0.5 : 0.3;
+      this._rimLight.color.setHex(isDark ? 0x6699cc : 0x88aacc);
+    }
+    if (this._overheadLight) {
+      this._overheadLight.intensity = isDark ? 1.0 : 0.6;
+    }
+    if (this._ambient) {
+      this._ambient.intensity = isDark ? this.settings.ambient * 5.0 : this.settings.ambient * 1.2;
+    }
   }
 
   // ---- Room ----
@@ -465,6 +568,13 @@ class Observatory {
     pp._vignettePass.uniforms.uGrainStrength.value = this.settings.grain;
     pp._vignettePass.uniforms.uChromaticStrength.value = this.settings.chromatic;
   }
+
+  setTheme(theme) {
+    this._theme = theme;
+    this._applyThemePalette(theme);
+  }
+
+  getTheme() { return this._theme; }
 
   _applyColors() {
     const wc = new THREE.Color(this.settings.wireColor);
@@ -809,10 +919,5 @@ class Observatory {
 
 export function mountObservatory(root, options = {}) {
   return new Observatory(root, options);
-}
-
-if (document.getElementById('observatory-canvas') && !document.querySelector('[data-observatory-managed="react"]')) {
-  document.body?.classList?.add('wave-observatory-page');
-  mountObservatory(document.body);
 }
 

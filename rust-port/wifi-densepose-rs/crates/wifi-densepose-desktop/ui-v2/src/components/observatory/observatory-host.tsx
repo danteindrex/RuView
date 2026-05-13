@@ -37,7 +37,7 @@ export function ObservatoryHost({ mode, theme, wsUrl }: ObservatoryHostProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    let mountedInstance: { destroy?: () => void } | null = null;
+    let mountedInstance: { destroy?: () => void; setTheme?: (t: string) => void } | null = null;
     let cancelled = false;
 
     ensureObservatoryCss();
@@ -60,7 +60,12 @@ export function ObservatoryHost({ mode, theme, wsUrl }: ObservatoryHostProps) {
       if (cancelled || !rootRef.current || typeof module?.mountObservatory !== "function") {
         return;
       }
-      mountedInstance = module.mountObservatory(rootRef.current, { mode, wsUrl });
+      // Reuse existing instance if already mounted, just update theme
+      if (mountedInstance && typeof mountedInstance.setTheme === "function") {
+        mountedInstance.setTheme(theme);
+      } else {
+        mountedInstance = module.mountObservatory(rootRef.current, { mode, wsUrl, theme });
+      }
     };
 
     if ((window as any).__WAVE_OBSERVATORY__) {
@@ -72,8 +77,9 @@ export function ObservatoryHost({ mode, theme, wsUrl }: ObservatoryHostProps) {
     return () => {
       cancelled = true;
       mountedInstance?.destroy?.();
+      mountedInstance = null;
     };
-  }, [mode, wsUrl]);
+  }, [mode, wsUrl, theme]);
 
   return (
     <div
