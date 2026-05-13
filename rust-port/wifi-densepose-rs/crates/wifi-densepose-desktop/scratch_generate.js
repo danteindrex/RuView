@@ -1,3 +1,6 @@
+const fs = require('fs');
+
+const code = 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
@@ -50,11 +53,9 @@ export class FigurePool {
         clone.traverse(c => {
           if (c.isBone) bones[c.name] = c;
         });
-        console.log("THREE.JS BONE NAMES:", Object.keys(bones).join(", "));
         
-        
-        // Adjust scale since Soldier.glb legs are longer than the demo keypoints
-        clone.scale.set(0.95, 0.95, 0.95); 
+        // Adjust scale since Soldier.glb is usually large
+        clone.scale.set(1.1, 1.1, 1.1); 
         group.add(clone);
         
         // Aura cylinder
@@ -136,10 +137,7 @@ export class FigurePool {
     const hips = fig.bones['mixamorigHips'];
     if (hips) {
        const hipPos = vec(11).clone().lerp(vec(12), 0.5);
-       
-       // Convert world space hipPos to the local space of the armature (because clone is scaled)
-       const localHipPos = hips.parent.worldToLocal(hipPos.clone());
-       _vecTarget.copy(localHipPos);
+       _vecTarget.copy(hipPos);
        
        if (fig._initialized) {
           hips.position.lerp(_vecTarget, 0.4);
@@ -191,3 +189,7 @@ export class FigurePool {
     }
   }
 }
+\;
+
+fs.writeFileSync('ui-v2/public/observatory/js/figure-pool.js', code);
+console.log('figure-pool.js generated');

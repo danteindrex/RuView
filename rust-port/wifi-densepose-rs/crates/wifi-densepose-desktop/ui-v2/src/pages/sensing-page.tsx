@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAuthStore } from "@/lib/auth-store";
 import { Pause, Play, RefreshCw, Trash2 } from "lucide-react";
 import { tauriApi } from "@/lib/tauri-api";
 import { PageSection } from "@/components/layout/page-section";
@@ -45,9 +46,11 @@ interface WsSensingUpdate {
     confidence: number;
   };
   vital_signs?: {
-    breathing_rate_hz?: number;
+    breathing_rate_bpm?: number;
     heart_rate_bpm?: number;
-    confidence?: number;
+    breathing_confidence?: number;
+    heartbeat_confidence?: number;
+    signal_quality?: number;
   };
   posture?: string;
   signal_quality_score?: number;
@@ -139,12 +142,13 @@ function logsFromUpdate(update: WsSensingUpdate): LogEntry[] {
   }
 
   if (update.vital_signs) {
+    const vs = update.vital_signs;
     entries.push({
       id: nextLogId++,
       timestamp,
-      level: (update.vital_signs.confidence ?? 0) < 0.5 ? "WARN" : "INFO",
+      level: (vs.breathing_confidence ?? 0) < 0.5 ? "WARN" : "INFO",
       source: "vital_signs",
-      message: `Breathing ${update.vital_signs.breathing_rate_hz?.toFixed(2) ?? "--"} Hz, HR ${update.vital_signs.heart_rate_bpm?.toFixed(0) ?? "--"} bpm`,
+      message: `Breathing ${vs.breathing_rate_bpm?.toFixed(1) ?? "--"} BPM, HR ${vs.heart_rate_bpm?.toFixed(0) ?? "--"} BPM`,
     });
   }
 
@@ -213,27 +217,39 @@ function toNumber(value: string, fallback?: number | null): number | null {
   return parsed;
 }
 
+import { useSensingStore } from "@/lib/sensing-store";
+
 export function SensingPage({ status, onStatusRefresh }: SensingPageProps) {
+  const { accessToken } = useAuthStore();
+  const { latestUpdate, connected: wsConnected } = useSensingStore();
   const [config, setConfig] = useState<ServerConfig>(DEFAULT_CONFIG);
   const [logs, setLogs] = useState<ServerLogsResponse | null>(null);
   const [streamLogs, setStreamLogs] = useState<LogEntry[]>([]);
   const [activities, setActivities] = useState<ActivityEntry[]>([]);
-  const [wsConnected, setWsConnected] = useState(false);
   const [paused, setPaused] = useState(false);
   const [result, setResult] = useState<ServerStartResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [settingsApplied, setSettingsApplied] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectRef = useRef<number | null>(null);
-  const pausedRef = useRef(paused);
 
-  pausedRef.current = paused;
+  useEffect(() => {
+    if (paused || !latestUpdate) return;
+    
+    const nextLogs = logsFromUpdate(latestUpdate);
+    if (nextLogs.length > 0) {
+      setStreamLogs((prev) => [...prev, ...nextLogs].slice(-MAX_LOG_ENTRIES));
+    }
+    const activity = activityFromUpdate(latestUpdate);
+    if (activity) {
+      setActivities((prev) => [activity, ...prev].slice(0, MAX_ACTIVITY_ENTRIES));
+    }
+  }, [latestUpdate, paused]);
 
   useEffect(() => {
     void (async () => {
       try {
-        const settings = await tauriApi.getSettings();
+        if (!accessToken) return;
+        const settings = await tauriApi.getSettings(accessToken);
         if (settings) {
           setConfig((prev) => ({ ...prev, ...mapSettingsToServerConfig(settings) }));
           setSettingsApplied(true);
@@ -243,98 +259,6 @@ export function SensingPage({ status, onStatusRefresh }: SensingPageProps) {
       }
     })();
   }, []);
-
-  useEffect(() => {
-    if (!status?.running || !status.ws_port) {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-      setWsConnected(false);
-      return;
-    }
-
-    const connect = () => {
-      const host = status.bind_address && status.bind_address !== "0.0.0.0" ? status.bind_address : "127.0.0.1";
-      const wsUrl = `ws://${host}:${status.ws_port}/ws/sensing`;
-      const ws = new WebSocket(wsUrl);
-
-      ws.onopen = () => {
-        setWsConnected(true);
-        setStreamLogs((prev) => [
-          ...prev.slice(-(MAX_LOG_ENTRIES - 1)),
-          {
-            id: nextLogId++,
-            timestamp: formatTimestamp(new Date()),
-            level: "INFO",
-            source: "desktop",
-            message: `WebSocket connected to ${wsUrl}`,
-          },
-        ]);
-      };
-
-      ws.onmessage = (event) => {
-        if (pausedRef.current) return;
-        try {
-          const update = JSON.parse(event.data) as WsSensingUpdate;
-          const nextLogs = logsFromUpdate(update);
-          if (nextLogs.length > 0) {
-            setStreamLogs((prev) => [...prev, ...nextLogs].slice(-MAX_LOG_ENTRIES));
-          }
-          const activity = activityFromUpdate(update);
-          if (activity) {
-            setActivities((prev) => [activity, ...prev].slice(0, MAX_ACTIVITY_ENTRIES));
-          }
-        } catch {
-          setStreamLogs((prev) => [
-            ...prev.slice(-(MAX_LOG_ENTRIES - 1)),
-            {
-              id: nextLogId++,
-              timestamp: formatTimestamp(new Date()),
-              level: "ERROR",
-              source: "desktop",
-              message: "Failed to parse sensing stream payload",
-            },
-          ]);
-        }
-      };
-
-      ws.onclose = () => {
-        setWsConnected(false);
-        wsRef.current = null;
-        if (status.running) {
-          reconnectRef.current = window.setTimeout(connect, WS_RECONNECT_DELAY_MS);
-        }
-      };
-
-      ws.onerror = () => {
-        setStreamLogs((prev) => [
-          ...prev.slice(-(MAX_LOG_ENTRIES - 1)),
-          {
-            id: nextLogId++,
-            timestamp: formatTimestamp(new Date()),
-            level: "ERROR",
-            source: "desktop",
-            message: "WebSocket connection error",
-          },
-        ]);
-      };
-
-      wsRef.current = ws;
-    };
-
-    connect();
-
-    return () => {
-      if (reconnectRef.current) {
-        window.clearTimeout(reconnectRef.current);
-      }
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-    };
-  }, [status?.running, status?.ws_port, status?.bind_address]);
 
   async function withBusy(task: () => Promise<void>) {
     setLoading(true);
@@ -502,13 +426,19 @@ export function SensingPage({ status, onStatusRefresh }: SensingPageProps) {
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button disabled={loading} onClick={() => withBusy(async () => setResult(await tauriApi.startServer(config)))}>
+          <Button disabled={loading || !accessToken} onClick={() => withBusy(async () => {
+            if (accessToken) setResult(await tauriApi.startServer(accessToken, config));
+          })}>
             Start Server
           </Button>
-          <Button disabled={loading} variant="secondary" onClick={() => withBusy(async () => await tauriApi.stopServer())}>
+          <Button disabled={loading || !accessToken} variant="secondary" onClick={() => withBusy(async () => {
+            if (accessToken) await tauriApi.stopServer(accessToken);
+          })}>
             Stop Server
           </Button>
-          <Button disabled={loading} variant="outline" onClick={() => withBusy(async () => setResult(await tauriApi.restartServer(config)))}>
+          <Button disabled={loading || !accessToken} variant="outline" onClick={() => withBusy(async () => {
+            if (accessToken) setResult(await tauriApi.restartServer(accessToken, config));
+          })}>
             Restart Server
           </Button>
           <Button disabled={loading} variant="ghost" onClick={() => withBusy(onStatusRefresh)}>
@@ -588,11 +518,13 @@ export function SensingPage({ status, onStatusRefresh }: SensingPageProps) {
       <PageSection title="Server Logs" description="Retrieve current command-level server logs.">
         <div className="mb-3">
           <Button
-            disabled={loading}
+            disabled={loading || !accessToken}
             onClick={() =>
               withBusy(async () => {
-                const response = await tauriApi.serverLogs(200);
-                setLogs(response);
+                if (accessToken) {
+                  const response = await tauriApi.serverLogs(accessToken, 200);
+                  setLogs(response);
+                }
               })
             }
           >

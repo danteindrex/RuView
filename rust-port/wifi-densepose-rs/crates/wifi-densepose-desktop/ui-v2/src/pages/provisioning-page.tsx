@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useAuthStore } from "@/lib/auth-store";
 import { tauriApi } from "@/lib/tauri-api";
 import { PageSection } from "@/components/layout/page-section";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ function parseCsvChannels(value: string) {
 }
 
 export function ProvisioningPage() {
+  const { accessToken } = useAuthStore();
   const [port, setPort] = useState("");
   const [meshCount, setMeshCount] = useState("4");
   const [channelCsv, setChannelCsv] = useState("1,6,11");
@@ -214,20 +216,22 @@ export function ProvisioningPage() {
             <Input id="prov-port" value={port} onChange={(e) => setPort(e.target.value)} placeholder="COM3 or /dev/ttyUSB0" />
           </div>
           <div className="flex items-end">
-            <Button disabled={loading} onClick={() => withBusy(async () => setValidation(await tauriApi.validateConfig(normalizedConfig)))}>
+            <Button disabled={loading || !accessToken} onClick={() => withBusy(async () => setValidation(await tauriApi.validateConfig(accessToken!, normalizedConfig)))}>
               Validate Config
             </Button>
           </div>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button disabled={loading || !port} onClick={() => withBusy(async () => setResult(await tauriApi.provisionNode(port, normalizedConfig)))}>
+          <Button disabled={loading || !port || !accessToken} onClick={() => withBusy(async () => {
+            if (accessToken) setResult(await tauriApi.provisionNode(accessToken, port, normalizedConfig));
+          })}>
             Provision Node
           </Button>
-          <Button disabled={loading || !port} variant="secondary" onClick={() => withBusy(async () => setNvs(await tauriApi.readNvs(port)))}>
+          <Button disabled={loading || !port || !accessToken} variant="secondary" onClick={() => withBusy(async () => setNvs(await tauriApi.readNvs(accessToken!, port)))}>
             Read NVS
           </Button>
-          <Button disabled={loading || !port} variant="outline" onClick={() => withBusy(async () => setResult(await tauriApi.eraseNvs(port)))}>
+          <Button disabled={loading || !port || !accessToken} variant="outline" onClick={() => withBusy(async () => setResult(await tauriApi.eraseNvs(accessToken!, port)))}>
             Erase NVS
           </Button>
         </div>
@@ -240,7 +244,7 @@ export function ProvisioningPage() {
             <Input id="mesh-count" value={meshCount} onChange={(e) => setMeshCount(e.target.value)} />
           </div>
           <div className="flex items-end">
-            <Button disabled={loading} onClick={() => withBusy(async () => setMesh(await tauriApi.generateMeshConfigs(normalizedConfig, Number(meshCount || "1"))))}>
+            <Button disabled={loading || !accessToken} onClick={() => withBusy(async () => setMesh(await tauriApi.generateMeshConfigs(accessToken!, normalizedConfig, Number(meshCount || "1"))))}>
               Generate Mesh Configs
             </Button>
           </div>

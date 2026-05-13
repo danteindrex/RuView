@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useAuthStore } from "@/lib/auth-store";
 import { ChevronDown, ChevronRight, Loader2, Wifi } from "lucide-react";
 import { tauriApi } from "@/lib/tauri-api";
 import { PageSection } from "@/components/layout/page-section";
@@ -15,6 +16,7 @@ interface NetworkPageProps {
 }
 
 export function NetworkPage({ nodes, onNodesUpdate }: NetworkPageProps) {
+  const { accessToken } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [ports, setPorts] = useState<SerialPortInfo[]>([]);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
@@ -35,7 +37,8 @@ export function NetworkPage({ nodes, onNodesUpdate }: NetworkPageProps) {
     setError(null);
     setMessage(null);
     try {
-      const discovered = await tauriApi.discoverNodes(Number(timeoutMs || "3000"));
+      if (!accessToken) return;
+      const discovered = await tauriApi.discoverNodes(accessToken, Number(timeoutMs || "3000"));
       onNodesUpdate(discovered);
       setMessage(`Discovery completed: ${discovered.length} nodes found.`);
     } catch (err) {
@@ -50,7 +53,7 @@ export function NetworkPage({ nodes, onNodesUpdate }: NetworkPageProps) {
     setError(null);
     setMessage(null);
     try {
-      const found = await tauriApi.listSerialPorts();
+      const found = await tauriApi.listSerialPorts(accessToken!);
       setPorts(found);
       if (!wifiPort && found.length > 0) {
         setWifiPort(found[0].name);
@@ -68,7 +71,8 @@ export function NetworkPage({ nodes, onNodesUpdate }: NetworkPageProps) {
     setError(null);
     setMessage(null);
     try {
-      const response = await tauriApi.configureEsp32Wifi(wifiPort, ssid, password);
+      if (!accessToken) return;
+      const response = await tauriApi.configureEsp32Wifi(accessToken, wifiPort, ssid, password);
       setMessage(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

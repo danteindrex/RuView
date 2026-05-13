@@ -190,34 +190,43 @@ pub async fn assign_tenant_modules(
     auth: State<'_, Arc<AuthManager>>,
 ) -> Result<(), String> {
     let claims = crate::commands::guard::require_auth(&access_token, &auth)?;
+
+    // Only super admin can assign modules to tenants
     if claims.scope != "global" {
-        return Err("Only super admins can assign modules".into());
+        return Err("Insufficient permissions: Super Admin only".into());
     }
 
-    // Delete existing modules for this tenant
+    // Clear existing assignments
     sqlx::query("DELETE FROM tenant_modules WHERE tenant_id = ?")
         .bind(&request.tenant_id)
         .execute(&auth.pool)
         .await
-        .map_err(|e| format!("Failed to clear existing modules: {}", e))?;
+        .map_err(|e| format!("Clear error: {}", e))?;
 
-    // Insert new modules
-    for module_id in &request.module_ids {
-        let tm_id = Uuid::new_v4().to_string();
-        sqlx::query("INSERT INTO tenant_modules (id, tenant_id, module_id, is_active) VALUES (?, ?, ?, 1)")
-            .bind(&tm_id)
-            .bind(&request.tenant_id)
-            .bind(module_id)
-            .execute(&auth.pool)
-            .await
-            .map_err(|e| format!("Failed to assign module {}: {}", module_id, e))?;
+    // Insert new assignments
+    for mid in &request.module_ids {
+        let id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO tenant_modules (id, tenant_id, module_id, is_active) VALUES (?, ?, ?, 1)",
+        )
+        .bind(&id)
+        .bind(&request.tenant_id)
+        .bind(mid)
+        .execute(&auth.pool)
+        .await
+        .map_err(|e| format!("Insert error: {}", e))?;
     }
 
-    let _ = audit::log(
+    // Audit log
+    let _ = crate::auth::audit::log(
         &auth.pool,
         Some(&claims.sub),
-        AuditAction::PermissionChange,
-        Some(&format!("Updated modules for tenant {}: {} modules assigned", request.tenant_id, request.module_ids.len())),
+        crate::auth::audit::AuditAction::LicenseChange,
+        Some(&format!(
+            "Assigned {} modules to tenant {}",
+            request.module_ids.len(),
+            request.tenant_id
+        )),
     )
     .await;
 

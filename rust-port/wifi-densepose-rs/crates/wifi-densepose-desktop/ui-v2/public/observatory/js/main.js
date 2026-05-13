@@ -36,11 +36,20 @@ const C = {
 // ---- Main Class ----
 
 class Observatory {
-  constructor() {
-    this._canvas = document.getElementById('observatory-canvas');
-    this._query = new URLSearchParams(window.location.search);
-    this._forcedWsUrl = this._query.get('wsUrl');
-    this._forcedMode = this._query.get('mode');
+  constructor(root = document.body, options = {}) {
+    this._root = root;
+    this._options = options;
+    this._doc = root?.ownerDocument || document;
+    this._canvas = root?.querySelector?.('#observatory-canvas') || document.getElementById('observatory-canvas');
+    this._query = options.query instanceof URLSearchParams
+      ? options.query
+      : new URLSearchParams(window.location.search);
+    this._forcedWsUrl = options.wsUrl ?? this._query.get('wsUrl');
+    this._forcedMode = options.mode ?? this._query.get('mode');
+    this._destroyed = false;
+    this._rafId = null;
+    this._resizeHandler = () => this._onResize();
+    this._keydownHandler = null;
     this.settings = { ...DEFAULTS };
 
     // Load saved settings
@@ -62,7 +71,8 @@ class Observatory {
       powerPreference: 'high-performance',
     });
     this._renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this._renderer.setSize(window.innerWidth, window.innerHeight);
+    const { width: initialWidth, height: initialHeight } = this._getViewportSize();
+    this._renderer.setSize(initialWidth, initialHeight);
     this._renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this._renderer.toneMappingExposure = this.settings.exposure;
     this._renderer.shadowMap.enabled = true;
@@ -75,7 +85,7 @@ class Observatory {
 
     // Camera
     this._camera = new THREE.PerspectiveCamera(
-      this.settings.fov, window.innerWidth / window.innerHeight, 0.1, 300
+      this.settings.fov, initialWidth / initialHeight, 0.1, 300
     );
     this._camera.position.set(6, 5, 8);
     this._camera.lookAt(0, 1.2, 0);
@@ -157,10 +167,19 @@ class Observatory {
     this._initKeyboard();
     this._hud.initSettings();
     this._hud.initQuickSelect();
-    window.addEventListener('resize', () => this._onResize());
+    window.addEventListener('resize', this._resizeHandler);
 
     // Start
     this._animate();
+  }
+
+  _getViewportSize() {
+    const width = this._root?.clientWidth || window.innerWidth || 1;
+    const height = this._root?.clientHeight || window.innerHeight || 1;
+    return {
+      width: Math.max(1, width),
+      height: Math.max(1, height),
+    };
   }
 
   // ---- Lighting ----
@@ -414,7 +433,7 @@ class Observatory {
   // ---- Keyboard ----
 
   _initKeyboard() {
-    window.addEventListener('keydown', (e) => {
+    this._keydownHandler = (e) => {
       if (this._hud.settingsOpen) return;
       switch (e.key.toLowerCase()) {
         case 'a':
@@ -431,7 +450,8 @@ class Observatory {
           e.preventDefault();
           break;
       }
-    });
+    };
+    window.addEventListener('keydown', this._keydownHandler);
   }
 
   // ---- Settings / HUD methods delegated to HudController ----
@@ -557,7 +577,8 @@ class Observatory {
   // ========================================
 
   _animate() {
-    requestAnimationFrame(() => this._animate());
+    if (this._destroyed) return;
+    this._rafId = requestAnimationFrame(() => this._animate());
     const dt = Math.min(this._clock.getDelta(), 0.1);
     const elapsed = this._clock.getElapsedTime();
 
@@ -762,13 +783,36 @@ class Observatory {
   }
 
   _onResize() {
-    const w = window.innerWidth, h = window.innerHeight;
+    const { width: w, height: h } = this._getViewportSize();
     this._camera.aspect = w / h;
     this._camera.updateProjectionMatrix();
     this._renderer.setSize(w, h);
     this._postProcessing.resize(w, h);
   }
+
+  destroy() {
+    this._destroyed = true;
+    if (this._rafId != null) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
+    }
+    this._disconnectWS();
+    if (this._keydownHandler) {
+      window.removeEventListener('keydown', this._keydownHandler);
+      this._keydownHandler = null;
+    }
+    window.removeEventListener('resize', this._resizeHandler);
+    this._controls?.dispose?.();
+    this._renderer?.dispose?.();
+  }
 }
 
-new Observatory();
+export function mountObservatory(root, options = {}) {
+  return new Observatory(root, options);
+}
+
+if (document.getElementById('observatory-canvas') && !document.querySelector('[data-observatory-managed="react"]')) {
+  document.body?.classList?.add('wave-observatory-page');
+  mountObservatory(document.body);
+}
 

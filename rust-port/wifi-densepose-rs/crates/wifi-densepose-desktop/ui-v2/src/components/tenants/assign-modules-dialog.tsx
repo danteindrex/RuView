@@ -19,20 +19,20 @@ export function AssignModulesDialog({ tenant, onClose, onSuccess }: AssignModule
   useEffect(() => {
     async function loadData() {
       if (!accessToken) return;
+      setLoading(true);
+      setError("");
       try {
-        // Load all available modules
+        // Load ALL available modules
         const allModules = await authApi.listModules(accessToken);
         setModules(allModules);
 
         // Load currently active modules for THIS specific tenant
-        // Note: list_tenant_modules usually returns for CURRENT tenant. 
-        // We might need a generic list_modules_for_tenant(tenant_id) or similar.
-        // For now, let's assume if we're super admin we can see what's in tenant_modules table.
-        // I'll use a hack or just check what the backend list_tenant_modules does if I passed a context.
-        // Actually, let's just use listModules and then maybe we need a way to fetch assigned modules.
-        // I'll stick to a simple list of all modules and let the user pick.
+        // Now using the hardened backend command that supports tenant_id for SAs
+        const currentModules = await authApi.listTenantModules(accessToken, tenant.id);
+        setSelectedIds(currentModules.map(m => m.id));
       } catch (err) {
-        setError("Failed to load modules");
+        console.error("[AssignModulesDialog] Load error:", err);
+        setError("Failed to load module configuration");
       } finally {
         setLoading(false);
       }

@@ -19,6 +19,7 @@ pub enum AuditAction {
     PermissionChange,
     LicenseActivate,
     LicenseValidate,
+    LicenseChange,
     VendorLogin,
     VendorAction(String),
 }
@@ -38,6 +39,7 @@ impl AuditAction {
             Self::PermissionChange => "permission_change".into(),
             Self::LicenseActivate => "license_activate".into(),
             Self::LicenseValidate => "license_validate".into(),
+            Self::LicenseChange => "license_change".into(),
             Self::VendorLogin => "[VENDOR] login".into(),
             Self::VendorAction(action) => format!("[VENDOR] {}", action),
         }

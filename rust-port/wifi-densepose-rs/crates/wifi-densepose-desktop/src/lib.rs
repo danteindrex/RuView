@@ -7,6 +7,7 @@ use commands::{discovery, flash, license, ota, pi_node, provision, server, setti
 use commands::auth as auth_cmd;
 use commands::users;
 use commands::roles;
+use commands::enterprise;
 use std::sync::Arc;
 use tauri::Manager;
 
@@ -100,6 +101,12 @@ pub fn run() {
             // Settings
             settings::get_settings,
             settings::save_settings,
+            // Enterprise
+            enterprise::get_enterprise_settings,
+            enterprise::save_enterprise_settings,
+            enterprise::whapi_get_qr,
+            enterprise::whapi_send_test,
+            enterprise::whapi_send_alert,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

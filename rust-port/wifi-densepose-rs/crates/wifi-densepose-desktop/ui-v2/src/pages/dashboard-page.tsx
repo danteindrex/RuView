@@ -17,6 +17,9 @@ interface DashboardPageProps {
   onLicenseModalChange: (open: boolean) => void;
 }
 
+import { useSensingStore } from "@/lib/sensing-store";
+import { useEnterpriseSettings } from "@/lib/enterprise-store";
+
 export function DashboardPage({ 
   nodes, 
   serverStatus, 
@@ -26,15 +29,29 @@ export function DashboardPage({
   isLicenseModalOpen,
   onLicenseModalChange
 }: DashboardPageProps) {
+  const { latestUpdate } = useSensingStore();
+  const { settings } = useEnterpriseSettings();
   const online = nodes.filter((node) => node.health === "online").length;
   const degraded = nodes.filter((node) => node.health === "degraded").length;
   const isLicensed = license?.is_licensed ?? false;
 
   return (
     <div className="space-y-6">
-      <div className="panel-grid">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard title="Registered Nodes" value={String(nodes.length)} subtitle="Discovery scope" />
         <MetricCard title="Online Nodes" value={String(online)} subtitle={online > 0 ? "Active telemetry" : "No telemetry"} tone={online > 0 ? "success" : "warning"} />
+        <MetricCard 
+          title="Medical Engine" 
+          value={latestUpdate?.vital_signs ? "MONITORING" : "STANDBY"} 
+          tone={latestUpdate?.vital_signs ? "success" : "warning"} 
+          subtitle="WiFi CSI Vitals"
+        />
+        <MetricCard 
+          title="Security Perimeter" 
+          value={settings?.security_armed ? "ARMED" : "OFF"} 
+          tone={settings?.security_armed ? "success" : "default"} 
+          subtitle={settings?.security_armed ? "Breach alerts active" : "Detection only"}
+        />
       </div>
 
       <PageSection title="Control Plane Status" description="Instant operational state across server runtime and network discovery.">

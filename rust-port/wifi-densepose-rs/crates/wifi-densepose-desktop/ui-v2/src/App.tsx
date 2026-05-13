@@ -17,37 +17,32 @@ import { LoginPage } from "@/pages/login-page";
 import { UsersPage } from "@/pages/users-page";
 import { RolesPage } from "@/pages/roles-page";
 import { TenantsPage } from "@/pages/tenants-page";
+import { MedicalPage } from "@/pages/medical-page";
+import { SecurityPage } from "@/pages/security-page";
+import { SysAdminPage } from "@/pages/sysadmin-page";
+import { Badge } from "@/components/ui/badge";
 import { tauriApi } from "@/lib/tauri-api";
 import { useAuthStore } from "@/lib/auth-store";
 import { usePermissions } from "@/hooks/use-permissions";
+import { SensingProvider } from "@/lib/SensingProvider";
 import type { DiscoveredNode, ServerStatusResponse } from "@/types";
-import { 
-  LayoutDashboard, Network, Zap, CloudUpload, Puzzle, 
-  Cpu, Activity, Share2, Settings2, Box, Settings, 
-  Users, ShieldCheck, Building2 
-} from "lucide-react";
+import { Shield, ShieldAlert, ShieldCheck, Users, AlertCircle, Settings2, Lock, Unlock, Activity, LayoutDashboard, HeartPulse, Box, Settings, Building2, Terminal } from "lucide-react";
 
 type PageId =
-  | "dashboard" | "network" | "flash" | "ota" | "modules"
-  | "pi-nodes" | "sensing" | "mesh" | "provisioning" | "pose3d"
-  | "settings" | "users" | "roles" | "tenants";
+  | "dashboard" | "medical" | "security" | "pose3d"
+  | "settings" | "users" | "roles" | "tenants" | "sysadmin";
 
 /** All pages — filtered at runtime by permission hook */
 const ALL_PAGES: ShellPage[] = [
-  { id: "dashboard", label: "Overview", icon: LayoutDashboard },
-  { id: "network", label: "Network", icon: Network },
-  { id: "flash", label: "Firmware Flash", icon: Zap },
-  { id: "ota", label: "OTA Rollout", icon: CloudUpload },
-  { id: "modules", label: "Edge Modules", icon: Puzzle },
-  { id: "pi-nodes", label: "Pi Nodes", icon: Cpu },
-  { id: "sensing", label: "Sensing Server", icon: Activity },
-  { id: "mesh", label: "Mesh View", icon: Share2 },
-  { id: "provisioning", label: "Provisioning", icon: Settings2 },
   { id: "pose3d", label: "3D Pose", icon: Box },
-  { id: "settings", label: "Settings", icon: Settings },
-  { id: "users", label: "Users", icon: Users },
-  { id: "roles", label: "Roles", icon: ShieldCheck },
-  { id: "tenants", label: "Tenants", icon: Building2 },
+  { id: "dashboard", label: "Overview", icon: LayoutDashboard },
+  { id: "medical", label: "Medical Hub", icon: HeartPulse },
+  { id: "security", label: "Security Center", icon: ShieldAlert },
+  { id: "settings", label: "Enterprise Settings", icon: Settings },
+  { id: "users", label: "User Management", icon: Users },
+  { id: "roles", label: "Access Matrix", icon: ShieldCheck },
+  { id: "tenants", label: "Tenancy Oversight", icon: Building2 },
+  { id: "sysadmin", label: "System Admin", icon: Terminal },
 ];
 
 function loadTheme(): "light" | "dark" {
@@ -56,19 +51,38 @@ function loadTheme(): "light" | "dark" {
 }
 
 export default function App() {
-  const { stage, initialize, user, isSuperAdmin, logout, license } = useAuthStore();
+  const { stage, initialize, user, isSuperAdmin, logout, license, accessToken } = useAuthStore();
   const { isSectionVisible } = usePermissions();
 
-  const [activePage, setActivePage] = useState<PageId>("dashboard");
+  const [activePage, setActivePage] = useState<PageId>("pose3d");
   const [navigationTenantId, setNavigationTenantId] = useState<string | undefined>(undefined);
   const [isLicenseModalOpen, setIsLicenseModalOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">(loadTheme);
   const [nodes, setNodes] = useState<DiscoveredNode[]>([]);
   const [serverStatus, setServerStatus] = useState<ServerStatusResponse | null>(null);
 
-  // Initialize auth system on mount
+  // Initialize auth system — but only once the Tauri IPC bridge is ready.
+  // The bridge (window.__TAURI_INTERNALS__) is injected asynchronously by the
+  // Rust webview; calling invoke() before it exists throws the "Cannot read
+  // properties of undefined" error we are guarding against here.
   useEffect(() => {
-    initialize();
+    let cancelled = false;
+    
+    async function safeInit() {
+      // Small delay to ensure bridge injection, but not blocking
+      await new Promise(r => setTimeout(r, 200));
+      if (!cancelled) {
+        try {
+          await initialize();
+        } catch (e) {
+          console.error("Auth initialization failed, retrying...", e);
+          setTimeout(() => { if (!cancelled) initialize(); }, 1000);
+        }
+      }
+    }
+
+    void safeInit();
+    return () => { cancelled = true; };
   }, [initialize]);
 
   // Filter pages based on permissions
@@ -77,13 +91,23 @@ export default function App() {
   }, [isSectionVisible]);
 
   async function refreshNodes() {
-    const discovered = await tauriApi.discoverNodes(2500);
-    setNodes(discovered);
+    if (!accessToken) return;
+    try {
+      const discovered = await tauriApi.discoverNodes(accessToken, 2500);
+      setNodes(discovered);
+    } catch (err) {
+      console.error("Failed to refresh nodes:", err);
+    }
   }
 
   async function refreshServer() {
-    const status = await tauriApi.serverStatus();
-    setServerStatus(status);
+    if (!accessToken) return;
+    try {
+      const status = await tauriApi.serverStatus(accessToken);
+      setServerStatus(status);
+    } catch (err) {
+      console.error("Failed to refresh server:", err);
+    }
   }
 
   useEffect(() => {
@@ -108,7 +132,9 @@ export default function App() {
     return page?.label ?? "Overview";
   }, [activePage]);
 
-  const subtitle = "Production command center for Wave sensing, firmware, mesh, and observability controls.";
+  const subtitle = activePage === "pose3d"
+    ? "Primary live observatory for WiFi sensing, pose estimation, and real-time room intelligence."
+    : "Production command center for Wave sensing, firmware, mesh, and observability controls.";
 
   // ─── 3-Stage Rendering ──────────────────────────────────────────────────
 
@@ -117,10 +143,10 @@ export default function App() {
     return (
       <div className="flex h-full w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
-          <div className="h-1 w-48 overflow-hidden rounded-full bg-secondary">
+          <div className="h-1 w-48 overflow-hidden rounded-full bg-secondary border border-border/20">
             <div className="h-full w-1/3 animate-[loading_2s_infinite] bg-primary" />
           </div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Initializing Wave Desktop...</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground animate-pulse">Initializing Wave Desktop...</p>
         </div>
       </div>
     );
@@ -138,7 +164,8 @@ export default function App() {
 
   // Stage 3: Dashboard (with permission-filtered sidebar)
   return (
-    <AppShell
+    <SensingProvider>
+      <AppShell
       pages={visiblePages}
       activePage={activePage}
       onPageChange={(id) => {
@@ -157,15 +184,9 @@ export default function App() {
       isSuperAdmin={isSuperAdmin}
       onLogout={logout}
       isLicensed={license?.is_licensed ?? false}
-      onActivateLicense={() => {
-        setActivePage("dashboard");
-        setIsLicenseModalOpen(true);
-      }}
+      onActivateLicense={() => setIsLicenseModalOpen(true)}
     >
-      <LicenseActivationDialog 
-        open={isLicenseModalOpen} 
-        onOpenChange={setIsLicenseModalOpen} 
-      />
+      <LicenseActivationDialog open={isLicenseModalOpen} onOpenChange={setIsLicenseModalOpen} />
       {activePage === "dashboard" ? (
         <DashboardPage 
           nodes={nodes} 
@@ -177,16 +198,19 @@ export default function App() {
           onLicenseModalChange={setIsLicenseModalOpen}
         />
       ) : null}
-      {activePage === "network" ? <NetworkPage nodes={nodes} onNodesUpdate={setNodes} /> : null}
-      {activePage === "flash" ? <FlashPage /> : null}
-      {activePage === "ota" ? <OtaPage /> : null}
-      {activePage === "modules" ? <ModulesPage /> : null}
-      {activePage === "pi-nodes" ? <PiNodesPage /> : null}
-      {activePage === "sensing" ? <SensingPage status={serverStatus} onStatusRefresh={refreshServer} /> : null}
-      {activePage === "mesh" ? <MeshPage nodes={nodes} onRefreshNodes={refreshNodes} /> : null}
-      {activePage === "provisioning" ? <ProvisioningPage /> : null}
-      {activePage === "pose3d" ? <Pose3DPage status={serverStatus} onStatusRefresh={refreshServer} /> : null}
+      {activePage === "medical" ? <MedicalPage /> : null}
+      {activePage === "security" ? <SecurityPage /> : null}
+      {activePage === "pose3d" ? <Pose3DPage status={serverStatus} onStatusRefresh={refreshServer} theme={theme} /> : null}
       {activePage === "settings" ? <SettingsPage theme={theme} onThemeChange={setTheme} /> : null}
+      {activePage === "sysadmin" ? (
+        <SysAdminPage 
+          nodes={nodes}
+          onNodesUpdate={setNodes}
+          serverStatus={serverStatus}
+          onRefreshServer={refreshServer}
+          onRefreshNodes={refreshNodes}
+        />
+      ) : null}
       {activePage === "users" ? <UsersPage tenantId={navigationTenantId} /> : null}
       {activePage === "roles" ? <RolesPage /> : null}
       {activePage === "tenants" ? (
@@ -198,5 +222,6 @@ export default function App() {
         />
       ) : null}
     </AppShell>
+    </SensingProvider>
   );
 }

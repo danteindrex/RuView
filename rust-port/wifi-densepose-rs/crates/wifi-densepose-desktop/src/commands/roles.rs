@@ -353,15 +353,25 @@ pub async fn list_modules(
 #[tauri::command]
 pub async fn list_tenant_modules(
     access_token: String,
+    tenant_id: Option<String>,
     auth: State<'_, Arc<AuthManager>>,
 ) -> Result<Vec<AccessModule>, String> {
     let claims = jwt::verify_access_token(&access_token, &auth.jwt_secret)
         .map_err(|_| "Invalid or expired token")?;
 
-    if claims.scope == "global" {
-        // Super admin sees all modules
-        return list_modules(access_token, auth).await;
-    }
+    let target_tenant_id = if claims.scope == "global" {
+        // Super admin can specify a tenant or see all if none specified
+        match tenant_id {
+            Some(id) => id,
+            None => {
+                // If no tenant_id provided by SA, return ALL system modules
+                return list_modules(access_token, auth).await;
+            }
+        }
+    } else {
+        // Regular tenant admin can only see their own
+        claims.tenant_id.clone()
+    };
 
     let modules = sqlx::query_as::<_, AccessModule>(
         "SELECT am.* FROM access_modules am \
@@ -369,7 +379,7 @@ pub async fn list_tenant_modules(
          WHERE tm.tenant_id = ? AND tm.is_active = 1 \
          ORDER BY am.name",
     )
-    .bind(&claims.tenant_id)
+    .bind(&target_tenant_id)
     .fetch_all(&auth.pool)
     .await
     .map_err(|e| format!("Query error: {}", e))?;

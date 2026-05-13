@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAuthStore } from "@/lib/auth-store";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Loader2 } from "lucide-react";
 import { tauriApi } from "@/lib/tauri-api";
@@ -11,6 +12,7 @@ import { JsonViewer } from "@/components/layout/json-viewer";
 import type { BatchOtaResult, OtaEndpointInfo, OtaResult } from "@/types";
 
 export function OtaPage() {
+  const { accessToken } = useAuthStore();
   const [nodeIp, setNodeIp] = useState("");
   const [nodeIps, setNodeIps] = useState("");
   const [firmwarePath, setFirmwarePath] = useState("");
@@ -38,7 +40,8 @@ export function OtaPage() {
     setError(null);
     setSingleResult(null);
     try {
-      const result = await tauriApi.otaUpdate({ nodeIp, firmwarePath, psk: psk || undefined });
+      if (!accessToken) return;
+      const result = await tauriApi.otaUpdate(accessToken, { nodeIp, firmwarePath, psk: psk || undefined });
       setSingleResult(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -56,7 +59,8 @@ export function OtaPage() {
         .split(",")
         .map((ip) => ip.trim())
         .filter(Boolean);
-      const result = await tauriApi.batchOtaUpdate({
+      if (!accessToken) return;
+      const result = await tauriApi.batchOtaUpdate(accessToken, {
         nodeIps: parsed,
         firmwarePath,
         psk: psk || undefined,
@@ -76,7 +80,8 @@ export function OtaPage() {
     setError(null);
     setEndpointResult(null);
     try {
-      const result = await tauriApi.checkOtaEndpoint(nodeIp);
+      if (!accessToken) return;
+      const result = await tauriApi.checkOtaEndpoint(accessToken, nodeIp);
       setEndpointResult(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

@@ -6,7 +6,7 @@
  */
 
 import { useState } from "react";
-import { KeyRound, Shield, ArrowRight, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { KeyRound, Shield, ArrowRight, Loader2, CheckCircle2, AlertCircle, UserPlus } from "lucide-react";
 import { useAuthStore } from "@/lib/auth-store";
 
 export function LicenseActivationPage() {

@@ -8,9 +8,9 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 /// Schema version — bump when adding migrations.
-const SCHEMA_VERSION: i32 = 1;
+const SCHEMA_VERSION: i32 = 2;
 
-/// All DDL statements for the Wave auth schema (17 tables).
+/// All DDL statements for the Wave auth schema (18 tables).
 const SCHEMA_SQL: &str = r#"
 -- ═══════════════════════════════════════════════
 -- Schema meta
@@ -203,6 +203,25 @@ CREATE TABLE IF NOT EXISTS service_tokens (
     expires_at TEXT,
     last_used_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ═══════════════════════════════════════════════
+-- Enterprise Tenant Settings
+-- ═══════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS tenant_settings (
+    tenant_id TEXT PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+    whapi_token TEXT,
+    whapi_number TEXT,
+    alert_target_number TEXT,
+    security_armed INTEGER NOT NULL DEFAULT 0,
+    crowd_threshold INTEGER NOT NULL DEFAULT 5,
+    fall_alert_enabled INTEGER NOT NULL DEFAULT 1,
+    vitals_alert_enabled INTEGER NOT NULL DEFAULT 1,
+    hr_min REAL DEFAULT 40.0,
+    hr_max REAL DEFAULT 140.0,
+    br_min REAL DEFAULT 8.0,
+    br_max REAL DEFAULT 30.0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 "#;
 
