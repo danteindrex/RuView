@@ -1,0 +1,676 @@
+{
+  "nodes": [
+    {
+      "id": "n001",
+      "label": "SpotFi Phase Cleaning",
+      "file_type": "algorithm",
+      "source_file": "docs/adr/ADR-014.md"
+    },
+    {
+      "id": "n002",
+      "label": "Hampel Filter",
+      "file_type": "algorithm",
+      "source_file": "docs/adr/ADR-014.md"
+    },
+    {
+      "id": "n003",
+      "label": "Fresnel Zone Model",
+      "file_type": "concept",
+      "source_file": "signal/src/fresnel.rs"
+    },
+    {
+      "id": "n004",
+      "label": "Body Velocity Profile (BVP)",
+      "file_type": "algorithm",
+      "source_file": "signal/src/bvp.rs"
+    },
+    {
+      "id": "n005",
+      "label": "CSI Spectrogram",
+      "file_type": "algorithm",
+      "source_file": "signal/src/spectrogram.rs"
+    },
+    {
+      "id": "n006",
+      "label": "Phase Unwrapping",
+      "file_type": "algorithm",
+      "source_file": "signal/src/phase_sanitizer.rs"
+    },
+    {
+      "id": "n007",
+      "label": "Conjugate Multiplication",
+      "file_type": "algorithm",
+      "source_file": "signal/src/csi_ratio.rs"
+    },
+    {
+      "id": "n008",
+      "label": "RuVector Attention",
+      "file_type": "crate",
+      "source_file": "signal/src/bvp.rs"
+    },
+    {
+      "id": "n009",
+      "label": "RuVector MinCut",
+      "file_type": "crate",
+      "source_file": "signal/src/subcarrier.rs"
+    },
+    {
+      "id": "n010",
+      "label": "RuVector Solver",
+      "file_type": "crate",
+      "source_file": "signal/src/fresnel.rs"
+    },
+    {
+      "id": "n011",
+      "label": "RuVector Temporal Tensor",
+      "file_type": "crate",
+      "source_file": "train/src/dataset.rs"
+    },
+    {
+      "id": "n012",
+      "label": "WiFlow Architecture",
+      "file_type": "architecture",
+      "source_file": "docs/adr/ADR-072.md"
+    },
+    {
+      "id": "n013",
+      "label": "TCN with Dilated Convolutions",
+      "file_type": "component",
+      "source_file": "docs/adr/ADR-072.md"
+    },
+    {
+      "id": "n014",
+      "label": "Axial Self-Attention",
+      "file_type": "component",
+      "source_file": "docs/adr/ADR-072.md"
+    },
+    {
+      "id": "n015",
+      "label": "Asymmetric Conv Encoder",
+      "file_type": "component",
+      "source_file": "docs/adr/ADR-072.md"
+    },
+    {
+      "id": "n016",
+      "label": "DensePose Head",
+      "file_type": "component",
+      "source_file": "nn/src/densepose.rs"
+    },
+    {
+      "id": "n017",
+      "label": "COCO-17 Keypoints",
+      "file_type": "concept",
+      "source_file": "signal/src/ruvsense/mod.rs"
+    },
+    {
+      "id": "n018",
+      "label": "AETHER Contrastive Embedding",
+      "file_type": "model",
+      "source_file": "docs/adr/ADR-024.md"
+    },
+    {
+      "id": "n019",
+      "label": "MERIDIAN Architecture",
+      "file_type": "architecture",
+      "source_file": "docs/adr/ADR-027.md"
+    },
+    {
+      "id": "n020",
+      "label": "FiLM Conditioning",
+      "file_type": "mechanism",
+      "source_file": "train/src/geometry.rs"
+    },
+    {
+      "id": "n021",
+      "label": "Gradient Reversal Layer",
+      "file_type": "component",
+      "source_file": "train/src/domain.rs"
+    },
+    {
+      "id": "n022",
+      "label": "DomainFactorizer",
+      "file_type": "component",
+      "source_file": "train/src/domain.rs"
+    },
+    {
+      "id": "n023",
+      "label": "RuvSense Pipeline",
+      "file_type": "system",
+      "source_file": "signal/src/ruvsense/mod.rs"
+    },
+    {
+      "id": "n024",
+      "label": "Multiband Fusion",
+      "file_type": "module",
+      "source_file": "signal/src/ruvsense/multiband.rs"
+    },
+    {
+      "id": "n025",
+      "label": "Phase Aligner",
+      "file_type": "module",
+      "source_file": "signal/src/ruvsense/phase_align.rs"
+    },
+    {
+      "id": "n026",
+      "label": "Multistatic Fusion",
+      "file_type": "module",
+      "source_file": "signal/src/ruvsense/multistatic.rs"
+    },
+    {
+      "id": "n027",
+      "label": "Coherence Scoring",
+      "file_type": "module",
+      "source_file": "signal/src/ruvsense/coherence.rs"
+    },
+    {
+      "id": "n028",
+      "label": "Coherence Gate",
+      "file_type": "module",
+      "source_file": "signal/src/ruvsense/coherence_gate.rs"
+    },
+    {
+      "id": "n029",
+      "label": "Pose Tracker",
+      "file_type": "module",
+      "source_file": "signal/src/ruvsense/pose_tracker.rs"
+    },
+    {
+      "id": "n030",
+      "label": "IIR Bandpass Filtering",
+      "file_type": "algorithm",
+      "source_file": "vitals/src/breathing.rs"
+    },
+    {
+      "id": "n031",
+      "label": "Zero-Crossing Analysis",
+      "file_type": "algorithm",
+      "source_file": "vitals/src/breathing.rs"
+    },
+    {
+      "id": "n032",
+      "label": "Autocorrelation Peak Detection",
+      "file_type": "algorithm",
+      "source_file": "vitals/src/heartrate.rs"
+    },
+    {
+      "id": "n033",
+      "label": "Phase Coherence Weighting",
+      "file_type": "algorithm",
+      "source_file": "vitals/src/heartrate.rs"
+    },
+    {
+      "id": "n034",
+      "label": "VitalAnomalyDetector",
+      "file_type": "struct",
+      "source_file": "vitals/src/anomaly.rs"
+    },
+    {
+      "id": "n035",
+      "label": "ESP32-S3 CSI",
+      "file_type": "hardware",
+      "source_file": "firmware/esp32-csi-node/main/csi_collector.c"
+    },
+    {
+      "id": "n036",
+      "label": "TDM Mesh Protocol",
+      "file_type": "protocol",
+      "source_file": "firmware/esp32-csi-node/main/rv_mesh.c"
+    },
+    {
+      "id": "n037",
+      "label": "Processing Tiers",
+      "file_type": "concept",
+      "source_file": "firmware/esp32-csi-node/main/edge_processing.c"
+    },
+    {
+      "id": "n038",
+      "label": "WASM Runtime",
+      "file_type": "module",
+      "source_file": "firmware/esp32-csi-node/main/wasm_runtime.c"
+    },
+    {
+      "id": "n039",
+      "label": "Adaptive Controller",
+      "file_type": "module",
+      "source_file": "firmware/esp32-csi-node/main/adaptive_controller.c"
+    },
+    {
+      "id": "n040",
+      "label": "Neumann Solver",
+      "file_type": "algorithm",
+      "source_file": "signal/src/fresnel.rs"
+    },
+    {
+      "id": "n041",
+      "label": "Kalman Pose Tracking",
+      "file_type": "algorithm",
+      "source_file": "signal/src/ruvsense/pose_tracker.rs"
+    },
+    {
+      "id": "n042",
+      "label": "HNSW Vector Search",
+      "file_type": "algorithm",
+      "source_file": "docs/adr/ADR-004.md"
+    },
+    {
+      "id": "n043",
+      "label": "SONA Self-Optimizing",
+      "file_type": "architecture",
+      "source_file": "docs/adr/ADR-005.md"
+    },
+    {
+      "id": "n044",
+      "label": "Witness Chains",
+      "file_type": "system",
+      "source_file": "docs/adr/ADR-010.md"
+    },
+    {
+      "id": "n045",
+      "label": "CrossViewpointAttention",
+      "file_type": "component",
+      "source_file": "docs/adr/ADR-031.md"
+    },
+    {
+      "id": "n046",
+      "label": "GeometricBias",
+      "file_type": "parameter",
+      "source_file": "docs/adr/ADR-031.md"
+    },
+    {
+      "id": "n047",
+      "label": "Neumann Series Solver",
+      "file_type": "algorithm",
+      "source_file": "signal/src/fresnel.rs"
+    },
+    {
+      "id": "n048",
+      "label": "Welford Statistics",
+      "file_type": "algorithm",
+      "source_file": "vitals/src/anomaly.rs"
+    },
+    {
+      "id": "n049",
+      "label": "CompressedCsiBuffer",
+      "file_type": "struct",
+      "source_file": "train/src/dataset.rs"
+    }
+  ],
+  "links": [
+    {
+      "source": "n001",
+      "target": "n006",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/adr/ADR-014.md"
+    },
+    {
+      "source": "n002",
+      "target": "n005",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/adr/ADR-014.md"
+    },
+    {
+      "source": "n003",
+      "target": "n004",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "signal/src/fresnel.rs"
+    },
+    {
+      "source": "n005",
+      "target": "n004",
+      "relation": "produces",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "signal/src/spectrogram.rs"
+    },
+    {
+      "source": "n007",
+      "target": "n001",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "signal/src/csi_ratio.rs"
+    },
+    {
+      "source": "n008",
+      "target": "n004",
+      "relation": "uses",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "signal/src/bvp.rs"
+    },
+    {
+      "source": "n009",
+      "target": "n006",
+      "relation": "uses",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "signal/src/subcarrier.rs"
+    },
+    {
+      "source": "n010",
+      "target": "n003",
+      "relation": "uses",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "signal/src/fresnel.rs"
+    },
+    {
+      "source": "n011",
+      "target": "n004",
+      "relation": "uses",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "train/src/dataset.rs"
+    },
+    {
+      "source": "n012",
+      "target": "n013",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/adr/ADR-072.md"
+    },
+    {
+      "source": "n012",
+      "target": "n014",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/adr/ADR-072.md"
+    },
+    {
+      "source": "n012",
+      "target": "n015",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/adr/ADR-072.md"
+    },
+    {
+      "source": "n016",
+      "target": "n017",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "nn/src/densepose.rs"
+    },
+    {
+      "source": "n013",
+      "target": "n014",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "docs/adr/ADR-072.md"
+    },
+    {
+      "source": "n018",
+      "target": "n029",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/adr/ADR-024.md"
+    },
+    {
+      "source": "n019",
+      "target": "n020",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/adr/ADR-027.md"
+    },
+    {
+      "source": "n019",
+      "target": "n021",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/adr/ADR-027.md"
+    },
+    {
+      "source": "n019",
+      "target": "n022",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/adr/ADR-027.md"
+    },
+    {
+      "source": "n022",
+      "target": "n021",
+      "relation": "uses",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "train/src/domain.rs"
+    },
+    {
+      "source": "n023",
+      "target": "n024",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "signal/src/ruvsense/mod.rs"
+    },
+    {
+      "source": "n023",
+      "target": "n025",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "signal/src/ruvsense/mod.rs"
+    },
+    {
+      "source": "n023",
+      "target": "n026",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "signal/src/ruvsense/mod.rs"
+    },
+    {
+      "source": "n023",
+      "target": "n027",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "signal/src/ruvsense/mod.rs"
+    },
+    {
+      "source": "n023",
+      "target": "n028",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "signal/src/ruvsense/mod.rs"
+    },
+    {
+      "source": "n023",
+      "target": "n029",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "signal/src/ruvsense/mod.rs"
+    },
+    {
+      "source": "n029",
+      "target": "n041",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "signal/src/ruvsense/pose_tracker.rs"
+    },
+    {
+      "source": "n028",
+      "target": "n027",
+      "relation": "feeds_into",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "signal/src/ruvsense/coherence_gate.rs"
+    },
+    {
+      "source": "n027",
+      "target": "n028",
+      "relation": "decides",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "signal/src/ruvsense/coherence.rs"
+    },
+    {
+      "source": "n030",
+      "target": "n031",
+      "relation": "uses",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vitals/src/breathing.rs"
+    },
+    {
+      "source": "n030",
+      "target": "n032",
+      "relation": "uses",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vitals/src/heartrate.rs"
+    },
+    {
+      "source": "n032",
+      "target": "n033",
+      "relation": "uses",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vitals/src/heartrate.rs"
+    },
+    {
+      "source": "n034",
+      "target": "n031",
+      "relation": "uses",
+      "confidence": "EXTRACTED",
+      "confidence_score": 0.9,
+      "source_file": "vitals/src/anomaly.rs"
+    },
+    {
+      "source": "n034",
+      "target": "n032",
+      "relation": "uses",
+      "confidence": "EXTRACTED",
+      "confidence_score": 0.9,
+      "source_file": "vitals/src/anomaly.rs"
+    },
+    {
+      "source": "n048",
+      "target": "n034",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "vitals/src/anomaly.rs"
+    },
+    {
+      "source": "n012",
+      "target": "n018",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "docs/adr/ADR-072.md"
+    },
+    {
+      "source": "n023",
+      "target": "n045",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "docs/adr/ADR-031.md"
+    },
+    {
+      "source": "n045",
+      "target": "n046",
+      "relation": "uses",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/adr/ADR-031.md"
+    },
+    {
+      "source": "n019",
+      "target": "n043",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "docs/adr/ADR-027.md"
+    },
+    {
+      "source": "n042",
+      "target": "n018",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.7,
+      "source_file": "docs/adr/ADR-004.md"
+    },
+    {
+      "source": "n044",
+      "target": "n042",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.7,
+      "source_file": "docs/adr/ADR-010.md"
+    },
+    {
+      "source": "n035",
+      "target": "n036",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "firmware/esp32-csi-node/main/csi_collector.c"
+    },
+    {
+      "source": "n035",
+      "target": "n037",
+      "relation": "part_of",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "firmware/esp32-csi-node/main/edge_processing.c"
+    },
+    {
+      "source": "n037",
+      "target": "n038",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "firmware/esp32-csi-node/main/wasm_runtime.c"
+    },
+    {
+      "source": "n037",
+      "target": "n039",
+      "relation": "feeds_into",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "firmware/esp32-csi-node/main/adaptive_controller.c"
+    },
+    {
+      "source": "n040",
+      "target": "n003",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "signal/src/fresnel.rs"
+    },
+    {
+      "source": "n040",
+      "target": "n047",
+      "relation": "same_as",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "signal/src/fresnel.rs"
+    },
+    {
+      "source": "n011",
+      "target": "n049",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "train/src/dataset.rs"
+    }
+  ]
+}

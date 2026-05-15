@@ -48,13 +48,12 @@ export class Environment {
   }
 
   _buildFloor() {
-    // Dark reflective floor
+    // Enhanced dark reflective floor with PBR
     const floorGeom = new THREE.PlaneGeometry(this.roomWidth, this.roomDepth);
-    const floorMat = new THREE.MeshPhongMaterial({
+    const floorMat = new THREE.MeshStandardMaterial({
       color: 0x0a0a15,
-      emissive: 0x050510,
-      shininess: 60,
-      specular: 0x111122,
+      roughness: 0.3,
+      metalness: 0.8,
       transparent: true,
       opacity: 0.95,
       side: THREE.DoubleSide
@@ -64,6 +63,18 @@ export class Environment {
     floor.position.y = 0;
     floor.receiveShadow = true;
     this.group.add(floor);
+    
+    // Add a subtle grid overlay
+    const gridHelper = new THREE.GridHelper(
+      Math.max(this.roomWidth, this.roomDepth),
+      20,
+      0x00aaff,
+      0x0a1a2a
+    );
+    gridHelper.position.y = 0.01;
+    gridHelper.material.opacity = 0.15;
+    gridHelper.material.transparent = true;
+    this.group.add(gridHelper);
   }
 
   _buildGrid() {
@@ -185,44 +196,52 @@ export class Environment {
     this._apMeshes = [];
     this._rxMeshes = [];
 
-    // Transmitter markers: small pyramid/cone shape, blue
-    const txGeom = new THREE.ConeGeometry(0.12, 0.25, 4);
-    const txMat = new THREE.MeshPhongMaterial({
-      color: 0x0088ff,
-      emissive: 0x003366,
-      emissiveIntensity: 0.5,
+    // Enhanced transmitter markers: octahedron for more sparkle, cyan glow
+    const txGeom = new THREE.OctahedronGeometry(0.15, 0);
+    const txMat = new THREE.MeshStandardMaterial({
+      color: 0x00aaff,
+      emissive: 0x0066ff,
+      emissiveIntensity: 0.8,
+      metalness: 0.9,
+      roughness: 0.1,
       transparent: true,
-      opacity: 0.9
+      opacity: 0.95
     });
 
     for (const ap of this.accessPoints) {
       const mesh = new THREE.Mesh(txGeom, txMat.clone());
       mesh.position.set(...ap.pos);
-      mesh.rotation.z = Math.PI; // Point downward
       mesh.castShadow = true;
       mesh.name = `ap-${ap.id}`;
       this.group.add(mesh);
       this._apMeshes.push(mesh);
 
-      // Small point light at each AP
-      const light = new THREE.PointLight(0x0066ff, 0.3, 4);
+      // Enhanced point light at each AP with animation potential
+      const light = new THREE.PointLight(0x00aaff, 0.5, 5);
       light.position.set(...ap.pos);
       this.group.add(light);
 
+      // Add a glow sprite
+      const glow = this._createGlowSprite(0x00aaff, 0.4);
+      glow.position.set(ap.pos[0], ap.pos[1], ap.pos[2]);
+      this.group.add(glow);
+
       // Label
-      const label = this._createLabel(ap.id, 0x0088ff);
-      label.position.set(ap.pos[0], ap.pos[1] + 0.3, ap.pos[2]);
+      const label = this._createLabel(ap.id, 0x00aaff);
+      label.position.set(ap.pos[0], ap.pos[1] + 0.35, ap.pos[2]);
       this.group.add(label);
     }
 
-    // Receiver markers: inverted cone, green
-    const rxGeom = new THREE.ConeGeometry(0.12, 0.25, 4);
-    const rxMat = new THREE.MeshPhongMaterial({
-      color: 0x00cc44,
-      emissive: 0x004422,
-      emissiveIntensity: 0.5,
+    // Enhanced receiver markers: green octahedron
+    const rxGeom = new THREE.OctahedronGeometry(0.15, 0);
+    const rxMat = new THREE.MeshStandardMaterial({
+      color: 0x00ff88,
+      emissive: 0x00ff66,
+      emissiveIntensity: 0.8,
+      metalness: 0.9,
+      roughness: 0.1,
       transparent: true,
-      opacity: 0.9
+      opacity: 0.95
     });
 
     for (const rx of this.receivers) {
@@ -372,6 +391,34 @@ export class Environment {
       depthWrite: false
     });
     return new THREE.Sprite(mat);
+  }
+
+  // Create a glow sprite for AP/RX markers
+  _createGlowSprite(color, size) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 64;
+    canvas.height = 64;
+
+    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    const c = new THREE.Color(color);
+    gradient.addColorStop(0, `rgba(${Math.floor(c.r*255)}, ${Math.floor(c.g*255)}, ${Math.floor(c.b*255)}, 1)`);
+    gradient.addColorStop(0.4, `rgba(${Math.floor(c.r*255)}, ${Math.floor(c.g*255)}, ${Math.floor(c.b*255)}, 0.5)`);
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 64, 64);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(size * 2, size * 2, 1);
+    return sprite;
   }
 
   // Update zone occupancy display

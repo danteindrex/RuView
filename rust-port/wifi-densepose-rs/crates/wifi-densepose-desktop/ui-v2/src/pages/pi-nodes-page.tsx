@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, CheckCircle2, Loader2, PackageCheck, Play, RotateCw, Save, ShieldCheck, Square, UploadCloud, Wrench } from "lucide-react";
 import { tauriApi } from "@/lib/tauri-api";
+import { useAuthStore } from "@/lib/auth-store";
 import { PageSection } from "@/components/layout/page-section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,7 @@ function resultText(result: PiNodeCommandResult | null): string {
 }
 
 export function PiNodesPage() {
+  const { accessToken } = useAuthStore();
   const [target, setTarget] = useState<PiNodeTarget>(DEFAULT_TARGET);
   const [config, setConfig] = useState<PiAgentConfig>(DEFAULT_CONFIG);
   const [serviceName, setServiceName] = useState("wave-pi-node-agent");
@@ -67,8 +69,9 @@ export function PiNodesPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!accessToken) return;
     void (async () => {
-      const settings = await tauriApi.getSettings().catch(() => null);
+      const settings = await tauriApi.getSettings(accessToken).catch(() => null);
       if (!settings) {
         return;
       }
@@ -85,7 +88,7 @@ export function PiNodesPage() {
         wasm_module_id: settings.pi_agent_wasm_module_id,
       });
     })();
-  }, []);
+  }, [accessToken]);
 
   const canRun = useMemo(() => Boolean(target.host.trim()), [target.host]);
 
@@ -108,7 +111,8 @@ export function PiNodesPage() {
   }
 
   async function runService(action: PiServiceAction) {
-    await runTask(() => tauriApi.piNodeService({ target, action, serviceName }));
+    if (!accessToken) return;
+    await runTask(() => tauriApi.piNodeService(accessToken, { target, action, serviceName }));
   }
 
   async function runWizard() {
@@ -128,11 +132,11 @@ export function PiNodesPage() {
       for (const host of hosts) {
         const nextTarget = { ...target, host };
         const steps: Array<[string, () => Promise<PiNodeCommandResult>]> = [
-          ["check prereqs", () => tauriApi.piNodeCheckPrereqs({ target: nextTarget, installPackages })],
-          ["push config", () => tauriApi.piNodePushConfig({ target: nextTarget, config, envPath })],
-          ["install service", () => tauriApi.piNodeInstallService({ target: nextTarget, config, serviceName, binaryPath, envPath })],
-          ["restart service", () => tauriApi.piNodeService({ target: nextTarget, action: "restart", serviceName })],
-          ["csi health", () => tauriApi.piNodeCsiHealth({ target: nextTarget, nexmonPort: Number(config.listen.split(":").pop() || "5500"), captureSeconds, serviceName })],
+          ["check prereqs", () => tauriApi.piNodeCheckPrereqs(accessToken!, { target: nextTarget, installPackages })],
+          ["push config", () => tauriApi.piNodePushConfig(accessToken!, { target: nextTarget, config, envPath })],
+          ["install service", () => tauriApi.piNodeInstallService(accessToken!, { target: nextTarget, config, serviceName, binaryPath, envPath })],
+          ["restart service", () => tauriApi.piNodeService(accessToken!, { target: nextTarget, action: "restart", serviceName })],
+          ["csi health", () => tauriApi.piNodeCsiHealth(accessToken!, { target: nextTarget, nexmonPort: Number(config.listen.split(":").pop() || "5500"), captureSeconds, serviceName })],
         ];
 
         setWizardLog((prev) => `${prev}\n== ${host} ==\n`);
@@ -268,46 +272,46 @@ export function PiNodesPage() {
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button disabled={loading || !canRun} onClick={() => runTask(() => tauriApi.piNodeProbe(target))}>
+          <Button disabled={loading || !canRun || !accessToken} onClick={() => runTask(() => tauriApi.piNodeProbe(accessToken!, target))}>
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Activity className="mr-2 h-4 w-4" />}
             Check Pi
           </Button>
-          <Button disabled={loading || !canRun} variant="secondary" onClick={() => runTask(() => tauriApi.piNodeCheckPrereqs({ target, installPackages }))}>
+          <Button disabled={loading || !canRun || !accessToken} variant="secondary" onClick={() => runTask(() => tauriApi.piNodeCheckPrereqs(accessToken!, { target, installPackages }))}>
             <ShieldCheck className="mr-2 h-4 w-4" />
             Check Prereqs
           </Button>
-          <Button disabled={loading} variant="secondary" onClick={() => runTask(() => tauriApi.piNodeBuildAgent({ workspace_path: workspacePath, target_triple: targetTriple, release: true }))}>
+          <Button disabled={loading || !accessToken} variant="secondary" onClick={() => runTask(() => tauriApi.piNodeBuildAgent(accessToken!, { workspace_path: workspacePath, target_triple: targetTriple, release: true }))}>
             <PackageCheck className="mr-2 h-4 w-4" />
             Build Agent
           </Button>
-          <Button disabled={loading || !canRun || !localBinaryPath} variant="secondary" onClick={() => runTask(() => tauriApi.piNodeDeployBinary({ target, localBinaryPath, remoteBinaryPath: binaryPath }))}>
+          <Button disabled={loading || !canRun || !localBinaryPath || !accessToken} variant="secondary" onClick={() => runTask(() => tauriApi.piNodeDeployBinary(accessToken!, { target, localBinaryPath, remoteBinaryPath: binaryPath }))}>
             <UploadCloud className="mr-2 h-4 w-4" />
             Deploy Binary
           </Button>
-          <Button disabled={loading || !canRun} variant="secondary" onClick={() => runTask(() => tauriApi.piNodePushConfig({ target, config, envPath }))}>
+          <Button disabled={loading || !canRun || !accessToken} variant="secondary" onClick={() => runTask(() => tauriApi.piNodePushConfig(accessToken!, { target, config, envPath }))}>
             <Save className="mr-2 h-4 w-4" />
             Push Config
           </Button>
-          <Button disabled={loading || !canRun} variant="secondary" onClick={() => runTask(() => tauriApi.piNodeInstallService({ target, config, serviceName, binaryPath, envPath }))}>
+          <Button disabled={loading || !canRun || !accessToken} variant="secondary" onClick={() => runTask(() => tauriApi.piNodeInstallService(accessToken!, { target, config, serviceName, binaryPath, envPath }))}>
             <Wrench className="mr-2 h-4 w-4" />
             Install Service
           </Button>
-          <Button disabled={loading || !canRun} variant="outline" onClick={() => runService("start")}>
+          <Button disabled={loading || !canRun || !accessToken} variant="outline" onClick={() => runService("start")}>
             <Play className="mr-2 h-4 w-4" />
             Start
           </Button>
-          <Button disabled={loading || !canRun} variant="outline" onClick={() => runService("restart")}>
+          <Button disabled={loading || !canRun || !accessToken} variant="outline" onClick={() => runService("restart")}>
             <RotateCw className="mr-2 h-4 w-4" />
             Restart
           </Button>
-          <Button disabled={loading || !canRun} variant="outline" onClick={() => runService("stop")}>
+          <Button disabled={loading || !canRun || !accessToken} variant="outline" onClick={() => runService("stop")}>
             <Square className="mr-2 h-4 w-4" />
             Stop
           </Button>
-          <Button disabled={loading || !canRun} variant="ghost" onClick={() => runService("status")}>
+          <Button disabled={loading || !canRun || !accessToken} variant="ghost" onClick={() => runService("status")}>
             Status
           </Button>
-          <Button disabled={loading || !canRun} variant="ghost" onClick={() => runTask(() => tauriApi.piNodeCsiHealth({ target, nexmonPort: Number(config.listen.split(":").pop() || "5500"), captureSeconds, serviceName }))}>
+          <Button disabled={loading || !canRun || !accessToken} variant="ghost" onClick={() => runTask(() => tauriApi.piNodeCsiHealth(accessToken!, { target, nexmonPort: Number(config.listen.split(":").pop() || "5500"), captureSeconds, serviceName }))}>
             <CheckCircle2 className="mr-2 h-4 w-4" />
             CSI Health
           </Button>

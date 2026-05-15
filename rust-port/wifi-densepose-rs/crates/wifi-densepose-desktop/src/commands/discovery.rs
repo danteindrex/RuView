@@ -1,5 +1,6 @@
 use std::net::{SocketAddr, UdpSocket};
 use std::time::Duration;
+use std::sync::Arc;
 
 use mdns_sd::{ServiceDaemon, ServiceEvent};
 use serde::Serialize;
@@ -8,6 +9,8 @@ use tokio::time::timeout;
 use tokio_serial::available_ports;
 use flume::RecvTimeoutError;
 
+use crate::commands::auth::AuthManager;
+use crate::commands::guard;
 use crate::domain::node::{
     Chip, DiscoveredNode, DiscoveryMethod, HealthStatus, MacAddress, MeshRole,
     NodeCapabilities, NodeRegistry,
@@ -32,9 +35,12 @@ const BEACON_MAGIC: &[u8] = b"RUVIEW_BEACON";
 /// 4. Deduplicate by MAC address and return merged results
 #[tauri::command]
 pub async fn discover_nodes(
+    access_token: String,
     timeout_ms: Option<u64>,
     state: State<'_, AppState>,
+    auth: State<'_, Arc<AuthManager>>,
 ) -> Result<Vec<DiscoveredNode>, String> {
+    guard::require_auth(&access_token, &auth)?;
     let timeout_duration = Duration::from_millis(timeout_ms.unwrap_or(3000));
 
     // Run mDNS and UDP discovery concurrently
@@ -275,7 +281,11 @@ fn parse_beacon_response(data: &[u8], addr: SocketAddr) -> Option<DiscoveredNode
 /// List available serial ports on this machine.
 /// Filters for known ESP32 USB-to-serial chips (CP2102, CH340, FTDI).
 #[tauri::command]
-pub async fn list_serial_ports() -> Result<Vec<SerialPortInfo>, String> {
+pub async fn list_serial_ports(
+    access_token: String,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<Vec<SerialPortInfo>, String> {
+    guard::require_auth(&access_token, &auth)?;
     tracing::info!("list_serial_ports called");
 
     let ports = match available_ports() {
@@ -338,7 +348,7 @@ pub async fn list_serial_ports() -> Result<Vec<SerialPortInfo>, String> {
 fn list_serial_ports_fallback() -> Result<Vec<SerialPortInfo>, String> {
     tracing::info!("Using fallback serial port listing");
 
-    let mut result = Vec::new();
+    let result = Vec::new();
 
     // List /dev/cu.usb* devices on macOS
     #[cfg(target_os = "macos")]
@@ -417,10 +427,13 @@ fn is_esp32_compatible(vid: u16, pid: u16) -> bool {
 /// The ESP32 firmware should accept: `wifi_config <ssid> <password>\n`
 #[tauri::command]
 pub async fn configure_esp32_wifi(
+    access_token: String,
     port: String,
     ssid: String,
     password: String,
+    auth: State<'_, Arc<AuthManager>>,
 ) -> Result<String, String> {
+    guard::require_auth(&access_token, &auth)?;
     use std::io::{Read, Write};
     use std::time::Duration;
 

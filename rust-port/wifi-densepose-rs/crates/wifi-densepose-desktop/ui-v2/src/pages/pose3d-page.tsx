@@ -1,9 +1,11 @@
 import React, { useMemo } from "react";
+import { ObservatoryHost } from "@/components/observatory/observatory-host";
 import type { ServerStatusResponse } from "@/types";
 
 interface Pose3DPageProps {
   status: ServerStatusResponse | null;
   onStatusRefresh: () => Promise<void>;
+  theme: "light" | "dark";
 }
 
 function buildWsUrl(status: ServerStatusResponse | null): string | null {
@@ -12,21 +14,12 @@ function buildWsUrl(status: ServerStatusResponse | null): string | null {
   return `ws://${host}:${status.ws_port}/ws/sensing`;
 }
 
-export const Pose3DPage: React.FC<Pose3DPageProps> = ({ status }) => {
-  const observatorySrc = useMemo(() => {
-    const wsUrl = buildWsUrl(status);
-    return wsUrl ? `/observatory.html?mode=live&wsUrl=${encodeURIComponent(wsUrl)}` : "/observatory.html?mode=live";
-  }, [status]);
+export const Pose3DPage: React.FC<Pose3DPageProps> = ({ status, theme }) => {
+  const wsUrl = useMemo(() => buildWsUrl(status), [status]);
 
   return (
-    <div className="overflow-hidden bg-black" style={{ height: "100%", minHeight: 720 }}>
-      <iframe
-        key={observatorySrc}
-        src={observatorySrc}
-        title="Wave Observatory"
-        className="border-0 bg-black"
-        style={{ width: "100%", height: "100%", display: "block" }}
-      />
+    <div className="h-full min-h-[720px] overflow-hidden rounded-none">
+      <ObservatoryHost mode="live" theme={theme} wsUrl={wsUrl} />
     </div>
   );
 };

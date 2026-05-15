@@ -44,7 +44,7 @@ sudo -E make install USE_VENDOR_CMD=1
 sudo setcap cap_net_admin+ep /usr/bin/nexutil
 
 # 8. Fetch the nexmon_csi repository
-cd $NEXMON_ROOT/patches/bcm43455c0/7_45_189 # it must be executed from this directory, as the scripts in the next step are built for this version. 
+cd $NEXMON_ROOT/patches/bcm43455c0/7_45_189 # it must be executed from this directory, as the scripts in the next step are built for this version.
 git clone --depth=1 https://github.com/seemoo-lab/nexmon_csi.git
 cd nexmon_csi
 
@@ -61,8 +61,8 @@ make -f Makefile.rpi install-firmware
 make: *** [Makefile.rpi:76: obj/console.o] Fehler 127
 
 # 10. Resume the remainder of the patch
-# NOTE: Running unmanage will take the wifi interface down. Thus, if you are connected to your pi via wifi and there are no other SSIDs it can connect to, conect it via ethenet, otherwise you will lose access to your pi unless you connect peripherals to it. 
-make -f Makefile.rpi unmanage 
+# NOTE: Running unmanage will take the wifi interface down. Thus, if you are connected to your pi via wifi and there are no other SSIDs it can connect to, conect it via ethenet, otherwise you will lose access to your pi unless you connect peripherals to it.
+make -f Makefile.rpi unmanage
 make -f Makefile.rpi reload-full
 
 # 11. Go to makecsiparams in nexmon_csi utils to generate and copy the config string you'll need for the next step.

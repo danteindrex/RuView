@@ -1,10 +1,15 @@
 use std::fs::File;
 use std::io::Read;
+use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::multipart::{Form, Part};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tauri::State;
+
+use crate::commands::auth::AuthManager;
+use crate::commands::guard;
 
 /// WASM management port on ESP32 nodes.
 const WASM_PORT: u16 = 8033;
@@ -14,7 +19,12 @@ const WASM_TIMEOUT_SECS: u64 = 30;
 
 /// List WASM modules loaded on a specific node.
 #[tauri::command]
-pub async fn wasm_list(node_ip: String) -> Result<Vec<WasmModuleInfo>, String> {
+pub async fn wasm_list(
+    access_token: String,
+    node_ip: String,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<Vec<WasmModuleInfo>, String> {
+    guard::require_auth(&access_token, &auth)?;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(WASM_TIMEOUT_SECS))
         .build()
@@ -44,11 +54,14 @@ pub async fn wasm_list(node_ip: String) -> Result<Vec<WasmModuleInfo>, String> {
 /// 4. Return assigned module ID
 #[tauri::command]
 pub async fn wasm_upload(
+    access_token: String,
     node_ip: String,
     wasm_path: String,
     module_name: Option<String>,
     auto_start: Option<bool>,
+    auth: State<'_, Arc<AuthManager>>,
 ) -> Result<WasmUploadResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     // Read WASM file
     let mut file = File::open(&wasm_path)
         .map_err(|e| format!("Cannot read WASM file: {}", e))?;
@@ -133,10 +146,13 @@ pub async fn wasm_upload(
 /// - "restart": Stop then start
 #[tauri::command]
 pub async fn wasm_control(
+    access_token: String,
     node_ip: String,
     module_id: String,
     action: String,
+    auth: State<'_, Arc<AuthManager>>,
 ) -> Result<WasmControlResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     // Validate action
     let valid_actions = ["start", "stop", "unload", "restart"];
     if !valid_actions.contains(&action.as_str()) {
@@ -180,9 +196,12 @@ pub async fn wasm_control(
 /// Get detailed info about a specific WASM module.
 #[tauri::command]
 pub async fn wasm_info(
+    access_token: String,
     node_ip: String,
     module_id: String,
+    auth: State<'_, Arc<AuthManager>>,
 ) -> Result<WasmModuleDetail, String> {
+    guard::require_auth(&access_token, &auth)?;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(WASM_TIMEOUT_SECS))
         .build()
@@ -205,7 +224,12 @@ pub async fn wasm_info(
 
 /// Get WASM runtime statistics from a node.
 #[tauri::command]
-pub async fn wasm_stats(node_ip: String) -> Result<WasmRuntimeStats, String> {
+pub async fn wasm_stats(
+    access_token: String,
+    node_ip: String,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<WasmRuntimeStats, String> {
+    guard::require_auth(&access_token, &auth)?;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(WASM_TIMEOUT_SECS))
         .build()
@@ -228,7 +252,12 @@ pub async fn wasm_stats(node_ip: String) -> Result<WasmRuntimeStats, String> {
 
 /// Check if node supports WASM modules.
 #[tauri::command]
-pub async fn check_wasm_support(node_ip: String) -> Result<WasmSupportInfo, String> {
+pub async fn check_wasm_support(
+    access_token: String,
+    node_ip: String,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<WasmSupportInfo, String> {
+    guard::require_auth(&access_token, &auth)?;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(5))
         .build()

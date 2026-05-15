@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>RuView WiFi-DensePose Knowledge Graph</title>
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 20px; background: #1a1a2e; color: #eee; }
+        h1 { color: #00d4ff; margin-bottom: 5px; }
+        .subtitle { color: #888; margin-bottom: 20px; }
+        #graph { border: 1px solid #333; border-radius: 8px; background: #16213e; height: 600px; }
+        .legend { display: flex; flex-wrap: wrap; gap: 15px; margin: 20px 0; padding: 15px; background: #16213e; border-radius: 8px; }
+        .legend-item { display: flex; align-items: center; gap: 8px; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; }
+        .stats { display: flex; gap: 30px; margin: 15px 0; }
+        .stat { background: #16213e; padding: 15px 25px; border-radius: 8px; text-align: center; }
+        .stat-value { font-size: 28px; font-weight: bold; color: #00d4ff; }
+        .stat-label { color: #888; font-size: 12px; text-transform: uppercase; }
+        .god-nodes { background: #16213e; padding: 15px; border-radius: 8px; margin: 15px 0; }
+        .god-nodes h3 { color: #00d4ff; margin: 0 0 10px 0; }
+        .god-list { display: flex; flex-wrap: wrap; gap: 10px; }
+        .god-chip { background: #0f3460; padding: 8px 15px; border-radius: 20px; font-size: 14px; }
+        .community { background: #16213e; padding: 15px; border-radius: 8px; margin: 10px 0; }
+        .community h4 { color: #00d4ff; margin: 0 0 8px 0; }
+        .community-items { display: flex; flex-wrap: wrap; gap: 8px; }
+        .comm-chip { background: #0f3460; padding: 5px 12px; border-radius: 15px; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <h1>RuView WiFi-DensePose Knowledge Graph</h1>
+    <p class="subtitle">Privacy-first WiFi sensing platform using CSI for human pose estimation</p>
+
+    <div class="stats">
+        <div class="stat"><div class="stat-value">49</div><div class="stat-label">Concepts</div></div>
+        <div class="stat"><div class="stat-value">47</div><div class="stat-label">Relationships</div></div>
+        <div class="stat"><div class="stat-value">7</div><div class="stat-label">Hyperedges</div></div>
+        <div class="stat"><div class="stat-value">9</div><div class="stat-label">Communities</div></div>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><div class="dot" style="background:#00d4ff"></div>Signal Processing</div>
+        <div class="legend-item"><div class="dot" style="background:#e94560"></div>Neural Network</div>
+        <div class="legend-item"><div class="dot" style="background:#7b2cbf"></div>RuvSense Pipeline</div>
+        <div class="legend-item"><div class="dot" style="background:#2d6a4f"></div>Domain Adaptation</div>
+        <div class="legend-item"><div class="dot" style="background:#ff9f1c"></div>Vital Signs</div>
+        <div class="legend-item"><div class="dot" style="background:#9d4edd"></div>RuVector</div>
+        <div class="legend-item"><div class="dot" style="background:#4895ef"></div>Firmware</div>
+        <div class="legend-item"><div class="dot" style="background:#f72585"></div>ML Infrastructure</div>
+    </div>
+
+    <div id="graph"></div>
+
+    <div class="god-nodes">
+        <h3>Most Connected Concepts (God Nodes)</h3>
+        <div class="god-list">
+            <span class="god-chip">RuvSense Pipeline</span>
+            <span class="god-chip">Body Velocity Profile (BVP)</span>
+            <span class="god-chip">WiFlow Architecture</span>
+            <span class="god-chip">MERIDIAN Architecture</span>
+            <span class="god-chip">Fresnel Zone Model</span>
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
+        <div class="community">
+            <h4 style="color:#e94560">Neural Network (WiFlow)</h4>
+            <div class="community-items">
+                <span class="comm-chip">WiFlow Architecture</span>
+                <span class="comm-chip">TCN with Dilated Convolutions</span>
+                <span class="comm-chip">Axial Self-Attention</span>
+                <span class="comm-chip">DensePose Head</span>
+                <span class="comm-chip">COCO-17 Keypoints</span>
+            </div>
+        </div>
+        <div class="community">
+            <h4 style="color:#7b2cbf">RuvSense Pipeline</h4>
+            <div class="community-items">
+                <span class="comm-chip">RuvSense Pipeline</span>
+                <span class="comm-chip">Multiband Fusion</span>
+                <span class="comm-chip">Phase Aligner</span>
+                <span class="comm-chip">Coherence Scoring</span>
+                <span class="comm-chip">Coherence Gate</span>
+                <span class="comm-chip">Pose Tracker</span>
+                <span class="comm-chip">Phase Coherence Weighting</span>
+            </div>
+        </div>
+        <div class="community">
+            <h4 style="color:#2d6a4f">MERIDIAN Adaptation</h4>
+            <div class="community-items">
+                <span class="comm-chip">MERIDIAN Architecture</span>
+                <span class="comm-chip">FiLM Conditioning</span>
+                <span class="comm-chip">Gradient Reversal Layer</span>
+                <span class="comm-chip">DomainFactorizer</span>
+            </div>
+        </div>
+        <div class="community">
+            <h4 style="color:#ff9f1c">Vital Sign Extraction</h4>
+            <div class="community-items">
+                <span class="comm-chip">IIR Bandpass Filtering</span>
+                <span class="comm-chip">Zero-Crossing Analysis</span>
+                <span class="comm-chip">VitalAnomalyDetector</span>
+            </div>
+        </div>
+        <div class="community">
+            <h4 style="color:#9d4edd">RuVector Crates</h4>
+            <div class="community-items">
+                <span class="comm-chip">RuVector Attention</span>
+                <span class="comm-chip">RuVector MinCut</span>
+                <span class="comm-chip">RuVector Solver</span>
+                <span class="comm-chip">RuVector Temporal Tensor</span>
+                <span class="comm-chip">Neumann Solver</span>
+                <span class="comm-chip">CrossViewpointAttention</span>
+                <span class="comm-chip">Neumann Series Solver</span>
+            </div>
+        </div>
+        <div class="community">
+            <h4 style="color:#4895ef">ESP32 Firmware</h4>
+            <div class="community-items">
+                <span class="comm-chip">ESP32-S3 CSI</span>
+                <span class="comm-chip">TDM Mesh Protocol</span>
+                <span class="comm-chip">Processing Tiers</span>
+                <span class="comm-chip">WASM Runtime</span>
+            </div>
+        </div>
+        <div class="community">
+            <h4 style="color:#00d4ff">Signal Processing</h4>
+            <div class="community-items">
+                <span class="comm-chip">SpotFi Phase Cleaning</span>
+                <span class="comm-chip">Hampel Filter</span>
+                <span class="comm-chip">Fresnel Zone Model</span>
+                <span class="comm-chip">Body Velocity Profile (BVP)</span>
+                <span class="comm-chip">Phase Unwrapping</span>
+            </div>
+        </div>
+        <div class="community">
+            <h4 style="color:#f72585">ML Infrastructure</h4>
+            <div class="community-items">
+                <span class="comm-chip">AETHER Contrastive Embedding</span>
+                <span class="comm-chip">HNSW Vector Search</span>
+                <span class="comm-chip">SONA Self-Optimizing</span>
+                <span class="comm-chip">Witness Chains</span>
+            </div>
+        </div>
+        <div class="community">
+            <h4 style="color:#666">Core Types</h4>
+            <div class="community-items">
+                <span class="comm-chip">CSI Spectrogram</span>
+                <span class="comm-chip">Conjugate Multiplication</span>
+                <span class="comm-chip">Asymmetric Conv Encoder</span>
+                <span class="comm-chip">Multistatic Fusion</span>
+                <span class="comm-chip">Autocorrelation Peak Detection</span>
+                <span class="comm-chip">Adaptive Controller</span>
+                <span class="comm-chip">Kalman Pose Tracking</span>
+                <span class="comm-chip">GeometricBias</span>
+                <span class="comm-chip">+2 more</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    var nodes = new vis.DataSet([{"id": "n001", "label": "SpotFi Phase Cleaning", "group": "Signal Processing"}, {"id": "n002", "label": "Hampel Filter", "group": "Signal Processing"}, {"id": "n003", "label": "Fresnel Zone Model", "group": "Signal Processing"}, {"id": "n004", "label": "Body Velocity Profile (BVP)", "group": "Signal Processing"}, {"id": "n005", "label": "CSI Spectrogram", "group": "Core Types"}, {"id": "n006", "label": "Phase Unwrapping", "group": "Signal Processing"}, {"id": "n007", "label": "Conjugate Multiplication", "group": "Core Types"}, {"id": "n008", "label": "RuVector Attention", "group": "RuVector Integration"}, {"id": "n009", "label": "RuVector MinCut", "group": "RuVector Integration"}, {"id": "n010", "label": "RuVector Solver", "group": "RuVector Integration"}, {"id": "n011", "label": "RuVector Temporal Tensor", "group": "RuVector Integration"}, {"id": "n012", "label": "WiFlow Architecture", "group": "Neural Architecture"}, {"id": "n013", "label": "TCN with Dilated Convolutions", "group": "Neural Architecture"}, {"id": "n014", "label": "Axial Self-Attention", "group": "Neural Architecture"}, {"id": "n015", "label": "Asymmetric Conv Encoder", "group": "Core Types"}, {"id": "n016", "label": "DensePose Head", "group": "Neural Architecture"}, {"id": "n017", "label": "COCO-17 Keypoints", "group": "Neural Architecture"}, {"id": "n018", "label": "AETHER Contrastive Embedding", "group": "ML Infrastructure"}, {"id": "n019", "label": "MERIDIAN Architecture", "group": "Domain Adaptation"}, {"id": "n020", "label": "FiLM Conditioning", "group": "Domain Adaptation"}, {"id": "n021", "label": "Gradient Reversal Layer", "group": "Domain Adaptation"}, {"id": "n022", "label": "DomainFactorizer", "group": "Domain Adaptation"}, {"id": "n023", "label": "RuvSense Pipeline", "group": "Multistatic Sensing"}, {"id": "n024", "label": "Multiband Fusion", "group": "Multistatic Sensing"}, {"id": "n025", "label": "Phase Aligner", "group": "Multistatic Sensing"}, {"id": "n026", "label": "Multistatic Fusion", "group": "Core Types"}, {"id": "n027", "label": "Coherence Scoring", "group": "Multistatic Sensing"}, {"id": "n028", "label": "Coherence Gate", "group": "Multistatic Sensing"}, {"id": "n029", "label": "Pose Tracker", "group": "Multistatic Sensing"}, {"id": "n030", "label": "IIR Bandpass Filtering", "group": "Vital Signs"}, {"id": "n031", "label": "Zero-Crossing Analysis", "group": "Vital Signs"}, {"id": "n032", "label": "Autocorrelation Peak Detection", "group": "Core Types"}, {"id": "n033", "label": "Phase Coherence Weighting", "group": "Multistatic Sensing"}, {"id": "n034", "label": "VitalAnomalyDetector", "group": "Vital Signs"}, {"id": "n035", "label": "ESP32-S3 CSI", "group": "Firmware"}, {"id": "n036", "label": "TDM Mesh Protocol", "group": "Firmware"}, {"id": "n037", "label": "Processing Tiers", "group": "Firmware"}, {"id": "n038", "label": "WASM Runtime", "group": "Firmware"}, {"id": "n039", "label": "Adaptive Controller", "group": "Core Types"}, {"id": "n040", "label": "Neumann Solver", "group": "RuVector Integration"}, {"id": "n041", "label": "Kalman Pose Tracking", "group": "Core Types"}, {"id": "n042", "label": "HNSW Vector Search", "group": "ML Infrastructure"}, {"id": "n043", "label": "SONA Self-Optimizing", "group": "ML Infrastructure"}, {"id": "n044", "label": "Witness Chains", "group": "ML Infrastructure"}, {"id": "n045", "label": "CrossViewpointAttention", "group": "RuVector Integration"}, {"id": "n046", "label": "GeometricBias", "group": "Core Types"}, {"id": "n047", "label": "Neumann Series Solver", "group": "RuVector Integration"}, {"id": "n048", "label": "Welford Statistics", "group": "Core Types"}, {"id": "n049", "label": "CompressedCsiBuffer", "group": "Core Types"}]);
+
+    var edges = new vis.DataSet([{"from": "n001", "to": "n006", "arrows": "to", "label": "implements"}, {"from": "n002", "to": "n005", "arrows": "to", "label": "implements"}, {"from": "n003", "to": "n004", "arrows": "to", "label": "conceptually_related_to"}, {"from": "n005", "to": "n004", "arrows": "to", "label": "produces"}, {"from": "n007", "to": "n001", "arrows": "to", "label": "implements"}, {"from": "n008", "to": "n004", "arrows": "to", "label": "uses"}, {"from": "n009", "to": "n006", "arrows": "to", "label": "uses"}, {"from": "n010", "to": "n003", "arrows": "to", "label": "uses"}, {"from": "n011", "to": "n004", "arrows": "to", "label": "uses"}, {"from": "n012", "to": "n013", "arrows": "to", "label": "implements"}, {"from": "n012", "to": "n014", "arrows": "to", "label": "implements"}, {"from": "n012", "to": "n015", "arrows": "to", "label": "implements"}, {"from": "n016", "to": "n017", "arrows": "to", "label": "conceptually_related_to"}, {"from": "n013", "to": "n014", "arrows": "to", "label": "conceptually_related_to"}, {"from": "n018", "to": "n029", "arrows": "to", "label": "references"}, {"from": "n019", "to": "n020", "arrows": "to", "label": "implements"}, {"from": "n019", "to": "n021", "arrows": "to", "label": "implements"}, {"from": "n019", "to": "n022", "arrows": "to", "label": "implements"}, {"from": "n022", "to": "n021", "arrows": "to", "label": "uses"}, {"from": "n023", "to": "n024", "arrows": "to", "label": "implements"}, {"from": "n023", "to": "n025", "arrows": "to", "label": "implements"}, {"from": "n023", "to": "n026", "arrows": "to", "label": "implements"}, {"from": "n023", "to": "n027", "arrows": "to", "label": "implements"}, {"from": "n023", "to": "n028", "arrows": "to", "label": "implements"}, {"from": "n023", "to": "n029", "arrows": "to", "label": "implements"}, {"from": "n029", "to": "n041", "arrows": "to", "label": "implements"}, {"from": "n028", "to": "n027", "arrows": "to", "label": "feeds_into"}, {"from": "n027", "to": "n028", "arrows": "to", "label": "decides"}, {"from": "n030", "to": "n031", "arrows": "to", "label": "uses"}, {"from": "n030", "to": "n032", "arrows": "to", "label": "uses"}, {"from": "n032", "to": "n033", "arrows": "to", "label": "uses"}, {"from": "n034", "to": "n031", "arrows": "to", "label": "uses"}, {"from": "n034", "to": "n032", "arrows": "to", "label": "uses"}, {"from": "n048", "to": "n034", "arrows": "to", "label": "implements"}, {"from": "n012", "to": "n018", "arrows": "to", "label": "conceptually_related_to"}, {"from": "n023", "to": "n045", "arrows": "to", "label": "conceptually_related_to"}, {"from": "n045", "to": "n046", "arrows": "to", "label": "uses"}, {"from": "n019", "to": "n043", "arrows": "to", "label": "conceptually_related_to"}, {"from": "n042", "to": "n018", "arrows": "to", "label": "conceptually_related_to"}, {"from": "n044", "to": "n042", "arrows": "to", "label": "conceptually_related_to"}, {"from": "n035", "to": "n036", "arrows": "to", "label": "implements"}, {"from": "n035", "to": "n037", "arrows": "to", "label": "part_of"}, {"from": "n037", "to": "n038", "arrows": "to", "label": "conceptually_related_to"}, {"from": "n037", "to": "n039", "arrows": "to", "label": "feeds_into"}, {"from": "n040", "to": "n003", "arrows": "to", "label": "implements"}, {"from": "n040", "to": "n047", "arrows": "to", "label": "same_as"}, {"from": "n011", "to": "n049", "arrows": "to", "label": "implements"}]);
+
+    var container = document.getElementById('graph');
+    var data = { nodes: nodes, edges: edges };
+    var options = {
+        nodes: {
+            shape: 'dot',
+            size: 16,
+            font: { color: '#eee', size: 12 },
+            borderWidth: 2
+        },
+        edges: {
+            width: 1.5,
+            color: { color: '#444', highlight: '#00d4ff' },
+            smooth: { type: 'continuous' }
+        },
+        physics: {
+            stabilization: { iterations: 100 },
+            barnesHut: { gravitationalConstant: -2000, centralGravity: 0.3, springLength: 150 }
+        },
+        groups: {
+            'Signal Processing': { color: { background: '#00d4ff', border: '#00d4ff' } },
+            'Neural Architecture': { color: { background: '#e94560', border: '#e94560' } },
+            'Multistatic Sensing': { color: { background: '#7b2cbf', border: '#7b2cbf' } },
+            'Domain Adaptation': { color: { background: '#2d6a4f', border: '#2d6a4f' } },
+            'Vital Signs': { color: { background: '#ff9f1c', border: '#ff9f1c' } },
+            'RuVector Integration': { color: { background: '#9d4edd', border: '#9d4edd' } },
+            'Firmware': { color: { background: '#4895ef', border: '#4895ef' } },
+            'ML Infrastructure': { color: { background: '#f72585', border: '#f72585' } },
+            'Core Types': { color: { background: '#666', border: '#666' } }
+        }
+    };
+    var network = new vis.Network(container, data, options);
+    </script>
+</body>
+</html>

@@ -79,7 +79,7 @@ export class PostProcessing {
       new THREE.Vector2(size.x, size.y),
       0.08,  // strength — subtle glow, overridden by settings
       0.2,   // radius
-      0.6    // threshold
+      0.9    // threshold — higher = only brightest areas glow
     );
     this.composer.addPass(this._bloomPass);
 
@@ -88,6 +88,7 @@ export class PostProcessing {
     this.composer.addPass(this._vignettePass);
 
     this._bloomEnabled = true;
+    this._lightMode = false;
   }
 
   update(elapsed) {
@@ -104,19 +105,29 @@ export class PostProcessing {
   }
 
   setQuality(level) {
+    const lm = this._lightMode;
     if (level === 0) {
       this._bloomPass.strength = 0;
       this._vignettePass.uniforms.uChromaticStrength.value = 0;
       this._vignettePass.uniforms.uGrainStrength.value = 0;
     } else if (level === 1) {
-      this._bloomPass.strength = 0.6;
+      this._bloomPass.strength = lm ? 0.1 : 0.6;
+      this._bloomPass.threshold = lm ? 0.92 : 0.6;
       this._vignettePass.uniforms.uChromaticStrength.value = 0.001;
       this._vignettePass.uniforms.uGrainStrength.value = 0.02;
     } else {
-      this._bloomPass.strength = 1.0;
+      this._bloomPass.strength = lm ? 0.15 : 1.0;
+      this._bloomPass.threshold = lm ? 0.92 : 0.6;
       this._vignettePass.uniforms.uChromaticStrength.value = 0.0015;
       this._vignettePass.uniforms.uGrainStrength.value = 0.03;
     }
+  }
+
+  setTheme(lightMode) {
+    this._lightMode = lightMode;
+    this._bloomPass.strength = lightMode ? 0.1 : 1.0;
+    this._bloomPass.threshold = lightMode ? 0.94 : 0.6;
+    this._vignettePass.uniforms.uVignetteStrength.value = lightMode ? 0.15 : 0.5;
   }
 
   dispose() {

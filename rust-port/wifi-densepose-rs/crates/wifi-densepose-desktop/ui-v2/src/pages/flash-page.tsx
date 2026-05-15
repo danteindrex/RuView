@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAuthStore } from "@/lib/auth-store";
 import { open } from "@tauri-apps/plugin-dialog";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { tauriApi } from "@/lib/tauri-api";
@@ -13,6 +14,7 @@ import { JsonViewer } from "@/components/layout/json-viewer";
 import type { ChipInfo, EspflashInfo, FlashProgress, FlashResult, VerifyResult } from "@/types";
 
 export function FlashPage() {
+  const { accessToken } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [port, setPort] = useState("");
   const [firmwarePath, setFirmwarePath] = useState("");
@@ -28,7 +30,11 @@ export function FlashPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const [tool, supported] = await Promise.all([tauriApi.checkEspflash(), tauriApi.supportedChips()]);
+        if (!accessToken) return;
+        const [tool, supported] = await Promise.all([
+          tauriApi.checkEspflash(accessToken),
+          tauriApi.supportedChips(accessToken),
+        ]);
         setEspflash(tool);
         setChips(supported);
         if (supported.length > 0) {
@@ -58,14 +64,17 @@ export function FlashPage() {
     try {
       const poll = setInterval(async () => {
         try {
-          const current = await tauriApi.flashProgress();
-          setProgress(current);
+          if (accessToken) {
+            const current = await tauriApi.flashProgress(accessToken);
+            setProgress(current);
+          }
         } catch {
           // ignore background poll failures while command runs
         }
       }, 800);
 
-      const flashResult = await tauriApi.flashFirmware({
+      if (!accessToken) return;
+      const flashResult = await tauriApi.flashFirmware(accessToken, {
         port,
         firmwarePath,
         chip,
@@ -73,7 +82,7 @@ export function FlashPage() {
       });
       clearInterval(poll);
       setResult(flashResult);
-      const finalProgress = await tauriApi.flashProgress().catch(() => null);
+      const finalProgress = accessToken ? await tauriApi.flashProgress(accessToken).catch(() => null) : null;
       setProgress(finalProgress);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -87,7 +96,8 @@ export function FlashPage() {
     setError(null);
     setVerifyResult(null);
     try {
-      const check = await tauriApi.verifyFirmware({ port, firmwarePath, chip });
+      if (!accessToken) return;
+      const check = await tauriApi.verifyFirmware(accessToken, { port, firmwarePath, chip });
       setVerifyResult(check);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

@@ -1,8 +1,12 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tauri::State;
 
+use crate::commands::auth::AuthManager;
+use crate::commands::guard;
 use crate::domain::config::ProvisioningConfig;
 
 /// Serial baud rate for provisioning communication.
@@ -28,9 +32,12 @@ const PROVISION_MAGIC: &[u8] = b"RUVIEW_NVS";
 /// 5. Wait for checksum confirmation
 #[tauri::command]
 pub async fn provision_node(
+    access_token: String,
     port: String,
     config: ProvisioningConfig,
+    auth: State<'_, Arc<AuthManager>>,
 ) -> Result<ProvisionResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     // Validate configuration
     config.validate()?;
 
@@ -118,7 +125,12 @@ pub async fn provision_node(
 
 /// Read current NVS configuration from a connected ESP32.
 #[tauri::command]
-pub async fn read_nvs(port: String) -> Result<ProvisioningConfig, String> {
+pub async fn read_nvs(
+    access_token: String,
+    port: String,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<ProvisioningConfig, String> {
+    guard::require_auth(&access_token, &auth)?;
     // Open serial port
     let port_settings = tokio_serial::SerialPortBuilderExt::open_native_async(
         tokio_serial::new(&port, PROVISION_BAUD)
@@ -161,7 +173,12 @@ pub async fn read_nvs(port: String) -> Result<ProvisioningConfig, String> {
 
 /// Erase NVS partition on a connected ESP32.
 #[tauri::command]
-pub async fn erase_nvs(port: String) -> Result<ProvisionResult, String> {
+pub async fn erase_nvs(
+    access_token: String,
+    port: String,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<ProvisionResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     // Open serial port
     let port_settings = tokio_serial::SerialPortBuilderExt::open_native_async(
         tokio_serial::new(&port, PROVISION_BAUD)
@@ -198,7 +215,12 @@ pub async fn erase_nvs(port: String) -> Result<ProvisionResult, String> {
 
 /// Validate provisioning configuration without applying.
 #[tauri::command]
-pub async fn validate_config(config: ProvisioningConfig) -> Result<ValidationResult, String> {
+pub async fn validate_config(
+    access_token: String,
+    config: ProvisioningConfig,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<ValidationResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     match config.validate() {
         Ok(()) => {
             let nvs_data = serialize_nvs_config(&config)?;
@@ -219,9 +241,12 @@ pub async fn validate_config(config: ProvisioningConfig) -> Result<ValidationRes
 /// Generate mesh provisioning configs for multiple nodes.
 #[tauri::command]
 pub async fn generate_mesh_configs(
+    access_token: String,
     base_config: ProvisioningConfig,
     node_count: u8,
+    auth: State<'_, Arc<AuthManager>>,
 ) -> Result<Vec<MeshNodeConfig>, String> {
+    guard::require_auth(&access_token, &auth)?;
     if node_count == 0 || node_count > 32 {
         return Err("Node count must be 1-32".into());
     }

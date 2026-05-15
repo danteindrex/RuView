@@ -82,42 +82,61 @@ export class BodyModel {
   }
 
   _createMaterials() {
-    // Confidence-driven color: cold blue (low) -> warm orange (high)
-    const jointMat = new THREE.MeshPhongMaterial({
+    // Enhanced PBR-style materials with better reflections
+    
+    // Joint material - metallic blue with glow
+    const jointMat = new THREE.MeshStandardMaterial({
       color: 0x00aaff,
       emissive: 0x003366,
-      emissiveIntensity: 0.3,
-      shininess: 60,
+      emissiveIntensity: 0.4,
+      metalness: 0.7,
+      roughness: 0.2,
       transparent: true,
-      opacity: 0.9
+      opacity: 0.95
     });
 
-    const limbMat = new THREE.MeshPhongMaterial({
+    // Limb material - semi-metallic
+    const limbMat = new THREE.MeshStandardMaterial({
       color: 0x0088dd,
       emissive: 0x002244,
-      emissiveIntensity: 0.2,
-      shininess: 40,
-      transparent: true,
-      opacity: 0.85
-    });
-
-    const headMat = new THREE.MeshPhongMaterial({
-      color: 0x00ccff,
-      emissive: 0x004466,
-      emissiveIntensity: 0.4,
-      shininess: 80,
+      emissiveIntensity: 0.3,
+      metalness: 0.6,
+      roughness: 0.25,
       transparent: true,
       opacity: 0.9
     });
 
+    // Head material - brighter glow
+    const headMat = new THREE.MeshStandardMaterial({
+      color: 0x00ccff,
+      emissive: 0x004466,
+      emissiveIntensity: 0.5,
+      metalness: 0.5,
+      roughness: 0.15,
+      transparent: true,
+      opacity: 0.95
+    });
+
+    // Bone lines - enhanced glow
     const boneMat = new THREE.LineBasicMaterial({
       color: 0x00ffcc,
       transparent: true,
-      opacity: 0.6,
+      opacity: 0.8,
       linewidth: 2
     });
 
-    return { joint: jointMat, limb: limbMat, head: headMat, bone: boneMat };
+    // Part glow material for DensePose
+    const partGlowMat = new THREE.MeshStandardMaterial({
+      color: 0x00ff88,
+      emissive: 0x00ff88,
+      emissiveIntensity: 0.6,
+      metalness: 0.3,
+      roughness: 0.4,
+      transparent: true,
+      opacity: 0.7
+    });
+
+    return { joint: jointMat, limb: limbMat, head: headMat, bone: boneMat, partGlow: partGlowMat };
   }
 
   _buildBody() {

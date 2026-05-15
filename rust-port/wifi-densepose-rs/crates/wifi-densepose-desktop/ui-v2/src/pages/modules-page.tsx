@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAuthStore } from "@/lib/auth-store";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Loader2 } from "lucide-react";
 import { tauriApi } from "@/lib/tauri-api";
@@ -12,6 +13,7 @@ import { JsonViewer } from "@/components/layout/json-viewer";
 import type { WasmModuleDetail, WasmModuleInfo, WasmRuntimeStats, WasmSupportInfo, WasmUploadResult } from "@/types";
 
 export function ModulesPage() {
+  const { accessToken } = useAuthStore();
   const [nodeIp, setNodeIp] = useState("");
   const [moduleId, setModuleId] = useState("");
   const [action, setAction] = useState("start");
@@ -39,10 +41,11 @@ export function ModulesPage() {
     setLoading(true);
     setError(null);
     try {
+      if (!accessToken) return;
       const [moduleList, runtimeStats, supportInfo] = await Promise.all([
-        tauriApi.wasmList(nodeIp),
-        tauriApi.wasmStats(nodeIp),
-        tauriApi.checkWasmSupport(nodeIp),
+        tauriApi.wasmList(accessToken, nodeIp),
+        tauriApi.wasmStats(accessToken, nodeIp),
+        tauriApi.checkWasmSupport(accessToken, nodeIp),
       ]);
       setModules(moduleList);
       setStats(runtimeStats);
@@ -59,7 +62,8 @@ export function ModulesPage() {
     setError(null);
     setUploadResult(null);
     try {
-      const result = await tauriApi.wasmUpload({
+      if (!accessToken) return;
+      const result = await tauriApi.wasmUpload(accessToken, {
         nodeIp,
         wasmPath,
         moduleName: moduleName || undefined,
@@ -78,7 +82,8 @@ export function ModulesPage() {
     setLoading(true);
     setError(null);
     try {
-      await tauriApi.wasmControl({ nodeIp, moduleId, action });
+      if (!accessToken) return;
+      await tauriApi.wasmControl(accessToken, { nodeIp, moduleId, action });
       await loadRuntime();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -92,7 +97,8 @@ export function ModulesPage() {
     setError(null);
     setDetails(null);
     try {
-      const info = await tauriApi.wasmInfo({ nodeIp, moduleId });
+      if (!accessToken) return;
+      const info = await tauriApi.wasmInfo(accessToken, { nodeIp, moduleId });
       setDetails(info);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

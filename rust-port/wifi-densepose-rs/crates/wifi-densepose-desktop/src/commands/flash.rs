@@ -1,10 +1,13 @@
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, State};
 
+use crate::commands::auth::AuthManager;
+use crate::commands::guard;
 use crate::state::AppState;
 
 /// Flash firmware binary to an ESP32 via serial port.
@@ -19,12 +22,15 @@ use crate::state::AppState;
 /// * `baud` - Optional baud rate (default: 921600)
 #[tauri::command]
 pub async fn flash_firmware(
+    access_token: String,
     app: AppHandle,
     port: String,
     firmware_path: String,
     chip: Option<String>,
     baud: Option<u32>,
+    auth: State<'_, Arc<AuthManager>>,
 ) -> Result<FlashResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     let start_time = std::time::Instant::now();
 
     // Validate firmware file exists
@@ -156,7 +162,12 @@ pub async fn flash_firmware(
 /// Get current flash progress (for polling-based approach).
 /// Prefer using Tauri events instead.
 #[tauri::command]
-pub async fn flash_progress(state: State<'_, AppState>) -> Result<FlashProgress, String> {
+pub async fn flash_progress(
+    access_token: String,
+    state: State<'_, AppState>,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<FlashProgress, String> {
+    guard::require_auth(&access_token, &auth)?;
     let flash = state.flash.lock().map_err(|e| e.to_string())?;
 
     Ok(FlashProgress {
@@ -171,10 +182,13 @@ pub async fn flash_progress(state: State<'_, AppState>) -> Result<FlashProgress,
 /// Verify firmware on device by reading back and comparing hash.
 #[tauri::command]
 pub async fn verify_firmware(
+    access_token: String,
     _port: String,
     firmware_path: String,
     _chip: Option<String>,
+    auth: State<'_, Arc<AuthManager>>,
 ) -> Result<VerifyResult, String> {
+    guard::require_auth(&access_token, &auth)?;
     // Calculate expected hash
     let expected_hash = calculate_sha256(&firmware_path)?;
 
@@ -192,7 +206,11 @@ pub async fn verify_firmware(
 
 /// Check if espflash is installed and get version.
 #[tauri::command]
-pub async fn check_espflash() -> Result<EspflashInfo, String> {
+pub async fn check_espflash(
+    access_token: String,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<EspflashInfo, String> {
+    guard::require_auth(&access_token, &auth)?;
     let output = Command::new("espflash")
         .arg("--version")
         .output()
@@ -215,7 +233,11 @@ pub async fn check_espflash() -> Result<EspflashInfo, String> {
 
 /// Get supported chip types for flashing.
 #[tauri::command]
-pub async fn supported_chips() -> Result<Vec<ChipInfo>, String> {
+pub async fn supported_chips(
+    access_token: String,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<Vec<ChipInfo>, String> {
+    guard::require_auth(&access_token, &auth)?;
     Ok(vec![
         ChipInfo {
             id: "esp32".into(),

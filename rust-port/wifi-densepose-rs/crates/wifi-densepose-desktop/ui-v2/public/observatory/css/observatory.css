@@ -23,9 +23,38 @@
   --text-label:     rgba(232,236,224, 0.4);
 }
 
+.observatory-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 720px;
+  overflow: hidden;
+  background: var(--bg-deep);
+  isolation: isolate;
+}
+
+.observatory-root[data-theme="light"] {
+  --bg-deep: #edf4f7;
+  --bg-panel: rgba(255, 255, 255, 0.82);
+  --bg-panel-border: rgba(7, 127, 149, 0.18);
+  --green-glow: #0e8c6d;
+  --green-bright: #11a881;
+  --green-dim: #6bb7a2;
+  --amber: #b96f18;
+  --amber-dim: #d79a44;
+  --blue-signal: #0b7fa0;
+  --blue-dim: #b7ddeb;
+  --red-alert: #cf3341;
+  --red-heart: #d64862;
+  --text-primary: #0b1220;
+  --text-secondary: rgba(11, 18, 32, 0.64);
+  --text-label: rgba(11, 18, 32, 0.44);
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-body {
+body.wave-observatory-page,
+.observatory-root {
   background: var(--bg-deep);
   overflow: hidden;
   font-family: 'Inter', -apple-system, sans-serif;
@@ -34,14 +63,14 @@ body {
 }
 
 #observatory-canvas {
-  position: fixed;
+  position: absolute;
   top: 0; left: 0;
-  width: 100vw; height: 100vh;
+  width: 100%; height: 100%;
 }
 
 /* ---- HUD Overlay ---- */
 #hud {
-  position: fixed;
+  position: absolute;
   top: 0; left: 0;
   width: 100%; height: 100%;
   pointer-events: none;
@@ -180,6 +209,14 @@ body {
   box-shadow: 0 0 18px rgba(39, 220, 255, 0.15);
 }
 
+.observatory-root[data-theme="light"] #pose-fusion-link {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: rgba(11, 127, 160, 0.45);
+  color: var(--blue-signal);
+  text-shadow: none;
+  box-shadow: inset 0 0 0 1px rgba(11, 127, 160, 0.08);
+}
+
 /* ---- Data Panels ---- */
 .data-panel {
   position: absolute;
@@ -191,6 +228,7 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   pointer-events: auto;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.18);
 }
 
 .panel-header {
@@ -630,6 +668,24 @@ body {
 .settings-btn:hover {
   background: rgba(0, 216, 120, 0.15);
   border-color: var(--green-glow);
+}
+
+.observatory-root[data-theme="light"] .settings-dialog,
+.observatory-root[data-theme="light"] .setting-row select,
+.observatory-root[data-theme="light"] .setting-row input[type="text"] {
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text-primary);
+}
+
+.observatory-root[data-theme="light"] #scenario-quick-select option,
+.observatory-root[data-theme="light"] .setting-row select option {
+  background: #ffffff;
+  color: var(--text-primary);
+}
+
+.observatory-root[data-theme="light"] .setting-row select optgroup {
+  background: #f0f4f8;
+  color: var(--green-glow);
 }
 
 /* ---- Scenario Description ---- */
