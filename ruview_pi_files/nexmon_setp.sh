@@ -55,7 +55,7 @@ make -f Makefile.rpi install-firmware
 source $NEXMON_ROOT/setup_env.sh
 make -f Makefile.rpi install-firmware
 
-# 9.2 If after installing you get the following error, ensure you executed step 5.
+# 9.2 If after installing you get the following error, ensure you executed step 4.
   COMPILING src/console.c => obj/console.o (details: log/compiler.log)
 /bin/sh: 1: /home/pi/nexmon/buildtools/gcc-arm-none-eabi-5_4-2016q2-linux-armv7l/bin/arm-none-eabi-gcc: not found
 make: *** [Makefile.rpi:76: obj/console.o] Fehler 127
@@ -65,37 +65,47 @@ make: *** [Makefile.rpi:76: obj/console.o] Fehler 127
 make -f Makefile.rpi unmanage 
 make -f Makefile.rpi reload-full
 
-# 13. Go to makecsiparams in nexmon_csi utils to generate and copy the config string you'll need for the next step.
+# 11. Go to makecsiparams in nexmon_csi utils to generate and copy the config string you'll need for the next step.
 cd utils/makecsiparams
 make
 ./makecsiparams -c 36/80 -C 1 -N 1 # or whatever channel and bandwidth you want to use, it should output something like this and close, "KuABEQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
 cd ../..
 
-# 14. Configure the CSI extractor and activate monitor mode
+# 12. Configure the CSI extractor and activate monitor mode
 nexutil -s500 -b -l34 -v<your-config-generated-with-makecsiparams>
 nexutil -m1
 
-# 16. Demo capturing CSI UDPs using tcpdump
+# 13. Demo capturing CSI UDPs using tcpdump
 sudo tcpdump -i wlan0 dst port 5500
 
 # NOTE: To reset the firmware to its default, and give control back to network manager, run this:
 make -f Makefile.rpi restore-wifi
 
-# 17. Reboot the system
+# 14. Reboot the system
 sudo reboot
 
-# 18. After reboot, the wifi interface should be back up and working, but it will still be unmanaged. 
+# 15. After reboot, the wifi interface should be back up and working, but it will still be unmanaged. 
 # This means that you won't be able to connect to wifi networks using network manager, but you can still use the interface for monitor mode and CSI extraction. You can verify this by running:
 nmcli device status # this should show that wlan0 is unmanaged
 dmesg | grep "Firmware: BCM4345" # you'll notice that the firmware version is now 7_45_189. This is expected as it does the firmware swap for us
 
-# 19. In order to execute step 16 again, unblock from rfkill and get the interface up (it will still show that its down if you run sudo ip link show wlan0)
+# 16. In order to execute step 13 again, unblock from rfkill and get the interface up (it will still show that its down if you run sudo ip link show wlan0)
 rfkill list # confirm that indeed wlan0 is blocked
 sudo rfkill unblock all # this ensures that you can bring the wlan0 interface back up
 sudo ip link set wlan0 up
 
-# 20. Repeat steps 14 and 16 to start streaming CSI on the terminal again.
+# 17. Repeat steps 12 and 13 to start streaming CSI on the terminal again.
 
 # TODOs:
 # - A shell script that auto starts CSI capture and sstreaming on device startup, and another one to stop it and restore the firmware to its default state. 
 
+# EXTRAS
+# 1. If you want to capture CSI to a pcap file
+sudo tcpdump -i wlan0 dst port 5500 -vv -w ~/path/to/save/csi.pcap
+
+# Force sensing mode.
+docker run -p 3000:3000 -p 3001:3001 -p 5005:5005/udp -e CSI_SOURCE=esp32 --name ruview ruvnet/wifi-densepose:latest
+
+# on the pi
+sudo tcpdump -i wlan0 -U -w - 'dst port 5500' | python /tmp/nexmon_bridge.py
+RUST_LOG=debug ./target/release/wifi-densepose-pi-node-agent --listen 127.0.0.1:5501 --aggregator 100.113.88.28:5005 --node-base 1
