@@ -44,7 +44,8 @@ export function MedicalPage() {
   }, [latestUpdate]);
 
   const vitals = latestUpdate?.vital_signs;
-  const isFallDetected = latestUpdate?.classification?.fall_detected;
+  // Fall detection: posture field from Rust (not fall_detected which doesn't exist in WebSocket)
+  const isFallDetected = latestUpdate?.posture === "fallen" || latestUpdate?.posture === "lying";
 
   return (
     <div className="space-y-6 p-6 max-w-7xl mx-auto">

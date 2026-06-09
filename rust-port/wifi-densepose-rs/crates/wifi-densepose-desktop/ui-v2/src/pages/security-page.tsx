@@ -20,9 +20,15 @@ export function SecurityPage() {
   };
 
   const presence = latestUpdate?.classification?.presence;
-  const persons = latestUpdate?.estimated_persons ?? 0;
+  const persons = latestUpdate?.persons;
+  const estimatedCount = latestUpdate?.estimated_persons ?? 0;
+  const personCount = persons?.length ?? estimatedCount;
   const isBreach = settings?.security_armed && presence;
-  const isOverCapacity = persons > (settings?.crowd_threshold ?? 0);
+  const isOverCapacity = personCount > (settings?.crowd_threshold ?? 0);
+
+  // Intruder zone visualization - use first detected person's zone as primary
+  const primaryZone = persons && persons.length > 0 ? persons[0].zone : null;
+  const primaryPerson = persons && persons.length > 0 ? persons[0] : null;
 
   return (
     <div className="space-y-6 p-6 max-w-7xl mx-auto">
@@ -54,6 +60,45 @@ export function SecurityPage() {
         </div>
       )}
 
+      {/* Intruder Detail Panel - shows when breach detected */}
+      {isBreach && primaryPerson && (
+        <div className="bg-destructive/10 border border-destructive/30 p-4 rounded-xl">
+          <div className="flex items-center gap-3 mb-3">
+            <AlertCircle className="w-5 h-5 text-destructive" />
+            <h3 className="font-semibold text-destructive">Intruder Details</h3>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <p className="text-[10px] uppercase text-muted-foreground mb-1">Zone</p>
+              <p className="font-bold text-lg">{primaryZone ?? "Unknown"}</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase text-muted-foreground mb-1">Person ID</p>
+              <p className="font-bold text-lg">#{primaryPerson.id}</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase text-muted-foreground mb-1">Confidence</p>
+              <p className="font-bold text-lg">{(primaryPerson.confidence * 100).toFixed(0)}%</p>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase text-muted-foreground mb-1">Keypoints</p>
+              <p className="font-bold text-lg">{primaryPerson.keypoints?.length ?? 0}</p>
+            </div>
+          </div>
+          {primaryPerson.bbox && (
+            <div className="mt-3 pt-3 border-t border-destructive/20">
+              <p className="text-[10px] uppercase text-muted-foreground mb-2">Bounding Box</p>
+              <div className="flex gap-4 text-sm font-mono">
+                <span>X: {primaryPerson.bbox.x.toFixed(1)}</span>
+                <span>Y: {primaryPerson.bbox.y.toFixed(1)}</span>
+                <span>W: {primaryPerson.bbox.width.toFixed(1)}</span>
+                <span>H: {primaryPerson.bbox.height.toFixed(1)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Occupancy Card */}
         <Card className={isOverCapacity ? "border-amber-500 bg-amber-500/5" : ""}>
@@ -62,7 +107,7 @@ export function SecurityPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-bold">{persons}</span>
+              <span className="text-4xl font-bold">{personCount}</span>
               <span className="text-muted-foreground text-xs">/ {settings?.crowd_threshold} MAX</span>
             </div>
             <p className="text-[10px] text-muted-foreground mt-1 uppercase">Estimated persons in range</p>
@@ -70,7 +115,7 @@ export function SecurityPage() {
               <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
                 <div 
                   className={`h-full transition-all duration-1000 ${isOverCapacity ? "bg-amber-500" : "bg-primary"}`}
-                  style={{ width: `${Math.min(100, (persons / (settings?.crowd_threshold || 1)) * 100)}%` }}
+                  style={{ width: `${Math.min(100, (personCount / (settings?.crowd_threshold || 1)) * 100)}%` }}
                 />
               </div>
               {isOverCapacity && (

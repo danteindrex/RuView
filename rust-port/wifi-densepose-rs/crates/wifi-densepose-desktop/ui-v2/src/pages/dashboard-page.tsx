@@ -40,17 +40,28 @@ export function DashboardPage({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard title="Registered Nodes" value={String(nodes.length)} subtitle="Discovery scope" />
         <MetricCard title="Online Nodes" value={String(online)} subtitle={online > 0 ? "Active telemetry" : "No telemetry"} tone={online > 0 ? "success" : "warning"} />
-        <MetricCard 
-          title="Medical Engine" 
-          value={latestUpdate?.vital_signs ? "MONITORING" : "STANDBY"} 
-          tone={latestUpdate?.vital_signs ? "success" : "warning"} 
-          subtitle="WiFi CSI Vitals"
+        <MetricCard
+          title="Medical Engine"
+          value={latestUpdate?.vital_signs ? "MONITORING" : "STANDBY"}
+          tone={latestUpdate?.vital_signs ? "success" : "warning"}
+          subtitle={latestUpdate?.vital_signs ? `HR: ${latestUpdate.vital_signs.heart_rate_bpm?.toFixed(0) ?? "--"} BPM | BR: ${latestUpdate.vital_signs.breathing_rate_bpm?.toFixed(1) ?? "--"} RPM` : "WiFi CSI Vitals"}
         />
-        <MetricCard 
-          title="Security Perimeter" 
-          value={settings?.security_armed ? "ARMED" : "OFF"} 
-          tone={settings?.security_armed ? "success" : "default"} 
+        <MetricCard
+          title="Security Perimeter"
+          value={settings?.security_armed ? "ARMED" : "OFF"}
+          tone={settings?.security_armed ? "success" : "default"}
           subtitle={settings?.security_armed ? "Breach alerts active" : "Detection only"}
+        />
+        <MetricCard
+          title="RF Presence"
+          value={latestUpdate?.classification?.presence ? "DETECTED" : "NONE"}
+          tone={latestUpdate?.classification?.presence ? "warning" : "success"}
+          subtitle={`Motion: ${latestUpdate?.classification?.motion_level ?? "unknown"} | Confidence: ${((latestUpdate?.classification?.confidence ?? 0) * 100).toFixed(0)}%`}
+        />
+        <MetricCard
+          title="Persons"
+          value={String(latestUpdate?.persons?.length ?? latestUpdate?.estimated_persons ?? 0)}
+          subtitle={`Signal quality: ${latestUpdate?.signal_quality_score?.toFixed(2) ?? "N/A"} | Nodes: ${latestUpdate?.nodes?.length ?? 0}`}
         />
       </div>
 

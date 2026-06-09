@@ -54,9 +54,9 @@ export class FigurePool {
         
         
         // Adjust scale since Soldier.glb legs are longer than the demo keypoints
-        clone.scale.set(0.95, 0.95, 0.95); 
+        clone.scale.set(0.95, 0.95, 0.95);
         group.add(clone);
-        
+
         // Aura cylinder
         const wireColor = new THREE.Color(this._settings.wireColor);
         const auraGeo = new THREE.CylinderGeometry(0.4, 0.3, 1.7, 16, 1, true);
@@ -67,12 +67,12 @@ export class FigurePool {
         const aura = new THREE.Mesh(auraGeo, auraMat);
         aura.position.y = 1;
         group.add(aura);
-        
+
         // Per-figure light
         const personLight = new THREE.PointLight(wireColor, 0, 6);
         personLight.position.y = 1;
         group.add(personLight);
-        
+
         this._scene.add(group);
         
         this._figures.push({

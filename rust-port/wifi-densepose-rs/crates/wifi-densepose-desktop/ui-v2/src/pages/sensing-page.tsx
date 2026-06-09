@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { JsonViewer } from "@/components/layout/json-viewer";
 import type { AppSettings, ServerConfig, ServerLogsResponse, ServerStartResult, ServerStatusResponse } from "@/types";
+import { useSensingStore, type WsSensingUpdate, type WsNodeInfo } from "@/lib/sensing-store";
 
 interface SensingPageProps {
   status: ServerStatusResponse | null;
@@ -24,39 +25,6 @@ interface LogEntry {
   level: LogLevel;
   source: string;
   message: string;
-}
-
-interface WsNodeInfo {
-  node_id: number;
-  rssi_dbm: number;
-  position: [number, number, number];
-  amplitude: number[];
-  subcarrier_count: number;
-}
-
-interface WsSensingUpdate {
-  type: string;
-  timestamp: number;
-  source: string;
-  tick: number;
-  nodes: WsNodeInfo[];
-  classification?: {
-    motion_level: string;
-    presence: boolean;
-    confidence: number;
-  };
-  vital_signs?: {
-    breathing_rate_bpm?: number;
-    heart_rate_bpm?: number;
-    breathing_confidence?: number;
-    heartbeat_confidence?: number;
-    signal_quality?: number;
-  };
-  posture?: string;
-  signal_quality_score?: number;
-  quality_verdict?: string;
-  bssid_count?: number;
-  estimated_persons?: number;
 }
 
 interface ActivityEntry {
@@ -162,6 +130,65 @@ function logsFromUpdate(update: WsSensingUpdate): LogEntry[] {
     });
   }
 
+  // Log feature info (RSSI, spectral power, etc.)
+  if (update.features) {
+    entries.push({
+      id: nextLogId++,
+      timestamp,
+      level: "INFO",
+      source: "feature_extractor",
+      message: `Mean RSSI: ${update.features.mean_rssi.toFixed(1)} dBm, Variance: ${update.features.variance.toFixed(2)}, Spectral power: ${update.features.spectral_power.toFixed(2)}`,
+    });
+  }
+
+  // Log person detections (zone, keypoint count)
+  if (update.persons && update.persons.length > 0) {
+    for (const person of update.persons) {
+      entries.push({
+        id: nextLogId++,
+        timestamp,
+        level: "INFO",
+        source: "person_detector",
+        message: `Person #${person.id}: zone=${person.zone}, confidence=${(person.confidence * 100).toFixed(0)}%, keypoints=${person.keypoints.length}`,
+      });
+    }
+  }
+
+  // Log pose keypoints summary
+  if (update.pose_keypoints && update.pose_keypoints.length > 0) {
+    entries.push({
+      id: nextLogId++,
+      timestamp,
+      level: "INFO",
+      source: "pose_estimator",
+      message: `Pose: ${update.pose_keypoints.length} keypoints, posture=${update.posture ?? "unknown"}`,
+    });
+  }
+
+  // Log signal field grid size
+  if (update.signal_field && update.signal_field.values.length > 0) {
+    entries.push({
+      id: nextLogId++,
+      timestamp,
+      level: "INFO",
+      source: "signal_field",
+      message: `Signal field: ${update.signal_field.grid_size.join("x")} grid, ${update.signal_field.values.length} cells`,
+    });
+  }
+
+  // Log node features (per-node classification)
+  if (update.node_features && update.node_features.length > 0) {
+    for (const nf of update.node_features) {
+      entries.push({
+        id: nextLogId++,
+        timestamp,
+        level: nf.stale ? "WARN" : "INFO",
+        source: "node_classifier",
+        message: `Node ${nf.node_id}: motion=${nf.classification.motion_level}, presence=${nf.classification.presence}, RSSI=${nf.rssi_dbm.toFixed(1)} dBm${nf.stale ? " [STALE]" : ""}`,
+      });
+    }
+  }
+
   return entries;
 }
 
@@ -216,8 +243,6 @@ function toNumber(value: string, fallback?: number | null): number | null {
   }
   return parsed;
 }
-
-import { useSensingStore } from "@/lib/sensing-store";
 
 export function SensingPage({ status, onStatusRefresh }: SensingPageProps) {
   const { accessToken } = useAuthStore();
