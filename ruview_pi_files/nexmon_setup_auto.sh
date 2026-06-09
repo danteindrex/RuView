@@ -1,19 +1,25 @@
 #!/bin/bash
 
 # Automated Nexmon CSI setup for Raspberry Pi 4B (kernel 5.15+).
-# Mirrors every step in nexmon_setp.sh, inspects all console output for error
+# Mirrors every step in nexmon_setup.md, inspects all console output for error
 # keywords, handles the two documented errors automatically, and exits
 # gracefully on any unexpected failure.
 #
 # Usage:
-#   ./nexmon_setup_auto.sh               — full setup (steps 1–17, ends with reboot)
-#   ./nexmon_setup_auto.sh --post-reboot — post-reboot steps (18–19) then prompts for capture
+#   ./nexmon_setup_auto.sh               — full setup (steps 1–14, ends with reboot)
+#   ./nexmon_setup_auto.sh --post-reboot — post-reboot step 15 (verification only)
+#
+# After rebooting, run nexmon_startup.sh on every Pi startup to re-enable
+# monitor mode (steps 16–17 from nexmon_setup.md).
 
 set -o pipefail
 
 # ── colours ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+
+# File where the generated CSI config string is saved for nexmon_startup.sh
+CONFIG_SAVE_FILE="$HOME/.config/nexmon/csi_config"
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -61,10 +67,14 @@ capture_checked() {
 
 # ── Post-reboot mode ──────────────────────────────────────────────────────────
 if [ "${1:-}" = "--post-reboot" ]; then
-    echo -e "\n${BOLD}=== Post-reboot mode: Steps 18–20 ===${NC}"
+    echo -e "\n${BOLD}=== Post-reboot mode: Step 15 ===${NC}"
 
-    # Step 18 — Verify unmanaged state and firmware version
-    echo -e "\n${BOLD}=== Step 18: Post-reboot verification ===${NC}"
+    # Step 15 — After reboot, verify unmanaged state and firmware version
+    echo -e "\n${BOLD}=== Step 15: Post-reboot verification ===${NC}"
+    info "After reboot, the wifi interface should be back up and working, but it will still be unmanaged."
+    info "This means that you won't be able to connect to wifi networks using network manager,"
+    info "but you can still use the interface for monitor mode and CSI extraction."
+
     info "Checking nmcli device status..."
     NMCLI_OUT=$(nmcli device status 2>&1 || true)
     echo "$NMCLI_OUT"
@@ -85,79 +95,22 @@ if [ "${1:-}" = "--post-reboot" ]; then
     else
         echo "$FW_POST"
         if echo "$FW_POST" | grep -q "7_45_189"; then
-            ok "Firmware swapped to 7_45_189 — nexmon CSI patch is active."
+            ok "Firmware version is now 7_45_189. This is expected as it does the firmware swap for us."
         else
             warn "Unexpected firmware version. Verify the patch was applied correctly."
         fi
     fi
 
-    # Step 19 — rfkill unblock and bring wlan0 up
-    echo -e "\n${BOLD}=== Step 19: rfkill unblock and bring wlan0 up ===${NC}"
-    info "Checking rfkill state..."
-    rfkill list 2>&1 || warn "rfkill not available."
-
-    info "Unblocking all wireless interfaces..."
-    sudo rfkill unblock all 2>&1 || warn "rfkill unblock failed — may not have been blocked."
-
-    run_checked "ip link set wlan0 up" sudo ip link set wlan0 up
-
-    info "Verifying wlan0 is up..."
-    IP_OUT=$(ip link show wlan0 2>&1)
-    echo "$IP_OUT"
-    if echo "$IP_OUT" | grep -q "UP"; then
-        ok "wlan0 is up."
-    else
-        warn "wlan0 may still be down — check the output above."
-    fi
-
-    # Step 20 — Prompt user to repeat steps 14 and 16
-    echo -e "\n${BOLD}=== Step 20: Resume CSI capture ===${NC}"
-    warn "Step 20 requires the CSI config string you generated in Step 13."
-    warn "If you no longer have it, regenerate it:"
-    warn "  cd \$NEXMON_ROOT/patches/bcm43455c0/7_45_189/nexmon_csi/utils/makecsiparams"
-    warn "  ./makecsiparams -c 36/80 -C 1 -N 1"
     echo ""
-    read -rp "Enter your CSI config string (or press Enter to skip): " CONFIG_STRING
-
-    if [ -n "$CONFIG_STRING" ]; then
-        info "Applying CSI config..."
-        NEXUTIL_OUT=$(nexutil -s500 -b -l34 -v"$CONFIG_STRING" 2>&1)
-        NEXUTIL_RC=$?
-        echo "$NEXUTIL_OUT"
-        if [ $NEXUTIL_RC -ne 0 ] || echo "$NEXUTIL_OUT" | grep -iE '\berror\b|\bfailed\b|\bnot found\b'; then
-            warn "nexutil config may have failed — review output above."
-        else
-            ok "CSI configuration applied."
-        fi
-
-        info "Enabling monitor mode..."
-        MON_OUT=$(nexutil -m1 2>&1)
-        MON_RC=$?
-        echo "$MON_OUT"
-        if [ $MON_RC -ne 0 ] || echo "$MON_OUT" | grep -iE '\berror\b|\bfailed\b'; then
-            warn "Monitor mode activation may have failed."
-        else
-            ok "Monitor mode enabled."
-        fi
-
-        info "Starting CSI capture on wlan0 port 5500 (Ctrl-C to stop)..."
-        sudo tcpdump -i wlan0 dst port 5500 2>&1 || true
-    else
-        warn "Skipped. Run manually when ready:"
-        warn "  nexutil -s500 -b -l34 -v<config-string>"
-        warn "  nexutil -m1"
-        warn "  sudo tcpdump -i wlan0 dst port 5500"
-    fi
-
-    echo ""
-    echo -e "${GREEN}${BOLD}=== Post-reboot setup complete ===${NC}"
-    echo -e "To reset firmware and return to normal WiFi:"
-    echo -e "  ${CYAN}make -f Makefile.rpi restore-wifi${NC}"
+    echo -e "${GREEN}${BOLD}=== Post-reboot verification complete ===${NC}"
+    echo -e "To enable monitor mode and start streaming CSI (steps 16–17), run:"
+    echo -e "  ${CYAN}bash nexmon_startup.sh${NC}"
+    echo -e "For further instructions on streaming CSI to a remote device, refer to udp_streaming_setup.md"
     exit 0
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Full setup: Steps 1–17
+# Full setup: Steps 1–14
 # ══════════════════════════════════════════════════════════════════════════════
 
 # ── Step 1 — Verify kernel version ───────────────────────────────────────────
@@ -186,7 +139,6 @@ if [ -z "$FW_LINE" ]; then
 else
     echo "$FW_LINE"
     ok "Firmware line found."
-    # Extract version string e.g. "7_45_189" and compare numerically
     FW_VER=$(echo "$FW_LINE" | grep -oE '[0-9]+_[0-9]+_[0-9]+' | head -1)
     FW_MINOR=$(echo "$FW_VER" | cut -d_ -f3)
     if [ -n "$FW_MINOR" ] && [ "$FW_MINOR" -gt 189 ]; then
@@ -257,8 +209,8 @@ else
     run_checked "apt update (restore)"  sudo apt update -y
 fi
 
-# ── Step 6 — Clone and init Nexmon ───────────────────────────────────────────
-echo -e "\n${BOLD}=== Step 6: Clone and initialise Nexmon ===${NC}"
+# ── Step 6 — Fetch and init the nexmon repository ────────────────────────────
+echo -e "\n${BOLD}=== Step 6: Fetch and init the nexmon repository ===${NC}"
 NEXMON_DIR="$HOME/nexmon"
 
 if [ -d "$NEXMON_DIR" ]; then
@@ -279,7 +231,6 @@ MAKE_OUT=$(make 2>&1)
 MAKE_RC=$?
 echo "$MAKE_OUT"
 
-# arm-none-eabi-gcc missing is a known fatal error at this stage too
 if echo "$MAKE_OUT" | grep -q "arm-none-eabi-gcc: not found"; then
     die "Step 6: arm-none-eabi-gcc not found. Ensure Step 4 (armhf architecture and libs) was completed."
 fi
@@ -296,8 +247,8 @@ cd "$NEXMON_ROOT/utilities/nexutil" || die "nexutil directory not found."
 run_checked "make install nexutil" sudo -E make install USE_VENDOR_CMD=1
 run_checked "setcap nexutil"       sudo setcap cap_net_admin+ep /usr/bin/nexutil
 
-# ── Step 8 — Clone nexmon_csi ────────────────────────────────────────────────
-echo -e "\n${BOLD}=== Step 8: Clone nexmon_csi ===${NC}"
+# ── Step 8 — Fetch the nexmon_csi repository ─────────────────────────────────
+echo -e "\n${BOLD}=== Step 8: Fetch the nexmon_csi repository ===${NC}"
 PATCH_DIR="$NEXMON_ROOT/patches/bcm43455c0/7_45_189"
 CSI_DIR="$PATCH_DIR/nexmon_csi"
 
@@ -305,7 +256,7 @@ if [ ! -d "$PATCH_DIR" ]; then
     die "Patch directory $PATCH_DIR not found. Verify the Nexmon build completed and that your firmware version is compatible."
 fi
 
-info "Cloning into $PATCH_DIR — scripts in the next step are built for this firmware version."
+info "Cloning into $PATCH_DIR — it must be executed from this directory, as the scripts in the next step are built for this version."
 
 if [ -d "$CSI_DIR" ]; then
     warn "nexmon_csi already cloned at $CSI_DIR — skipping."
@@ -317,7 +268,7 @@ fi
 cd "$CSI_DIR" || die "Could not cd into $CSI_DIR"
 
 # ── Step 9 — Install nexmon_csi firmware ─────────────────────────────────────
-echo -e "\n${BOLD}=== Step 9: Install nexmon_csi firmware ===${NC}"
+echo -e "\n${BOLD}=== Step 9: Install the nexmon_csi firmware ===${NC}"
 
 install_firmware() {
     info "Running: make -f Makefile.rpi install-firmware"
@@ -359,24 +310,24 @@ fi
 
 ok "Firmware installed."
 
-# ── Step 10 — Unmanage interface and reload firmware ─────────────────────────
-echo -e "\n${BOLD}=== Step 10: Unmanage interface and reload firmware ===${NC}"
-warn "This step will take wlan0 DOWN."
-warn "If you are connected via WiFi only and no other SSIDs are available, you WILL lose SSH access."
-warn "Connect via Ethernet before proceeding. You have 10 seconds to abort (Ctrl-C)."
+# ── Step 10 — Resume the remainder of the patch ──────────────────────────────
+echo -e "\n${BOLD}=== Step 10: Resume the remainder of the patch ===${NC}"
+warn "NOTE: Running unmanage will take the wifi interface down. Thus, if you are connected to your pi via wifi and there are no other SSIDs it can connect to, conect it via ethenet, otherwise you will lose access to your pi unless you connect peripherals to it."
+warn "You have 10 seconds to abort (Ctrl-C)."
 sleep 10
 
 run_checked "unmanage wlan0"  make -f Makefile.rpi unmanage
 run_checked "reload firmware" make -f Makefile.rpi reload-full
 
-# ── Step 13 — Generate CSI parameters ────────────────────────────────────────
-echo -e "\n${BOLD}=== Step 13: Generate CSI parameters ===${NC}"
+# ── Step 11 — Go to makecsiparams ────────────────────────────────────────────
+echo -e "\n${BOLD}=== Step 11: Go to makecsiparams in nexmon_csi utils to generate and copy the config string you'll need for the next step ===${NC}"
 MCP_DIR="$CSI_DIR/utils/makecsiparams"
 cd "$MCP_DIR" || die "makecsiparams directory not found at $MCP_DIR"
 
 run_checked "make makecsiparams" make
 
 info "Generating CSI config string for channel 36 / 80 MHz, 1 core, 1 stream..."
+info "or whatever channel and bandwidth you want to use, it should output something like this and close, \"KuABEQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\""
 CONFIG_STRING=$(./makecsiparams -c 36/80 -C 1 -N 1 2>&1)
 MCP_RC=$?
 echo "$CONFIG_STRING"
@@ -386,12 +337,16 @@ if [ $MCP_RC -ne 0 ] || echo "$CONFIG_STRING" | grep -iE '\berror\b|\bfailed\b';
     warn "Regenerate manually: ./makecsiparams -c <channel>/<bw> -C <cores> -N <streams>"
 else
     ok "CSI config string: $CONFIG_STRING"
+
+    mkdir -p "$(dirname "$CONFIG_SAVE_FILE")"
+    echo "$CONFIG_STRING" > "$CONFIG_SAVE_FILE"
+    ok "Config string saved to $CONFIG_SAVE_FILE for use by nexmon_startup.sh on future startups."
 fi
 
 cd "$CSI_DIR" || die "Could not cd back to $CSI_DIR"
 
-# ── Step 14 — Configure CSI extractor and enable monitor mode ────────────────
-echo -e "\n${BOLD}=== Step 14: Configure CSI extractor and enable monitor mode ===${NC}"
+# ── Step 12 — Configure the CSI extractor and activate monitor mode ──────────
+echo -e "\n${BOLD}=== Step 12: Configure the CSI extractor and activate monitor mode ===${NC}"
 
 if [ -z "$CONFIG_STRING" ] || echo "$CONFIG_STRING" | grep -iE '\berror\b|\bfailed\b'; then
     warn "No valid config string available — skipping nexutil configuration."
@@ -420,16 +375,21 @@ else
     fi
 fi
 
-# ── Step 16 — Demo capture ───────────────────────────────────────────────────
-echo -e "\n${BOLD}=== Step 16: Demo CSI capture ===${NC}"
+# ── Step 13 — Demo capturing CSI UDPs using tcpdump ─────────────────────────
+echo -e "\n${BOLD}=== Step 13: Demo capturing CSI UDPs using tcpdump ===${NC}"
 info "Starting tcpdump on wlan0 port 5500. Press Ctrl-C to stop and continue to reboot."
+info "NOTE: To reset the firmware to its default, and give control back to network manager, run:"
+info "  make -f Makefile.rpi restore-wifi"
 sudo tcpdump -i wlan0 dst port 5500 2>&1 || true
 
-# ── Step 17 — Reboot ─────────────────────────────────────────────────────────
-echo -e "\n${BOLD}=== Step 17: Reboot ===${NC}"
+# ── Step 14 — Reboot the system ──────────────────────────────────────────────
+echo -e "\n${BOLD}=== Step 14: Reboot the system ===${NC}"
 echo ""
-echo -e "${YELLOW}After the Pi reboots, run this script again with --post-reboot to complete steps 18–20:${NC}"
+echo -e "${YELLOW}After the Pi reboots, run this script again with --post-reboot to complete step 15:${NC}"
 echo -e "  ${CYAN}bash $(realpath "$0") --post-reboot${NC}"
+echo ""
+echo -e "${YELLOW}On every subsequent startup, run nexmon_startup.sh to re-enable monitor mode (steps 16–17):${NC}"
+echo -e "  ${CYAN}bash nexmon_startup.sh${NC}"
 echo ""
 warn "Rebooting in 5 seconds — Ctrl-C to abort."
 sleep 5
