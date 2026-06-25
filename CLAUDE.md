@@ -4,7 +4,9 @@
 
 WiFi-based human pose estimation using Channel State Information (CSI).
 Dual codebase: Python v1 (`v1/`) and Rust port (`rust-port/wifi-densepose-rs/`).
-### Key Rust Crates
+
+**Architecture overview**: see [`ARCHITECTURE.md`](./ARCHITECTURE.md) for system type, component map, data/auth flow, and signal pipeline detail.
+### Key Rust Crates (workspace v0.3.0)
 | Crate | Description |
 |-------|-------------|
 | `wifi-densepose-core` | Core types, traits, error types, CSI frame primitives |
@@ -19,9 +21,18 @@ Dual codebase: Python v1 (`v1/`) and Rust port (`rust-port/wifi-densepose-rs/`).
 | `wifi-densepose-config` | Configuration management |
 | `wifi-densepose-wasm` | WebAssembly bindings for browser deployment |
 | `wifi-densepose-cli` | CLI tool (`wifi-densepose` binary) |
-| `wifi-densepose-sensing-server` | Lightweight Axum server for WiFi sensing UI |
+| `wifi-densepose-sensing-server` | Lightweight Axum server — HTTP REST+UI (:3000), WebSocket (:3001), ESP32 UDP (:5005) |
 | `wifi-densepose-wifiscan` | Multi-BSSID WiFi scanning (ADR-022) |
 | `wifi-densepose-vitals` | ESP32 CSI-grade vital sign extraction (ADR-021) |
+| `wifi-densepose-desktop` | Tauri v2 desktop frontend for Wave WiFi DensePose |
+| `wifi-densepose-geo` | Geospatial satellite integration — free satellite tiles, DEM, OSM, temporal tracking |
+| `wifi-densepose-pointcloud` | Real-time dense point cloud from camera depth + WiFi CSI tomography |
+| `wifi-densepose-protocol` | Shared protocol definitions for RuView sensing nodes and hubs *(crate exists but not yet in workspace members)* |
+| `wifi-densepose-pi-node-agent` | Native Raspberry Pi Node Agent for RuView sensing platform |
+
+**Excluded from workspace** (build separately):
+- `wifi-densepose-wasm-edge` — WASM edge crate (`no_std`, target `wasm32-unknown-unknown`): `cargo build -p wifi-densepose-wasm-edge --target wasm32-unknown-unknown --release`
+- `ruv-neural/` — Sub-workspace with 11 neural crates (ruv-neural-core, -decoder, -embed, -esp32, -graph, -memory, -mincut, -sensor, -signal, -viz, -wasm)
 
 ### RuvSense Modules (`signal/src/ruvsense/`)
 | Module | Purpose |
@@ -57,7 +68,7 @@ All 5 ruvector crates integrated in workspace:
 - `ruvector-attention` → `model.rs` (apply_spatial_attention) + `bvp.rs`
 
 ### Architecture Decisions
-43 ADRs in `docs/adr/` (ADR-001 through ADR-043). Key ones:
+83 ADRs in `docs/adr/` (ADR-001 through ADR-090, with some gaps). Key ones:
 - ADR-014: SOTA signal processing (Accepted)
 - ADR-015: MM-Fi + Wi-Pose training datasets (Accepted)
 - ADR-016: RuVector training pipeline integration (Accepted — complete)
@@ -190,8 +201,7 @@ python v1/data/proof/verify.py
 - `docs/adr/ADR-028-esp32-capability-audit.md` — Complete audit record
 
 ### Branch
-Default branch: `main`
-Active feature branch: `ruvsense-full-implementation` (PR #77)
+Default branch: `main` (clean as of 2026-06-20)
 
 ---
 
@@ -209,9 +219,9 @@ Active feature branch: `ruvsense-full-implementation` (PR #77)
 ## File Organization
 
 - NEVER save to root folder — use the directories below
-- `docs/adr/` — Architecture Decision Records (43 ADRs)
+- `docs/adr/` — Architecture Decision Records (83 ADRs, ADR-001 through ADR-090)
 - `docs/ddd/` — Domain-Driven Design models
-- `rust-port/wifi-densepose-rs/crates/` — Rust workspace crates (15 crates)
+- `rust-port/wifi-densepose-rs/crates/` — Rust workspace crates (19 in workspace + wasm-edge excluded; ruv-neural is a separate sub-workspace)
 - `rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/` — RuvSense multistatic modules (14 files)
 - `rust-port/wifi-densepose-rs/crates/wifi-densepose-ruvector/src/viewpoint/` — Cross-viewpoint fusion (5 files)
 - `rust-port/wifi-densepose-rs/crates/wifi-densepose-hardware/src/esp32/` — ESP32 TDM protocol
