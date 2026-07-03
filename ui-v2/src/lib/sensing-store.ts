@@ -182,7 +182,6 @@ interface SensingState {
    * blanked the dashboard between sensing updates).
    */
   ingestMessage: (raw: unknown) => void;
-  setUpdate: (update: WsSensingUpdate) => void;
   setConnected: (connected: boolean) => void;
 }
 
@@ -230,6 +229,5 @@ export const useSensingStore = create<SensingState>((set) => ({
         break;
     }
   },
-  setUpdate: (update) => set({ latestUpdate: update }),
   setConnected: (connected) => set({ connected }),
 }));

@@ -29,17 +29,22 @@ const POSTURE_TO_POSE = {
 };
 
 // classification.motion_level → a demo-style motion score (0..200).
+// The sensing server's raw_classify emits: absent | present_still |
+// present_moving | active (see sensing-server csi.rs); extra aliases are kept
+// for adaptive-classifier custom labels.
 const MOTION_LEVEL_SCORE = {
   absent: 0,
   none: 0,
-  still: 4,
+  present_still: 8,
+  still: 8,
   idle: 8,
   breathing: 12,
   low: 20,
   moderate: 60,
   medium: 60,
+  present_moving: 80,
   moving: 120,
-  active: 120,
+  active: 140,
   high: 160,
 };
 
