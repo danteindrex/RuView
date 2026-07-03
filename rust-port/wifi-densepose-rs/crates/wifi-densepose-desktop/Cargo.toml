@@ -10,6 +10,12 @@ authors.workspace = true
 name = "wifi_densepose_desktop"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+default = []
+# Required by tauri v2 for production (release) builds: serves the bundled
+# frontend over the tauri:// custom protocol instead of the dev server.
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

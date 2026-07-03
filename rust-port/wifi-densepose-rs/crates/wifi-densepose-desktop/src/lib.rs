@@ -26,22 +26,39 @@ pub fn run() {
                 }
             });
             // Auto-start the sensing server so the app is operational without
-            // a manual Start. Ports must be explicit (not None): the frontend
-            // SensingProvider reads ws_port from server status to open the
-            // live stream — with no port recorded, the UI never connects and
-            // every telemetry card stays blank. Values mirror the server
-            // binary's own defaults. The Sensing page can stop/restart with
-            // custom settings.
+            // a manual Start. Configuration comes from persisted settings when
+            // present (ports, source, bind address, tick, model/RVF/node-
+            // position paths); otherwise fall back to the server binary's own
+            // defaults (HTTP 8080, WS 8765, UDP 5005, Nexmon 5500). Ports must
+            // be explicit (not None): the frontend SensingProvider reads
+            // ws_port from server status to open the live stream — with no
+            // port recorded, the UI never connects and every telemetry card
+            // stays blank. If something already listens on the configured HTTP
+            // port (e.g. an orphaned or manually started server), the spawn is
+            // skipped and the external server is adopted rather than killed.
+            // The Sensing page can stop/restart with custom settings.
             let server_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                let config = server::ServerConfig {
-                    http_port: Some(8080),
-                    ws_port: Some(8765),
-                    udp_port: Some(5005),
-                    nexmon_port: Some(5500),
-                    ..Default::default()
+                let config = match settings::load_settings_inner(&server_handle) {
+                    Ok(Some(saved)) => server::ServerConfig::from_settings(&saved),
+                    Ok(None) => server::ServerConfig::with_default_ports(),
+                    Err(e) => {
+                        tracing::warn!(
+                            "Failed to load settings for auto-start, using defaults: {e}"
+                        );
+                        server::ServerConfig::with_default_ports()
+                    }
                 };
                 let state = server_handle.state::<state::AppState>();
+                let http_port = config.http_port.unwrap_or(8080);
+                if server::tcp_port_in_use(config.bind_address.as_deref(), http_port) {
+                    tracing::info!(
+                        "Port {http_port} already in use — adopting external sensing \
+                         server instead of spawning a duplicate"
+                    );
+                    server::adopt_external_server(state.inner(), &config);
+                    return;
+                }
                 match server::start_server_impl(&server_handle, &config, state.inner()).await {
                     Ok(r) => tracing::info!("Sensing server auto-started (pid {})", r.pid),
                     Err(e) => tracing::warn!("Sensing server auto-start failed: {e}"),
@@ -135,7 +152,9 @@ pub fn run() {
         .run(|app_handle, event| {
             if let tauri::RunEvent::Exit = event {
                 // Kill the managed sensing server so it doesn't orphan and
-                // hold ports 3000/8765/5005 for the next launch.
+                // hold ports 8080/8765/5005/5500 for the next launch. An
+                // adopted external server has no child handle, so it is
+                // naturally left running.
                 let state = app_handle.state::<state::AppState>();
                 let lock = state.server.lock();
                 if let Ok(mut srv) = lock {
