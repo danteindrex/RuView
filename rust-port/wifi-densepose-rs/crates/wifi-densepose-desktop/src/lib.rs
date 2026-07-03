@@ -25,6 +25,28 @@ pub fn run() {
                     tracing::error!("Failed to initialize auth system: {}", e);
                 }
             });
+            // Auto-start the sensing server so the app is operational without
+            // a manual Start. Ports must be explicit (not None): the frontend
+            // SensingProvider reads ws_port from server status to open the
+            // live stream — with no port recorded, the UI never connects and
+            // every telemetry card stays blank. Values mirror the server
+            // binary's own defaults. The Sensing page can stop/restart with
+            // custom settings.
+            let server_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let config = server::ServerConfig {
+                    http_port: Some(8080),
+                    ws_port: Some(8765),
+                    udp_port: Some(5005),
+                    nexmon_port: Some(5500),
+                    ..Default::default()
+                };
+                let state = server_handle.state::<state::AppState>();
+                match server::start_server_impl(&server_handle, &config, state.inner()).await {
+                    Ok(r) => tracing::info!("Sensing server auto-started (pid {})", r.pid),
+                    Err(e) => tracing::warn!("Sensing server auto-start failed: {e}"),
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -108,8 +130,24 @@ pub fn run() {
             enterprise::whapi_send_test,
             enterprise::whapi_send_alert,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                // Kill the managed sensing server so it doesn't orphan and
+                // hold ports 3000/8765/5005 for the next launch.
+                let state = app_handle.state::<state::AppState>();
+                let lock = state.server.lock();
+                if let Ok(mut srv) = lock {
+                    if let Some(mut child) = srv.child.take() {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                    }
+                    srv.running = false;
+                    srv.pid = None;
+                }
+            }
+        });
 }
 
 /// Initialize the auth subsystem: SQLite pool, JWT secret, module seeding.

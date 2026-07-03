@@ -8379,6 +8379,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "wifi-densepose-pi-node-agent"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "chrono",
+ "clap",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "wifi-densepose-pointcloud"
 version = "0.1.0"
 dependencies = [

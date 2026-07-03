@@ -28,11 +28,23 @@ Dual codebase: Python v1 (`v1/`) and Rust port (`rust-port/wifi-densepose-rs/`).
 | `wifi-densepose-geo` | Geospatial satellite integration — free satellite tiles, DEM, OSM, temporal tracking |
 | `wifi-densepose-pointcloud` | Real-time dense point cloud from camera depth + WiFi CSI tomography |
 | `wifi-densepose-protocol` | Shared protocol definitions for RuView sensing nodes and hubs *(crate exists but not yet in workspace members)* |
-| `wifi-densepose-pi-node-agent` | Native Raspberry Pi Node Agent for RuView sensing platform |
+| `wifi-densepose-pi-node-agent` | Native Raspberry Pi Node Agent — nexmon CSI capture, mmWave, edge DSP, frame encoder, WASM runtime (primary production sensing path per ADR-090) |
 
 **Excluded from workspace** (build separately):
 - `wifi-densepose-wasm-edge` — WASM edge crate (`no_std`, target `wasm32-unknown-unknown`): `cargo build -p wifi-densepose-wasm-edge --target wasm32-unknown-unknown --release`
 - `ruv-neural/` — Sub-workspace with 11 neural crates (ruv-neural-core, -decoder, -embed, -esp32, -graph, -memory, -mincut, -sensor, -signal, -viz, -wasm)
+
+### Frontends
+- `ui-v2/` (repo root) — **current production desktop UI**: React 18 + TypeScript, Vite (dev server :5174), Tailwind + Radix primitives, Zustand state, Three.js. Pages in `ui-v2/src/pages/` cover license activation (first-launch flow), login, dashboard, sensing, mesh, pi-nodes, tenants, users, roles, security, medical, pose3d, OTA, flash, provisioning, settings, sysadmin. Talks to the Tauri backend via `src/lib/tauri-api.ts`; auth state in `src/lib/auth-store.ts`.
+- `ui/` (repo root) and `crates/wifi-densepose-desktop/ui/` — legacy frontends (reference only).
+- **Path caveat**: the desktop crate's `tauri.conf.json` sets `frontendDist: "ui-v2/dist"` and `beforeDevCommand` cwd `ui-v2` *relative to the crate directory*, but the committed `ui-v2/` source lives at repo root — verify/copy the wiring before running `cargo tauri dev|build` from the desktop crate.
+
+### Raspberry Pi + Nexmon CSI (ADR-090, Accepted)
+Raspberry Pi 4 nodes running Nexmon CSI are the **primary production sensing path**; ESP32 remains supported. Key facts:
+- Canonical UDP packet IDs: `0xC5110001` raw CSI, `0xC5110002` edge vitals, `0xC5110003` edge feature vector, `0xC5110004` fused vitals, `0xC5110005` compressed frame, `0xC5110006` WASM v2 events.
+- Sensing-server parsing is split into `protocol/packet.rs`, `protocol/esp32_legacy.rs`, `protocol/nexmon.rs`.
+- `ruview_pi_files/` — Pi setup docs/scripts (`nexmon_setup.md`, `nexmon_setup_auto.sh`, `nexmon_startup.sh`, `udp_streaming_setup.md`) and `nexmon_bridge.py` (Python UDP bridge — **compatibility-only**; the native pi-node-agent is the production path).
+- Untracked vendored third-party trees (do not commit wholesale without review): `nexmon_csi/` (Nexmon CSI extractor + firmware patches), `vendor/brcmfmac-nexmon-dkms/` (DKMS brcmfmac driver, per-kernel patch dirs 4.19–6.12), `ven/` (midstream, ruvector, sublinear-time-solver sources).
 
 ### RuvSense Modules (`signal/src/ruvsense/`)
 | Module | Purpose |
@@ -80,11 +92,14 @@ All 5 ruvector crates integrated in workspace:
 - ADR-030: RuvSense persistent field model (Proposed)
 - ADR-031: RuView sensing-first RF mode (Proposed)
 - ADR-032: Multistatic mesh security hardening (Proposed)
+- ADR-081: Adaptive CSI mesh firmware/kernel (see `docs/adr/`)
+- ADR-090: Raspberry Pi protocol parity (Accepted — Pi 4 + Nexmon is primary production path)
 
 ### Supported Hardware
 
 | Device | Port | Chip | Role | Cost |
 |--------|------|------|------|------|
+| Raspberry Pi 4B | — | BCM43455 (Nexmon-patched) | Native CSI node — primary production path (ADR-090) | ~$55 |
 | ESP32-S3 (8MB flash) | COM7 | Xtensa dual-core | WiFi CSI sensing node | ~$9 |
 | ESP32-S3 SuperMini (4MB) | — | Xtensa dual-core | WiFi CSI (compact) | ~$6 |
 | ESP32-C6 + Seeed MR60BHA2 | COM4 | RISC-V + 60 GHz FMCW | mmWave HR/BR/presence | ~$15 |
@@ -106,6 +121,13 @@ python v1/data/proof/verify.py
 
 # Python — test suite
 cd v1 && python -m pytest tests/ -x -q
+
+# Frontend (ui-v2) — dev server / production build
+cd ui-v2 && npm install && npm run dev     # Vite dev server on :5174
+cd ui-v2 && npm run build                  # tsc + vite build → ui-v2/dist
+
+# Desktop app (Tauri v2) — run from the desktop crate (see Frontends path caveat)
+cd rust-port/wifi-densepose-rs/crates/wifi-densepose-desktop && cargo tauri dev
 ```
 
 ### ESP32 Firmware Build (Windows — Python subprocess required)
@@ -201,7 +223,7 @@ python v1/data/proof/verify.py
 - `docs/adr/ADR-028-esp32-capability-audit.md` — Complete audit record
 
 ### Branch
-Default branch: `main` (clean as of 2026-06-20)
+Default branch: `main`. Untracked vendored trees `nexmon_csi/`, `ven/`, `vendor/brcmfmac-nexmon-dkms/` are expected in the working tree (as of 2026-07-03).
 
 ---
 
@@ -226,6 +248,8 @@ Default branch: `main` (clean as of 2026-06-20)
 - `rust-port/wifi-densepose-rs/crates/wifi-densepose-ruvector/src/viewpoint/` — Cross-viewpoint fusion (5 files)
 - `rust-port/wifi-densepose-rs/crates/wifi-densepose-hardware/src/esp32/` — ESP32 TDM protocol
 - `firmware/esp32-csi-node/main/` — ESP32 C firmware (channel hopping, NVS config, TDM)
+- `ui-v2/src/` — Production desktop frontend (pages, components, lib/tauri-api.ts, lib/auth-store.ts)
+- `ruview_pi_files/` — Raspberry Pi nexmon setup scripts and Python UDP bridge
 - `v1/src/` — Python source (core, hardware, services, api)
 - `v1/data/proof/` — Deterministic CSI proof bundles
 - `.claude-flow/` — Claude Flow coordination state (committed for team sharing)
@@ -267,15 +291,14 @@ Before merging any PR, verify each item applies and is addressed:
 
 ## Build & Test
 
+There is no root `package.json` — npm commands run from `ui-v2/`:
+
 ```bash
-# Build
+# Frontend build (from ui-v2/)
 npm run build
 
-# Test
-npm test
-
-# Lint
-npm run lint
+# Rust workspace (from rust-port/wifi-densepose-rs/)
+cargo test --workspace --no-default-features
 ```
 
 - ALWAYS run tests after making code changes

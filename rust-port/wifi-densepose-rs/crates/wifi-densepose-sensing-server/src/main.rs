@@ -16,6 +16,7 @@ pub mod protocol;
 mod field_bridge;
 mod multistatic_bridge;
 pub mod pose;
+mod pose_inference;
 mod rvf_container;
 mod rvf_pipeline;
 mod tracker_bridge;
@@ -235,6 +236,11 @@ struct SensingUpdate {
     /// Per-node feature breakdown for multi-node deployments.
     #[serde(skip_serializing_if = "Option::is_none")]
     node_features: Option<Vec<PerNodeFeatureInfo>>,
+    /// Energy-weighted person location estimate in room coordinates [x, y]
+    /// meters, from per-node motion energy and configured node positions.
+    /// Requires >= 2 active nodes with `--node-positions` set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    location_hint: Option<[f64; 2]>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -526,6 +532,14 @@ struct AppStateInner {
     multistatic_fuser: MultistaticFuser,
     /// SVD-based room field model for eigenvalue person counting (None until calibration).
     field_model: Option<FieldModel>,
+    /// Configured node positions from `--node-positions` (room meters).
+    /// Entry `i` corresponds to `node_id == i + 1` (nodes are provisioned 1-based).
+    node_positions: Vec<[f64; 3]>,
+    /// Trained linear pose models for live keypoint inference (auto-loaded
+    /// from `data/models/*.rvf` at startup, extendable via /api/v1/models/load).
+    /// Inference picks the model whose subcarrier width matches the incoming
+    /// frame, so ESP32 (56) and Nexmon (192+) models can coexist.
+    pose_models: Vec<pose_inference::LoadedPoseModel>,
 }
 
 /// If no CSI frame arrives within this duration, source reverts to offline.
@@ -1395,6 +1409,12 @@ async fn windows_wifi_task(state: SharedState, tick_ms: u64) {
 
     loop {
         interval.tick().await;
+
+        // A live ESP32 node has taken over (the always-on UDP listener
+        // flipped the source) — yield until it goes offline again.
+        if state.read().await.effective_source() == "esp32" {
+            continue;
+        }
         seq += 1;
 
         // ── Step 1: Run multi-BSSID scan via spawn_blocking ──────────
@@ -1577,6 +1597,7 @@ async fn windows_wifi_task(state: SharedState, tick_ms: u64) {
             persons: None,
             estimated_persons: if est_persons > 0 { Some(est_persons) } else { None },
             node_features: None,
+            location_hint: None,
         };
 
         // Populate persons from the sensing update (Kalman-smoothed via tracker).
@@ -1716,6 +1737,7 @@ async fn windows_wifi_fallback_tick(state: &SharedState, seq: u32) {
         persons: None,
         estimated_persons: if est_persons > 0 { Some(est_persons) } else { None },
         node_features: None,
+        location_hint: None,
     };
 
     let raw_persons = derive_pose_from_sensing(&update);
@@ -1754,10 +1776,30 @@ async fn probe_esp32(port: u16) -> bool {
     let addr = format!("0.0.0.0:{port}");
     match UdpSocket::bind(&addr).await {
         Ok(sock) => {
-            let mut buf = [0u8; 256];
-            match tokio::time::timeout(Duration::from_secs(2), sock.recv_from(&mut buf)).await {
-                Ok(Ok((len, _))) => parse_esp32_frame(&buf[..len]).is_some(),
-                _ => false,
+            // Buffer must hold a full CSI frame: 20-byte header + up to
+            // 512 subcarriers x 2 antennas x 2 bytes. A datagram larger than
+            // the buffer is an error (not a truncation) on Windows, so an
+            // undersized buffer makes the probe always fail with real nodes.
+            let mut buf = [0u8; 4096];
+            // Nodes throttle to a few packets/s when the room is static, and
+            // non-CSI packet types (vitals, WASM events) share the port, so
+            // keep listening until the deadline instead of judging the first
+            // packet only.
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+            loop {
+                let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+                if remaining.is_zero() {
+                    return false;
+                }
+                match tokio::time::timeout(remaining, sock.recv_from(&mut buf)).await {
+                    Ok(Ok((len, _))) => {
+                        if parse_esp32_frame(&buf[..len]).is_some() {
+                            return true;
+                        }
+                    }
+                    Ok(Err(_)) => continue,
+                    Err(_) => return false,
+                }
             }
         }
         Err(_) => false,
@@ -2332,8 +2374,32 @@ fn derive_single_person_pose(
 
     // ── Skeleton base position ────────────────────────────────────────────────
 
-    let base_x = 320.0 + stride_x + lean_x * 0.5 + person_x_offset;
-    let base_y = 240.0 - motion_score * 8.0;
+    // Map the room-coordinate location hint onto the 640x480 canvas. Canvas
+    // bounds cover the node mesh plus a margin, so any mesh size fits. Without
+    // a hint (single node / no --node-positions) fall back to canvas center.
+    let located = update.location_hint.and_then(|loc| {
+        if update.nodes.len() < 2 {
+            return None;
+        }
+        let (mut min_x, mut max_x) = (f64::INFINITY, f64::NEG_INFINITY);
+        let (mut min_y, mut max_y) = (f64::INFINITY, f64::NEG_INFINITY);
+        for n in &update.nodes {
+            min_x = min_x.min(n.position[0]);
+            max_x = max_x.max(n.position[0]);
+            min_y = min_y.min(n.position[1]);
+            max_y = max_y.max(n.position[1]);
+        }
+        const MARGIN_M: f64 = 1.5;
+        let (min_x, max_x) = (min_x - MARGIN_M, max_x + MARGIN_M);
+        let (min_y, max_y) = (min_y - MARGIN_M, max_y + MARGIN_M);
+        let nx = ((loc[0] - min_x) / (max_x - min_x)).clamp(0.0, 1.0);
+        let ny = ((loc[1] - min_y) / (max_y - min_y)).clamp(0.0, 1.0);
+        Some((80.0 + nx * 480.0, 120.0 + ny * 240.0))
+    });
+    let (center_x, center_y) = located.unwrap_or((320.0, 240.0));
+
+    let base_x = center_x + stride_x + lean_x * 0.5 + person_x_offset;
+    let base_y = center_y - motion_score * 8.0;
 
     // ── COCO 17-keypoint offsets from hip-center ──────────────────────────────
 
@@ -2453,6 +2519,60 @@ fn derive_single_person_pose(
     }
 }
 
+/// Configured room position for a node, falling back to the legacy placeholder.
+/// `--node-positions` entry `i` maps to `node_id == i + 1`.
+fn node_position_for(positions: &[[f64; 3]], node_id: u8) -> [f64; 3] {
+    positions
+        .get((node_id as usize).saturating_sub(1))
+        .copied()
+        .unwrap_or([2.0, 0.0, 1.5])
+}
+
+/// Energy-weighted centroid of configured node positions.
+///
+/// A person disturbs the link of the nearest node the most, so weighting each
+/// node's position by its recent motion energy biases the centroid toward the
+/// person. This is deliberately coarse (no true triangulation) but is derived
+/// from live per-node measurements, unlike the fixed canvas-center placement.
+/// Returns None unless >= 2 fresh nodes have configured positions.
+fn estimate_location_hint(
+    node_positions: &[[f64; 3]],
+    node_states: &HashMap<u8, NodeState>,
+    now: std::time::Instant,
+) -> Option<[f64; 2]> {
+    let mut wsum = 0.0;
+    let mut x = 0.0;
+    let mut y = 0.0;
+    let mut fresh_nodes = 0;
+    for (&id, ns) in node_states {
+        let Some(pos) = node_positions.get((id as usize).saturating_sub(1)) else {
+            continue;
+        };
+        let fresh = ns
+            .last_frame_time
+            .map_or(false, |t| now.duration_since(t).as_secs() < 10);
+        if !fresh {
+            continue;
+        }
+        let energy = ns
+            .latest_features
+            .as_ref()
+            .map(|f| f.motion_band_power)
+            .unwrap_or(0.0);
+        // Floor keeps an undisturbed node contributing, so the centroid stays
+        // inside the mesh instead of snapping onto a single node.
+        let w = energy.max(0.05);
+        wsum += w;
+        x += pos[0] * w;
+        y += pos[1] * w;
+        fresh_nodes += 1;
+    }
+    if fresh_nodes < 2 || wsum <= 0.0 {
+        return None;
+    }
+    Some([x / wsum, y / wsum])
+}
+
 fn derive_pose_from_sensing(update: &SensingUpdate) -> Vec<PersonDetection> {
     let cls = &update.classification;
     if !cls.presence {
@@ -2462,9 +2582,63 @@ fn derive_pose_from_sensing(update: &SensingUpdate) -> Vec<PersonDetection> {
     // Use estimated_persons if set by the tick loop; otherwise default to 1.
     let person_count = update.estimated_persons.unwrap_or(1).max(1);
 
-    (0..person_count)
-        .map(|idx| derive_single_person_pose(update, idx, person_count))
-        .collect()
+    let mut persons: Vec<PersonDetection> = Vec::with_capacity(person_count);
+
+    // Prefer real trained-model keypoints for the primary person; the
+    // signal-derived template is the fallback, never a replacement.
+    if let Some(ref kps) = update.pose_keypoints {
+        if kps.len() == pose_inference::N_KEYPOINTS {
+            persons.push(person_from_model_keypoints(kps, cls.confidence));
+        }
+    }
+    let start = persons.len();
+    for idx in start..person_count {
+        persons.push(derive_single_person_pose(update, idx, person_count));
+    }
+    persons
+}
+
+/// Build a PersonDetection from trained-model keypoints ([x, y, z, conf] x 17).
+fn person_from_model_keypoints(kps: &[[f64; 4]], base_confidence: f64) -> PersonDetection {
+    let kp_names = [
+        "nose", "left_eye", "right_eye", "left_ear", "right_ear",
+        "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+        "left_wrist", "right_wrist", "left_hip", "right_hip",
+        "left_knee", "right_knee", "left_ankle", "right_ankle",
+    ];
+    let keypoints: Vec<PoseKeypoint> = kp_names
+        .iter()
+        .zip(kps.iter())
+        .map(|(name, k)| PoseKeypoint {
+            name: (*name).to_string(),
+            x: k[0],
+            y: k[1],
+            z: k[2],
+            confidence: k[3],
+        })
+        .collect();
+
+    let xs: Vec<f64> = keypoints.iter().map(|k| k.x).collect();
+    let ys: Vec<f64> = keypoints.iter().map(|k| k.y).collect();
+    let min_x = xs.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max_x = xs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let min_y = ys.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max_y = ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let mean_conf =
+        kps.iter().map(|k| k[3]).sum::<f64>() / kps.len().max(1) as f64;
+
+    PersonDetection {
+        id: 0,
+        confidence: (base_confidence * 0.5 + mean_conf * 0.5).clamp(0.0, 1.0),
+        keypoints,
+        bbox: BoundingBox {
+            x: (min_x + max_x) / 2.0,
+            y: (min_y + max_y) / 2.0,
+            width: (max_x - min_x).max(1.0),
+            height: (max_y - min_y).max(1.0),
+        },
+        zone: "room".to_string(),
+    }
 }
 
 // ── RuVector Phase 2: Temporal EMA smoothing for keypoints ──────────────────
@@ -2726,17 +2900,38 @@ async fn load_model(
     if model_id.is_empty() {
         return Json(serde_json::json!({ "error": "missing 'id' field", "success": false }));
     }
-    let mut s = state.write().await;
-    s.active_model_id = Some(model_id.clone());
-    s.model_loaded = true;
-    info!("Model loaded: {model_id}");
-    Json(serde_json::json!({ "success": true, "model_id": model_id }))
+    // Sanitize: id must be a bare file stem, no path traversal.
+    let safe_id = std::path::Path::new(&model_id)
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let path = effective_models_dir().join(format!("{safe_id}.rvf"));
+    let loaded = tokio::task::spawn_blocking(move || {
+        pose_inference::load_pose_model_from_rvf(&path)
+    })
+    .await
+    .unwrap_or_else(|e| Err(format!("load task panicked: {e}")));
+
+    match loaded {
+        Ok(pm) => {
+            let mut s = state.write().await;
+            s.active_model_id = Some(pm.id.clone());
+            s.model_loaded = true;
+            info!("Pose model loaded: {} ({} params)", pm.id, pm.weights.len());
+            let id = pm.id.clone();
+            s.pose_models.retain(|m| m.id != pm.id);
+            s.pose_models.insert(0, pm);
+            Json(serde_json::json!({ "success": true, "model_id": id }))
+        }
+        Err(e) => Json(serde_json::json!({ "success": false, "error": e })),
+    }
 }
 
 /// POST /api/v1/models/unload — unload the current model.
 async fn unload_model(State(state): State<SharedState>) -> Json<serde_json::Value> {
     let mut s = state.write().await;
     let prev = s.active_model_id.take();
+    s.pose_models.clear();
     s.model_loaded = false;
     info!("Model unloaded (was: {:?})", prev);
     Json(serde_json::json!({ "success": true, "previous": prev }))
@@ -3582,7 +3777,7 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                         .map(|(&id, n)| NodeInfo {
                             node_id: id,
                             rssi_dbm: n.rssi_history.back().copied().unwrap_or(0.0),
-                            position: [2.0, 0.0, 1.5],
+                            position: node_position_for(&s.node_positions, id),
                             amplitude: vec![],
                             subcarrier_count: 0,
                         })
@@ -3625,6 +3820,19 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                         (vitals.presence_score as f64).min(1.0), &[],
                     );
 
+                    // Trained-model inference: real keypoints from this node's
+                    // amplitude history. The model is chosen by matching its
+                    // training subcarrier width to the live frame width
+                    // (None => pose stays signal-derived).
+                    let model_kps = s.node_states.get(&node_id).and_then(|ns| {
+                        let width = ns.frame_history.back().map(|f| f.len())?;
+                        s.pose_models
+                            .iter()
+                            .find(|pm| pm.stats.n_subcarriers == width)
+                            .and_then(|pm| pose_inference::infer_pose(pm, &ns.frame_history, 20.0))
+                    });
+                    let update_has_model_kps = model_kps.is_some();
+
                     let mut update = SensingUpdate {
                         msg_type: "sensing_update".to_string(),
                         timestamp: chrono::Utc::now().timestamp_millis() as f64 / 1000.0,
@@ -3647,11 +3855,20 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                         signal_quality_score: None,
                         quality_verdict: None,
                         bssid_count: None,
-                        pose_keypoints: None,
-                        model_status: None,
+                        pose_keypoints: model_kps,
+                        model_status: if s.pose_models.is_empty() {
+                            None
+                        } else {
+                            Some(serde_json::json!({
+                                "models_loaded": s.pose_models.len(),
+                                "type": "linear",
+                                "inference_active": update_has_model_kps,
+                            }))
+                        },
                         persons: None,
                         estimated_persons: if total_persons > 0 { Some(total_persons) } else { None },
                         node_features: None,
+                        location_hint: estimate_location_hint(&s.node_positions, &s.node_states, now),
                     };
 
                     let raw_persons = derive_pose_from_sensing(&update);
@@ -3869,13 +4086,26 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                         .map(|(&id, n)| NodeInfo {
                             node_id: id,
                             rssi_dbm: n.rssi_history.back().copied().unwrap_or(0.0),
-                            position: [2.0, 0.0, 1.5],
+                            position: node_position_for(&s.node_positions, id),
                             amplitude: n.frame_history.back()
                                 .map(|a| a.to_vec()) // send all subcarriers (ESP32=56, Nexmon=64-256)
                                 .unwrap_or_default(),
                             subcarrier_count: n.frame_history.back().map_or(0, |a| a.len()),
                         })
                         .collect();
+
+                    // Trained-model inference: real keypoints from this node's
+                    // amplitude history. The model is chosen by matching its
+                    // training subcarrier width to the live frame width
+                    // (None => pose stays signal-derived).
+                    let model_kps = s.node_states.get(&node_id).and_then(|ns| {
+                        let width = ns.frame_history.back().map(|f| f.len())?;
+                        s.pose_models
+                            .iter()
+                            .find(|pm| pm.stats.n_subcarriers == width)
+                            .and_then(|pm| pose_inference::infer_pose(pm, &ns.frame_history, 20.0))
+                    });
+                    let update_has_model_kps = model_kps.is_some();
 
                     let mut update = SensingUpdate {
                         msg_type: "sensing_update".to_string(),
@@ -3896,11 +4126,20 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                         signal_quality_score: None,
                         quality_verdict: None,
                         bssid_count: None,
-                        pose_keypoints: None,
-                        model_status: None,
+                        pose_keypoints: model_kps,
+                        model_status: if s.pose_models.is_empty() {
+                            None
+                        } else {
+                            Some(serde_json::json!({
+                                "models_loaded": s.pose_models.len(),
+                                "type": "linear",
+                                "inference_active": update_has_model_kps,
+                            }))
+                        },
                         persons: None,
                         estimated_persons: if total_persons > 0 { Some(total_persons) } else { None },
                         node_features: None,
+                        location_hint: estimate_location_hint(&s.node_positions, &s.node_states, now),
                     };
 
                     let raw_persons = derive_pose_from_sensing(&update);
@@ -3948,6 +4187,12 @@ async fn simulated_data_task(state: SharedState, tick_ms: u64) {
 
     loop {
         interval.tick().await;
+
+        // A live ESP32 node has taken over (the always-on UDP listener
+        // flipped the source) — yield until it goes offline again.
+        if state.read().await.effective_source() == "esp32" {
+            continue;
+        }
 
         let mut s = state.write().await;
         s.tick += 1;
@@ -4038,6 +4283,7 @@ async fn simulated_data_task(state: SharedState, tick_ms: u64) {
             persons: None,
             estimated_persons: if est_persons > 0 { Some(est_persons) } else { None },
             node_features: None,
+            location_hint: None,
         };
 
         // Populate persons from the sensing update (Kalman-smoothed via tracker).
@@ -4069,6 +4315,13 @@ async fn broadcast_tick_task(state: SharedState, tick_ms: u64) {
     loop {
         interval.tick().await;
         let s = state.read().await;
+        // Only fill gaps for live UDP-driven sources; wifi/simulate tasks
+        // broadcast on their own tick and would duplicate messages, and an
+        // offline node's last update should not be replayed as fresh.
+        let eff = s.effective_source();
+        if eff != "esp32" && eff != "nexmon" {
+            continue;
+        }
         if let Some(ref update) = s.latest_update {
             if s.tx.receiver_count() > 0 {
                 // Re-broadcast the latest sensing_update so pose WS clients
@@ -4644,6 +4897,44 @@ async fn main() {
     let initial_recordings = scan_recording_files();
     info!("Discovered {} model files, {} recording files", initial_models.len(), initial_recordings.len());
 
+    // Auto-load every compatible trained pose model so live inference runs
+    // without any flags. Newest first; inference later picks the model whose
+    // subcarrier width matches the incoming frames. Models that fail to load
+    // (wrong type, missing segments) are skipped with a log line.
+    let mut pose_models: Vec<pose_inference::LoadedPoseModel> = Vec::new();
+    {
+        let mut candidates: Vec<(i64, String)> = initial_models
+            .iter()
+            .filter_map(|m| {
+                Some((
+                    m.get("modified_epoch")?.as_i64()?,
+                    m.get("path")?.as_str()?.to_string(),
+                ))
+            })
+            .collect();
+        candidates.sort_by_key(|(epoch, _)| -*epoch);
+        for (_, path) in &candidates {
+            match pose_inference::load_pose_model_from_rvf(std::path::Path::new(path)) {
+                Ok(pm) => {
+                    info!(
+                        "Pose model loaded: {} ({} params, {} features, {} subcarriers)",
+                        pm.id,
+                        pm.weights.len(),
+                        pm.stats.n_features,
+                        pm.stats.n_subcarriers
+                    );
+                    pose_models.push(pm);
+                }
+                Err(e) => info!("Skipping model {path}: {e}"),
+            }
+        }
+        if pose_models.is_empty() && !candidates.is_empty() {
+            warn!("No compatible trained pose model found — pose stays signal-derived");
+        }
+    }
+
+    let active_pose_model_id = pose_models.first().map(|m| m.id.clone());
+    let any_pose_model = !pose_models.is_empty();
     let (tx, _) = broadcast::channel::<String>(256);
     let state: SharedState = Arc::new(RwLock::new(AppStateInner {
         latest_update: None,
@@ -4661,7 +4952,8 @@ async fn main() {
         save_rvf_path: args.save_rvf.clone(),
         progressive_loader,
         active_sona_profile: None,
-        model_loaded,
+        model_loaded: model_loaded || any_pose_model,
+        pose_models,
         smoothed_person_score: 0.0,
         prev_person_count: 0,
         smoothed_motion: 0.0,
@@ -4680,7 +4972,7 @@ async fn main() {
         latest_wasm_events: None,
         // Model management
         discovered_models: initial_models,
-        active_model_id: None,
+        active_model_id: active_pose_model_id,
         // Recording
         recordings: initial_recordings,
         recording_active: false,
@@ -4719,6 +5011,12 @@ async fn main() {
         } else {
             None
         },
+        node_positions: args.node_positions.as_deref()
+            .map(field_bridge::parse_node_positions)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|p| [p[0] as f64, p[1] as f64, p[2] as f64])
+            .collect(),
     }));
 
     // Start background tasks based on source
@@ -4731,11 +5029,19 @@ async fn main() {
             tokio::spawn(udp_receiver_task(state.clone(), args.nexmon_port));
             tokio::spawn(broadcast_tick_task(state.clone(), args.tick_ms));
         }
+        // For wifi/simulate, also keep the ESP32 UDP listener running: nodes
+        // often power on after the server starts (auto-detect races them).
+        // When a frame arrives the receiver flips source to "esp32" and the
+        // fallback task yields — hot-plug without a restart.
         "wifi" => {
             tokio::spawn(windows_wifi_task(state.clone(), args.tick_ms));
+            tokio::spawn(udp_receiver_task(state.clone(), args.udp_port));
+            tokio::spawn(broadcast_tick_task(state.clone(), args.tick_ms));
         }
         _ => {
             tokio::spawn(simulated_data_task(state.clone(), args.tick_ms));
+            tokio::spawn(udp_receiver_task(state.clone(), args.udp_port));
+            tokio::spawn(broadcast_tick_task(state.clone(), args.tick_ms));
         }
     }
 

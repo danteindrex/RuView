@@ -13,6 +13,9 @@ use crate::commands::guard;
 use crate::state::{AppState, ServerLogBuffer};
 
 /// Default binary name for the sensing server.
+#[cfg(windows)]
+const DEFAULT_SERVER_BIN: &str = "sensing-server.exe";
+#[cfg(not(windows))]
 const DEFAULT_SERVER_BIN: &str = "sensing-server";
 const MAX_SERVER_LOG_LINES: usize = 500;
 
@@ -81,9 +84,18 @@ fn find_server_binary(app: &AppHandle, custom_path: Option<&str>) -> Result<Stri
     }
 
     // 4. Check if it's in PATH
-    if let Ok(output) = Command::new("which").arg(DEFAULT_SERVER_BIN).output() {
+    #[cfg(windows)]
+    let path_lookup = "where";
+    #[cfg(not(windows))]
+    let path_lookup = "which";
+    if let Ok(output) = Command::new(path_lookup).arg(DEFAULT_SERVER_BIN).output() {
         if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let path = String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .to_string();
             if !path.is_empty() {
                 return Ok(path);
             }
@@ -112,7 +124,16 @@ pub async fn start_server(
     auth: State<'_, Arc<AuthManager>>,
 ) -> Result<ServerStartResult, String> {
     guard::require_auth(&access_token, &auth)?;
+    start_server_impl(&app, &config, state.inner()).await
+}
 
+/// Start the sensing server process. Shared by the authenticated
+/// `start_server` command and the application-startup auto-start.
+pub async fn start_server_impl(
+    app: &AppHandle,
+    config: &ServerConfig,
+    state: &AppState,
+) -> Result<ServerStartResult, String> {
     // Check if already running
     let logs = {
         let srv = state.server.lock().map_err(|e| e.to_string())?;
@@ -559,7 +580,7 @@ pub async fn server_logs(
     })
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ServerConfig {
     pub http_port: Option<u16>,
     pub ws_port: Option<u16>,
