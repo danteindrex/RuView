@@ -28,6 +28,17 @@ int stream_sender_init(void);
 int stream_sender_init_with(const char *ip, uint16_t port);
 
 /**
+ * Re-target the UDP destination at runtime (thread-safe).
+ * Called by the discovery responder when the hub broadcasts a
+ * RUVIEW_HUB announcement (e.g. after a DHCP address change).
+ *
+ * @param ip   New aggregator IP address string.
+ * @param port New aggregator UDP port.
+ * @return 0 on success, -1 if the IP is invalid.
+ */
+int stream_sender_retarget(const char *ip, uint16_t port);
+
+/**
  * Send a serialized CSI frame over UDP.
  *
  * @param data Frame data buffer.

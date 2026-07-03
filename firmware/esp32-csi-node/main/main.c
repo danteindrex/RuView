@@ -21,6 +21,7 @@
 
 #include "csi_collector.h"
 #include "stream_sender.h"
+#include "discovery_responder.h"
 #include "nvs_config.h"
 #include "edge_processing.h"
 #include "ota_update.h"
@@ -158,6 +159,14 @@ void app_main(void)
     if (stream_sender_init_with(g_nvs_config.target_ip, g_nvs_config.target_port) != 0) {
         ESP_LOGE(TAG, "Failed to initialize UDP sender");
         return;
+    }
+
+    /* Start the discovery responder (:5006) so the desktop console can
+     * find this node (RUVIEW_DISCOVER -> RUVIEW_BEACON) and the hub can
+     * re-announce its address after a DHCP change (RUVIEW_HUB). */
+    esp_err_t disc_ret = discovery_responder_start();
+    if (disc_ret != ESP_OK) {
+        ESP_LOGW(TAG, "Discovery responder start failed: %s", esp_err_to_name(disc_ret));
     }
 #endif
 

@@ -8,6 +8,8 @@
 #include "stream_sender.h"
 
 #include <string.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "lwip/sockets.h"
@@ -18,6 +20,12 @@ static const char *TAG = "stream_sender";
 
 static int s_sock = -1;
 static struct sockaddr_in s_dest_addr;
+
+/* Guards s_dest_addr: the discovery responder task may re-target the
+ * destination at runtime (RUVIEW_HUB re-announcement, ADR item 2.12) while
+ * the CSI path is sending.  A spinlock keeps the copy race-free without
+ * blocking the WiFi task. */
+static portMUX_TYPE s_addr_lock = portMUX_INITIALIZER_UNLOCKED;
 
 /**
  * ENOMEM backoff state.
@@ -63,6 +71,26 @@ int stream_sender_init_with(const char *ip, uint16_t port)
     return sender_init_internal(ip, port);
 }
 
+int stream_sender_retarget(const char *ip, uint16_t port)
+{
+    struct sockaddr_in new_addr;
+    memset(&new_addr, 0, sizeof(new_addr));
+    new_addr.sin_family = AF_INET;
+    new_addr.sin_port = htons(port);
+
+    if (ip == NULL || inet_pton(AF_INET, ip, &new_addr.sin_addr) <= 0) {
+        ESP_LOGE(TAG, "retarget: invalid IP: %s", ip ? ip : "(null)");
+        return -1;
+    }
+
+    taskENTER_CRITICAL(&s_addr_lock);
+    s_dest_addr = new_addr;
+    taskEXIT_CRITICAL(&s_addr_lock);
+
+    ESP_LOGI(TAG, "UDP sender re-targeted: %s:%u", ip, (unsigned)port);
+    return 0;
+}
+
 int stream_sender_send(const uint8_t *data, size_t len)
 {
     if (s_sock < 0) {
@@ -89,8 +117,15 @@ int stream_sender_send(const uint8_t *data, size_t len)
         s_enomem_suppressed = 0;
     }
 
+    /* Copy the destination under the lock -- it can change at runtime via
+     * stream_sender_retarget() (hub re-announcement). */
+    struct sockaddr_in dest;
+    taskENTER_CRITICAL(&s_addr_lock);
+    dest = s_dest_addr;
+    taskEXIT_CRITICAL(&s_addr_lock);
+
     int sent = sendto(s_sock, data, len, 0,
-                      (struct sockaddr *)&s_dest_addr, sizeof(s_dest_addr));
+                      (struct sockaddr *)&dest, sizeof(dest));
     if (sent < 0) {
         if (errno == ENOMEM) {
             /* Start backoff to let lwIP reclaim buffers */
