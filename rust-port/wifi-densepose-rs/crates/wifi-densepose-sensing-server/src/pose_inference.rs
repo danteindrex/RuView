@@ -255,10 +255,14 @@ pub fn infer_pose(
 
     let n_feat = model.stats.n_features;
 
-    // Window = most recent VARIANCE_WINDOW frames, oldest-first.
+    // Window = up to VARIANCE_WINDOW frames strictly PRECEDING the current
+    // frame, oldest-first — matching the trainer, which builds the window
+    // from frames[i - VARIANCE_WINDOW .. i] (training_api.rs
+    // extract_features_and_targets), excluding frame i itself.
     let window: Vec<&[f64]> = frame_history
         .iter()
         .rev()
+        .skip(1)
         .take(VARIANCE_WINDOW)
         .collect::<Vec<_>>()
         .into_iter()
@@ -313,4 +317,234 @@ pub fn infer_pose(
     }
 
     Some(keypoints)
+}
+
+// ── Model width adaptation ──────────────────────────────────────────────────
+
+/// How the active model relates to the live frame width. Serialized into
+/// `model_status` / `/api/v1/models/active` as
+/// `{"mode": "exact"|"adapted"|"incompatible", "frame_width": N, "model_width": M}`.
+#[derive(Debug, Clone, Serialize)]
+pub struct InferenceCompat {
+    pub mode: &'static str,
+    pub frame_width: usize,
+    pub model_width: usize,
+}
+
+/// Linearly resample a subcarrier amplitude vector to `target` bins.
+///
+/// A plain linear resample across the subcarrier index. See the
+/// ruvector-solver 114→56 sparse interpolation in the train crate's
+/// subcarrier.rs for the higher-fidelity prior art; linear is sufficient for
+/// bridging model/frame width mismatches at inference time.
+pub fn resample_linear(src: &[f64], target: usize) -> Vec<f64> {
+    if target == 0 || src.is_empty() {
+        return vec![0.0; target];
+    }
+    if src.len() == target {
+        return src.to_vec();
+    }
+    if src.len() == 1 {
+        return vec![src[0]; target];
+    }
+    let mut out = Vec::with_capacity(target);
+    let scale = (src.len() - 1) as f64 / (target.max(2) - 1) as f64;
+    for k in 0..target {
+        let pos = k as f64 * scale;
+        let i = (pos.floor() as usize).min(src.len() - 2);
+        let frac = pos - i as f64;
+        out.push(src[i] * (1.0 - frac) + src[i + 1] * frac);
+    }
+    out
+}
+
+/// Log the width adaptation once per (frame_width, model_width) pair.
+fn log_adaptation_once(frame_width: usize, model_width: usize) {
+    use std::sync::{Mutex, OnceLock};
+    static LOGGED: OnceLock<Mutex<std::collections::HashSet<(usize, usize)>>> = OnceLock::new();
+    let logged = LOGGED.get_or_init(|| Mutex::new(std::collections::HashSet::new()));
+    if let Ok(mut set) = logged.lock() {
+        if set.insert((frame_width, model_width)) {
+            tracing::info!(
+                "pose inference: adapting live frames ({frame_width} subcarriers) to model \
+                 width {model_width} via linear resample"
+            );
+        }
+    }
+}
+
+/// Run inference choosing the best-fitting model for the live frame width.
+///
+/// Prefers a model whose training width matches the frame exactly; otherwise
+/// adapts the frame window to the nearest model width via linear resampling.
+/// Returns the keypoints (if inference ran) and a compatibility descriptor
+/// for surfacing in model status endpoints.
+pub fn infer_pose_auto(
+    models: &[LoadedPoseModel],
+    frame_history: &VecDeque<Vec<f64>>,
+    sample_rate_hz: f64,
+) -> (Option<Vec<[f64; 4]>>, Option<InferenceCompat>) {
+    let Some(current) = frame_history.back() else {
+        return (None, None);
+    };
+    let width = current.len();
+    if models.is_empty() || width == 0 {
+        return (None, None);
+    }
+
+    if let Some(pm) = models.iter().find(|pm| pm.stats.n_subcarriers == width) {
+        let kps = infer_pose(pm, frame_history, sample_rate_hz);
+        return (
+            kps,
+            Some(InferenceCompat {
+                mode: "exact",
+                frame_width: width,
+                model_width: pm.stats.n_subcarriers,
+            }),
+        );
+    }
+
+    // Nearest model width; adapt the recent window by linear resampling.
+    let Some(pm) = models.iter().min_by_key(|pm| {
+        (pm.stats.n_subcarriers as isize - width as isize).unsigned_abs()
+    }) else {
+        return (None, None);
+    };
+    let target = pm.stats.n_subcarriers;
+    if target == 0 {
+        return (
+            None,
+            Some(InferenceCompat {
+                mode: "incompatible",
+                frame_width: width,
+                model_width: target,
+            }),
+        );
+    }
+    log_adaptation_once(width, target);
+
+    // infer_pose only reads the current frame plus the VARIANCE_WINDOW
+    // preceding frames, so resampling that suffix is enough.
+    let adapted: VecDeque<Vec<f64>> = frame_history
+        .iter()
+        .rev()
+        .take(VARIANCE_WINDOW + 2)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .map(|f| resample_linear(f, target))
+        .collect();
+
+    let kps = infer_pose(pm, &adapted, sample_rate_hz);
+    (
+        kps,
+        Some(InferenceCompat {
+            mode: "adapted",
+            frame_width: width,
+            model_width: target,
+        }),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_model(n_sub: usize) -> LoadedPoseModel {
+        let n_feat = feature_dim(n_sub);
+        LoadedPoseModel {
+            id: format!("test-{n_sub}"),
+            weights: vec![0.0; N_TARGETS * n_feat + N_TARGETS],
+            stats: FeatureStats {
+                mean: vec![0.0; n_feat],
+                std: vec![1.0; n_feat],
+                n_features: n_feat,
+                n_subcarriers: n_sub,
+            },
+        }
+    }
+
+    fn history(width: usize, n_frames: usize) -> VecDeque<Vec<f64>> {
+        (0..n_frames)
+            .map(|i| (0..width).map(|k| (i * width + k) as f64).collect())
+            .collect()
+    }
+
+    #[test]
+    fn resample_identity_and_endpoints() {
+        let src = vec![1.0, 2.0, 3.0, 4.0];
+        assert_eq!(resample_linear(&src, 4), src);
+        let up = resample_linear(&src, 7);
+        assert_eq!(up.len(), 7);
+        assert!((up[0] - 1.0).abs() < 1e-12);
+        assert!((up[6] - 4.0).abs() < 1e-12);
+        // Midpoint of a linear ramp stays on the ramp.
+        assert!((up[3] - 2.5).abs() < 1e-12);
+        let down = resample_linear(&src, 2);
+        assert_eq!(down, vec![1.0, 4.0]);
+    }
+
+    #[test]
+    fn exact_width_model_selected() {
+        let models = vec![make_model(56), make_model(192)];
+        let (kps, compat) = infer_pose_auto(&models, &history(56, 12), 10.0);
+        assert!(kps.is_some());
+        let compat = compat.unwrap();
+        assert_eq!(compat.mode, "exact");
+        assert_eq!(compat.frame_width, 56);
+        assert_eq!(compat.model_width, 56);
+    }
+
+    #[test]
+    fn mismatched_width_adapts_to_nearest_model() {
+        let models = vec![make_model(192), make_model(56)];
+        let (kps, compat) = infer_pose_auto(&models, &history(64, 12), 10.0);
+        assert!(kps.is_some(), "adapted inference must produce keypoints");
+        assert_eq!(kps.unwrap().len(), N_KEYPOINTS);
+        let compat = compat.unwrap();
+        assert_eq!(compat.mode, "adapted");
+        assert_eq!(compat.frame_width, 64);
+        assert_eq!(compat.model_width, 56, "56 is nearer to 64 than 192");
+    }
+
+    #[test]
+    fn no_models_or_empty_history_yields_nothing() {
+        let (kps, compat) = infer_pose_auto(&[], &history(56, 5), 10.0);
+        assert!(kps.is_none() && compat.is_none());
+        let (kps, compat) = infer_pose_auto(&[make_model(56)], &VecDeque::new(), 10.0);
+        assert!(kps.is_none() && compat.is_none());
+    }
+
+    #[test]
+    fn variance_window_excludes_current_frame() {
+        // All history frames identical except the current one: the variance
+        // features (indices n_sub..2*n_sub) must be zero because the window
+        // is built from preceding frames only.
+        let n_sub = 4;
+        let mut hist: VecDeque<Vec<f64>> = (0..6).map(|_| vec![2.0; n_sub]).collect();
+        hist.push_back(vec![9.0; n_sub]);
+        let model = make_model(n_sub);
+        // stats are identity (mean 0, std 1) so normalized features == raw.
+        let current = hist.back().unwrap().clone();
+        let window: Vec<&[f64]> = hist
+            .iter()
+            .rev()
+            .skip(1)
+            .take(VARIANCE_WINDOW)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .map(|v| v.as_slice())
+            .collect();
+        let feats = extract_features(&current, &window, window.last().copied(), 10.0);
+        for k in n_sub..2 * n_sub {
+            assert!(
+                feats[k].abs() < 1e-12,
+                "variance over identical preceding frames must be 0, got {}",
+                feats[k]
+            );
+        }
+        // And the full pipeline still runs on it.
+        assert!(infer_pose(&model, &hist, 10.0).is_some());
+    }
 }

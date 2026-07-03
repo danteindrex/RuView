@@ -4,8 +4,8 @@ use crate::types::{Esp32Frame, Esp32VitalsPacket, WasmOutputPacket};
 
 use super::esp32_legacy::{
     parse_esp32_compressed_packet, parse_esp32_feature_packet, parse_esp32_frame,
-    parse_esp32_vitals_or_fused, parse_esp32_wasm_output, Esp32CompressedPacket,
-    Esp32FeaturePacket,
+    parse_esp32_vitals_or_fused, parse_esp32_wasm_output, parse_rv_feature_state,
+    Esp32CompressedPacket, Esp32FeaturePacket, RvFeatureState,
 };
 
 #[repr(u32)]
@@ -16,7 +16,10 @@ pub enum Magic {
     Feature = 0xC511_0003,
     FusedVitals = 0xC511_0004,
     Compressed = 0xC511_0005,
-    WasmOutputV2 = 0xC511_0006,
+    /// ADR-081 feature state (CRC-gated); legacy firmware also used this
+    /// magic for WASM output, which is what a CRC failure falls back to.
+    FeatureState = 0xC511_0006,
+    WasmOutputV2 = 0xC511_0007,
 }
 
 #[derive(Debug, Clone)]
@@ -25,6 +28,7 @@ pub enum DecodedPacket {
     EdgeVitals(Esp32VitalsPacket),
     EdgeFeature(Esp32FeaturePacket),
     Compressed(Esp32CompressedPacket),
+    FeatureState(RvFeatureState),
     WasmOutput(WasmOutputPacket),
 }
 
@@ -49,6 +53,14 @@ pub fn decode_packet(buf: &[u8]) -> Option<DecodedPacket> {
         }
         x if x == Magic::Compressed as u32 => {
             parse_esp32_compressed_packet(buf).map(DecodedPacket::Compressed)
+        }
+        x if x == Magic::FeatureState as u32 => {
+            // CRC-gated feature state first; a CRC failure means legacy
+            // firmware WASM output sharing the same magic.
+            if let Some(fs) = parse_rv_feature_state(buf) {
+                return Some(DecodedPacket::FeatureState(fs));
+            }
+            parse_esp32_wasm_output(buf).map(DecodedPacket::WasmOutput)
         }
         x if x == Magic::WasmOutputV2 as u32 => {
             parse_esp32_wasm_output(buf).map(DecodedPacket::WasmOutput)
