@@ -464,7 +464,7 @@ export class HudController {
     }
 
     const fallEl = document.getElementById('fall-alert');
-    if (fallEl) fallEl.style.display = cls.fall_detected ? 'block' : 'none';
+    if (fallEl) fallEl.style.display = (cls.fall_detected || data.posture === 'lying_down') ? 'block' : 'none';
 
     // Scenario description and edge modules.
     // With live sensor data, derive the scenario from what the data actually
@@ -473,7 +473,7 @@ export class HudController {
     const isLive = data.source && data.source !== 'demo';
     let scenarioKey;
     if (isLive) {
-      if (cls.fall_detected) scenarioKey = 'fall';
+      if (cls.fall_detected || data.posture === 'lying_down') scenarioKey = 'fall';
       else if ((cls.motion_level || '') === 'active' || (cls.motion_level || '').includes('moving')) scenarioKey = 'walking';
       else if (cls.presence) scenarioKey = 'breathing';
       else scenarioKey = 'empty';

@@ -29,7 +29,7 @@ function Sparkline({ data, color = "currentColor" }: { data: number[], color?: s
 }
 
 export function MedicalPage() {
-  const { latestUpdate } = useSensingStore();
+  const { latestUpdate, edgeVitals } = useSensingStore();
   const [hrHistory, setHrHistory] = useState<number[]>(new Array(20).fill(0));
   const [brHistory, setBrHistory] = useState<number[]>(new Array(20).fill(0));
 
@@ -44,8 +44,12 @@ export function MedicalPage() {
   }, [latestUpdate]);
 
   const vitals = latestUpdate?.vital_signs;
-  // Fall detection: posture field from Rust (not fall_detected which doesn't exist in WebSocket)
-  const isFallDetected = latestUpdate?.posture === "fallen" || latestUpdate?.posture === "lying";
+  // Fall detection: the Rust sensing-server serializes PostureClass as snake_case
+  // strings ("empty" | "standing" | "sitting" | "lying_down" | "walking" | "unknown");
+  // there is no dedicated "fallen" variant, so "lying_down" is the fall-relevant
+  // posture. Edge nodes (ESP32 Tier 1+) additionally report an explicit
+  // fall_detected flag in their edge_vitals packets.
+  const isFallDetected = latestUpdate?.posture === "lying_down" || edgeVitals?.fall_detected === true;
 
   return (
     <div className="space-y-6 p-6 max-w-7xl mx-auto">
@@ -59,7 +63,7 @@ export function MedicalPage() {
         </Badge>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         {/* Heart Rate Card */}
         <Card className="bg-gradient-to-br from-background to-rose-50/10 border-rose-500/20">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -111,6 +115,52 @@ export function MedicalPage() {
             <div className="mt-4">
               <span className="text-xs font-medium text-emerald-500 uppercase tracking-tighter">Continuous Monitoring</span>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Edge Node Vitals (ESP32 / Pi edge DSP + mmWave) */}
+        <Card className="bg-gradient-to-br from-background to-violet-50/10 border-violet-500/20">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Edge Node Vitals</CardTitle>
+            {edgeVitals ? <Badge variant="outline">Node {edgeVitals.node_id}</Badge> : null}
+          </CardHeader>
+          <CardContent>
+            {edgeVitals ? (
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Heart Rate</span>
+                  <span className="font-semibold">
+                    {(edgeVitals.heartrate_bpm ?? edgeVitals.heart_rate_bpm)?.toFixed(0) ?? "--"} BPM
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Respiration</span>
+                  <span className="font-semibold">{edgeVitals.breathing_rate_bpm?.toFixed(1) ?? "--"} RPM</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Presence</span>
+                  <span className="font-semibold">{edgeVitals.presence ? "Yes" : "No"}</span>
+                </div>
+                {typeof edgeVitals.distance_cm === "number" || typeof edgeVitals.distance_m === "number" ? (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Distance</span>
+                    <span className="font-semibold">
+                      {typeof edgeVitals.distance_cm === "number"
+                        ? `${edgeVitals.distance_cm.toFixed(0)} cm`
+                        : `${edgeVitals.distance_m!.toFixed(2)} m`}
+                    </span>
+                  </div>
+                ) : null}
+                {edgeVitals.fall_detected ? (
+                  <p className="mt-1 text-xs font-bold uppercase text-destructive">Edge fall flag raised</p>
+                ) : null}
+                <p className="mt-1 text-[10px] font-mono text-muted-foreground opacity-70">
+                  {edgeVitals.received_at ? new Date(edgeVitals.received_at).toLocaleTimeString() : ""}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No edge_vitals packets received yet.</p>
+            )}
           </CardContent>
         </Card>
       </div>

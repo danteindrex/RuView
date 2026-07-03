@@ -206,11 +206,19 @@ export function NetworkPage({ nodes, onNodesUpdate }: NetworkPageProps) {
           </div>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button disabled={loading || !wifiPort || !ssid} onClick={handleConfigureWifi}>
-            <Wifi className="mr-2 h-4 w-4" />
-            Configure WiFi
-          </Button>
+          {/* The serial WiFi-config protocol has no counterpart in the current
+              ESP32 firmware (guaranteed timeout). Keep the code path; a later
+              firmware release adds support. */}
+          <span title="Not supported by current firmware — use scripts/setup-esp32-node.ps1">
+            <Button disabled onClick={handleConfigureWifi}>
+              <Wifi className="mr-2 h-4 w-4" />
+              Configure WiFi
+            </Button>
+          </span>
         </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Not supported by current firmware — use scripts/setup-esp32-node.ps1
+        </p>
       </PageSection>
 
       {ports.length > 0 ? (

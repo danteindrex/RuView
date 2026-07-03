@@ -9,7 +9,9 @@ interface Pose3DPageProps {
 }
 
 function buildWsUrl(status: ServerStatusResponse | null): string | null {
-  if (!status?.ws_port) return "ws://127.0.0.1:3001/ws/sensing";
+  // Unknown WS port: return null so the observatory's own auto-detect probes
+  // (:8765 WS default, :8080 HTTP default) run instead of pinning a dead port.
+  if (!status?.ws_port) return null;
   const host = status.bind_address && status.bind_address !== "0.0.0.0" ? status.bind_address : "127.0.0.1";
   return `ws://${host}:${status.ws_port}/ws/sensing`;
 }

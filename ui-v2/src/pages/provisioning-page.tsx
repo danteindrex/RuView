@@ -10,6 +10,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { JsonViewer } from "@/components/layout/json-viewer";
 import type { MeshNodeConfig, ProvisionResult, ProvisioningConfig, ValidationResult } from "@/types";
 
+// The serial NVS provisioning protocol has no counterpart in the current ESP32
+// firmware, so these operations time out. Keep the code paths — a later
+// firmware release adds support — but disable the buttons until then.
+const SERIAL_PROVISIONING_UNSUPPORTED =
+  "Not supported by current firmware — use scripts/setup-esp32-node.ps1";
+
 function parseCsvChannels(value: string) {
   return value
     .split(",")
@@ -223,18 +229,25 @@ export function ProvisioningPage() {
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button disabled={loading || !port || !accessToken} onClick={() => withBusy(async () => {
-            if (accessToken) setResult(await tauriApi.provisionNode(accessToken, port, normalizedConfig));
-          })}>
-            Provision Node
-          </Button>
-          <Button disabled={loading || !port || !accessToken} variant="secondary" onClick={() => withBusy(async () => setNvs(await tauriApi.readNvs(accessToken!, port)))}>
-            Read NVS
-          </Button>
-          <Button disabled={loading || !port || !accessToken} variant="outline" onClick={() => withBusy(async () => setResult(await tauriApi.eraseNvs(accessToken!, port)))}>
-            Erase NVS
-          </Button>
+          <span title={SERIAL_PROVISIONING_UNSUPPORTED}>
+            <Button disabled onClick={() => withBusy(async () => {
+              if (accessToken) setResult(await tauriApi.provisionNode(accessToken, port, normalizedConfig));
+            })}>
+              Provision Node
+            </Button>
+          </span>
+          <span title={SERIAL_PROVISIONING_UNSUPPORTED}>
+            <Button disabled variant="secondary" onClick={() => withBusy(async () => setNvs(await tauriApi.readNvs(accessToken!, port)))}>
+              Read NVS
+            </Button>
+          </span>
+          <span title={SERIAL_PROVISIONING_UNSUPPORTED}>
+            <Button disabled variant="outline" onClick={() => withBusy(async () => setResult(await tauriApi.eraseNvs(accessToken!, port)))}>
+              Erase NVS
+            </Button>
+          </span>
         </div>
+        <p className="mt-2 text-xs text-muted-foreground">{SERIAL_PROVISIONING_UNSUPPORTED}</p>
       </PageSection>
 
       <PageSection title="Mesh Config Generator" description="Generate per-node mesh config derivatives from current base payload.">

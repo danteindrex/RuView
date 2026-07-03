@@ -280,7 +280,8 @@ export class FigurePool {
       const fig = this._figures[f];
       if (f < persons.length && isPresent) {
         const p = persons[f];
-        const kps = this._poseSystem.generateKeypoints(p, elapsed, breathPulse);
+        // Real model keypoints (live-data-mapper) win over synthetic poses.
+        const kps = p.keypoints17 || this._poseSystem.generateKeypoints(p, elapsed, breathPulse);
         this.applyKeypoints(fig, kps, breathPulse, p.position || [0, 0, 0], elapsed, p.pose);
         fig.visible = true;
       } else {

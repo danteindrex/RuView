@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Activity, CheckCircle2, Loader2, PackageCheck, Play, RotateCw, Save, ShieldCheck, Square, UploadCloud, Wrench } from "lucide-react";
 import { tauriApi } from "@/lib/tauri-api";
 import { useAuthStore } from "@/lib/auth-store";
+import { isLoopbackHostPort } from "@/lib/utils";
 import { PageSection } from "@/components/layout/page-section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,9 @@ const DEFAULT_TARGET: PiNodeTarget = {
 
 const DEFAULT_CONFIG: PiAgentConfig = {
   listen: "0.0.0.0:5500",
-  aggregator: "127.0.0.1:5005",
+  // The aggregator is where the Pi streams CSI — it must be THIS machine's LAN
+  // address, never a loopback default (the Pi would stream to itself).
+  aggregator: "",
   node_base: 10,
   tier: 2,
   default_rssi: -55,
@@ -196,7 +199,18 @@ export function PiNodesPage() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="agent-aggregator">Aggregator</Label>
-            <Input id="agent-aggregator" value={config.aggregator} onChange={(e) => setConfig((prev) => ({ ...prev, aggregator: e.target.value }))} />
+            <Input
+              id="agent-aggregator"
+              value={config.aggregator}
+              onChange={(e) => setConfig((prev) => ({ ...prev, aggregator: e.target.value }))}
+              placeholder="this PC's LAN IP:5005 (e.g. 192.168.1.20:5005)"
+              required
+            />
+            {config.aggregator && isLoopbackHostPort(config.aggregator) && target.host.trim() && !isLoopbackHostPort(target.host) ? (
+              <p className="text-xs text-amber-500">
+                This is the Pi&apos;s own loopback — the Pi would stream CSI to itself. Use this PC&apos;s LAN IP (e.g. 192.168.1.20:5005).
+              </p>
+            ) : null}
           </div>
           <div className="space-y-2">
             <Label htmlFor="agent-node-base">Node Base</Label>

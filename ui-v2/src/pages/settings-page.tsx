@@ -10,6 +10,7 @@ import { JsonViewer } from "@/components/layout/json-viewer";
 import { useEnterpriseSettings } from "@/lib/enterprise-store";
 import { useAuthStore } from "@/lib/auth-store";
 import { QrCode, MessageSquare, ShieldCheck, Database } from "lucide-react";
+import { isLoopbackHostPort } from "@/lib/utils";
 import type { AppSettings } from "@/types";
 
 interface SettingsPageProps {
@@ -50,7 +51,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: "dark",
   pi_agent_enabled: false,
   pi_agent_listen: "0.0.0.0:5500",
-  pi_agent_aggregator: "127.0.0.1:5005",
+  // Where the Pi agent streams CSI — must be this machine's LAN address, not a
+  // loopback default (a Pi with 127.0.0.1 would stream to its own loopback).
+  pi_agent_aggregator: "",
   pi_agent_node_base: 10,
   pi_agent_tier: 2,
   pi_agent_default_rssi: -55,
@@ -455,7 +458,18 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="set-pi-aggregator">Aggregator</Label>
-                  <Input id="set-pi-aggregator" value={settings.pi_agent_aggregator} onChange={(e) => setSettings((prev) => ({ ...prev, pi_agent_aggregator: e.target.value }))} />
+                  <Input
+                    id="set-pi-aggregator"
+                    value={settings.pi_agent_aggregator}
+                    onChange={(e) => setSettings((prev) => ({ ...prev, pi_agent_aggregator: e.target.value }))}
+                    placeholder="this PC's LAN IP:5005 (e.g. 192.168.1.20:5005)"
+                    required
+                  />
+                  {settings.pi_agent_aggregator && isLoopbackHostPort(settings.pi_agent_aggregator) ? (
+                    <p className="text-xs text-amber-500">
+                      Loopback address: a remote Pi would stream CSI to its own loopback, not to this PC. Use this PC&apos;s LAN IP (e.g. 192.168.1.20:5005).
+                    </p>
+                  ) : null}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="set-pi-node-base">Node Base</Label>
