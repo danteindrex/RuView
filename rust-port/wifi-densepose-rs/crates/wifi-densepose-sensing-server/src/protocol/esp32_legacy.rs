@@ -462,13 +462,15 @@ mod tests {
     }
 
     #[test]
-    fn feature_state_rejected_on_bad_crc_falls_to_wasm_parser() {
+    fn feature_state_rejected_on_bad_crc_is_dropped_entirely() {
         let mut p = golden_feature_state();
         p[57] ^= 0xFF; // corrupt CRC
         assert!(parse_rv_feature_state(&p).is_none());
-        // Legacy firmware WASM packets share the 0xC5110006 magic; the CRC
-        // failure must leave the payload available to the WASM parser.
-        assert!(parse_esp32_wasm_output(&p).is_some());
+        // A 60-byte payload can never be a valid legacy WASM packet either
+        // (the exact-length rule 8 + 5*count has no integer solution at 60),
+        // so a corrupted feature-state packet is dropped rather than being
+        // misread as garbage WASM events.
+        assert!(parse_esp32_wasm_output(&p).is_none());
     }
 
     #[test]
