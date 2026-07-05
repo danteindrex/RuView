@@ -150,7 +150,18 @@ All packets are sent over UDP to the configured aggregator. The magic number in 
 |-------|------|------|------|----------|
 | `0xC5110001` | CSI Frame (ADR-018) | ~20 Hz | Variable | Raw I/Q per subcarrier per antenna |
 | `0xC5110002` | Vitals Packet | 1 Hz | 32 bytes | Presence, breathing BPM, heart rate, fall flag, occupancy |
-| `0xC5110004` | WASM Output | Event-driven | Variable | Custom events from WASM modules (u8 type + f32 value) |
+| `0xC5110007` | WASM Output | Event-driven | Variable | Custom events from WASM modules (u8 type + f32 value). Was `0xC5110004`, migrated to resolve the collision with the fused-vitals packet. |
+
+### Discovery / Hub Re-announcement (UDP :5006)
+
+The node also listens on UDP port 5006 for two plain-text datagrams:
+
+- `RUVIEW_DISCOVER` -- replies to the sender with
+  `RUVIEW_BEACON|<mac>|<node_id>|<version>|<chip>|<role>|<tdm_slot>|<tdm_total>`
+  so the Wave desktop console can register the node.
+- `RUVIEW_HUB|<ip>|<port>` -- re-targets the CSI UDP stream at runtime and
+  persists the new target to NVS (heals nodes after the hub PC's DHCP
+  address changes).
 
 ### ADR-018 Binary Frame Format
 

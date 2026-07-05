@@ -11,6 +11,8 @@
 #   -Ssid      WiFi SSID (default: the network this PC is connected to; must be 2.4 GHz)
 #   -Password  WiFi password (default: read from the Windows profile for -Ssid)
 #   -TargetIp  Where the node streams CSI (default: this PC's WiFi IPv4)
+#   -TdmSlot   This node's TDM slot index, 0-based (default NodeId-1 when -TdmTotal is set)
+#   -TdmTotal  Total nodes in the TDM schedule (omit for single free-running node)
 #   -SkipFlash Only re-provision (keep existing firmware)
 #   -Release   Firmware release tag (default v0.8.3-esp32)
 #
@@ -24,6 +26,8 @@ param(
     [string]$Ssid = "",
     [string]$Password = "",
     [string]$TargetIp = "",
+    [int]$TdmSlot = -1,
+    [int]$TdmTotal = 0,
     [switch]$SkipFlash,
     [string]$Release = "v0.8.3-esp32"
 )
@@ -33,6 +37,18 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 
 function Fail($msg) { Write-Host "ERROR: $msg" -ForegroundColor Red; exit 1 }
 function Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
+
+# -- 0. TDM parameter validation ----------------------------------------------
+# provision.py requires --tdm-slot and --tdm-total together, slot < total.
+if ($TdmSlot -ge 0 -and $TdmTotal -le 0) {
+    Fail "-TdmSlot requires -TdmTotal (total nodes in the TDM schedule)."
+}
+if ($TdmTotal -gt 0) {
+    if ($TdmSlot -lt 0) { $TdmSlot = $NodeId - 1 }
+    if ($TdmSlot -lt 0 -or $TdmSlot -ge $TdmTotal) {
+        Fail "TDM slot $TdmSlot is out of range [0..$($TdmTotal-1)]. Slots are 0-based (node 1 -> slot 0); when -TdmSlot is omitted it defaults to NodeId-1."
+    }
+}
 
 # -- 1. Detect serial port ---------------------------------------------------
 Step "Detecting ESP32 serial port"
@@ -104,10 +120,22 @@ if (-not $SkipFlash) {
 
 # -- 6. Provision NVS ----------------------------------------------------------
 Step "Provisioning WiFi + target (node_id=$NodeId)"
-python (Join-Path $repoRoot 'firmware\esp32-csi-node\provision.py') `
-    --port $ComPort --ssid $Ssid --password $Password `
-    --target-ip $TargetIp --node-id $NodeId
+$provArgs = @(
+    '--port', $ComPort, '--ssid', $Ssid, '--password', $Password,
+    '--target-ip', $TargetIp, '--node-id', $NodeId
+)
+if ($TdmTotal -gt 0) {
+    Write-Host "  TDM: slot $TdmSlot of $TdmTotal"
+    $provArgs += @('--tdm-slot', $TdmSlot, '--tdm-total', $TdmTotal)
+}
+python (Join-Path $repoRoot 'firmware\esp32-csi-node\provision.py') @provArgs
 if ($LASTEXITCODE -ne 0) { Fail "Provisioning failed." }
+
+Write-Host ""
+Write-Host "  NOTE: the node streams CSI to $TargetIp and re-resolves it only at" -ForegroundColor Yellow
+Write-Host "  boot (or on a RUVIEW_HUB re-announcement). If your router hands this" -ForegroundColor Yellow
+Write-Host "  PC a different DHCP address later, the node goes silent. Set a DHCP" -ForegroundColor Yellow
+Write-Host "  reservation for $TargetIp in your router's admin page." -ForegroundColor Yellow
 
 # -- 7. Verify: watch serial for WiFi connection --------------------------------
 Step "Verifying node comes online (30 s)"
