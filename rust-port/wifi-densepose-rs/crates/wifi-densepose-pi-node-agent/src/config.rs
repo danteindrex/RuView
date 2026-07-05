@@ -69,4 +69,56 @@ impl AgentConfig {
             wasm_module_id,
         })
     }
+
+    /// Refuse an aggregator that points at loopback unless explicitly allowed.
+    ///
+    /// On a Pi node, a loopback aggregator makes the agent stream CSI to the
+    /// Pi itself — silently. The aggregator should be the hub PC's LAN IP.
+    pub fn ensure_aggregator_not_loopback(&self, allow_loopback: bool) -> Result<()> {
+        if self.aggregator_addr.ip().is_loopback() && !allow_loopback {
+            anyhow::bail!(
+                "aggregator {} is a loopback address: the agent would stream CSI to this machine \
+                 itself instead of the hub. Set --aggregator to the hub PC's LAN IP \
+                 (e.g. 192.168.1.20:5005), or pass --allow-loopback for local testing.",
+                self.aggregator_addr
+            );
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config_with_aggregator(aggregator: &str) -> AgentConfig {
+        AgentConfig {
+            aggregator_addr: aggregator.parse().expect("valid test aggregator address"),
+            ..AgentConfig::default()
+        }
+    }
+
+    #[test]
+    fn loopback_aggregator_rejected_by_default() {
+        for addr in ["127.0.0.1:5005", "[::1]:5005"] {
+            let err = config_with_aggregator(addr)
+                .ensure_aggregator_not_loopback(false)
+                .expect_err("loopback aggregator must be rejected");
+            assert!(err.to_string().contains("--allow-loopback"));
+        }
+    }
+
+    #[test]
+    fn loopback_aggregator_allowed_with_flag() {
+        assert!(config_with_aggregator("127.0.0.1:5005")
+            .ensure_aggregator_not_loopback(true)
+            .is_ok());
+    }
+
+    #[test]
+    fn lan_aggregator_always_allowed() {
+        assert!(config_with_aggregator("192.168.1.20:5005")
+            .ensure_aggregator_not_loopback(false)
+            .is_ok());
+    }
 }

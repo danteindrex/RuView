@@ -25,9 +25,16 @@ struct Args {
     #[arg(long, default_value = "0.0.0.0:5500")]
     listen: String,
 
-    /// Aggregator endpoint (sensing-server UDP).
+    /// Aggregator endpoint (sensing-server UDP). Must be the hub PC's LAN IP;
+    /// loopback is refused unless --allow-loopback is passed.
     #[arg(long, default_value = "127.0.0.1:5005")]
     aggregator: String,
+
+    /// Allow a loopback aggregator (local testing only). Without this flag the
+    /// agent refuses 127.0.0.1/::1 aggregators, which would silently stream
+    /// CSI to the node itself instead of the hub.
+    #[arg(long, default_value_t = false)]
+    allow_loopback: bool,
 
     /// Base node ID used when mapping Nexmon core/ss to logical node IDs.
     #[arg(long, default_value_t = 10)]
@@ -112,7 +119,9 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let args = Args::parse();
+    let allow_loopback = args.allow_loopback;
     let config = build_config(args)?;
+    config.ensure_aggregator_not_loopback(allow_loopback)?;
     run(config).await
 }
 

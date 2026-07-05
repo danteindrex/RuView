@@ -9,15 +9,21 @@ use wifi_densepose_pi_node_agent::mmwave::{fuse_with_mmwave, MmwaveState};
 use wifi_densepose_pi_node_agent::nexmon_capture::{nexmon_to_raw_frame, parse_nexmon_payload};
 use wifi_densepose_pi_node_agent::wasm_runtime::{EdgeFrameContext, WasmRuntime};
 
+/// Fixture per `struct csi_udp_frame` in nexmon_csi/src/csi_extractor.c:
+/// magic u16 | rssi i8 | fc u8 | SrcMac [6] | seqCnt u16 | csiconf u16 |
+/// chanspec u16 | chip u16 | interleaved i16 LE I/Q values.
 fn fixture_nexmon_pkt() -> Vec<u8> {
-    let mut buf = vec![0u8; 16 + 64 * 4];
+    let mut buf = vec![0u8; 18 + 64 * 4];
     buf[0..2].copy_from_slice(&0x1111u16.to_le_bytes());
-    buf[8..10].copy_from_slice(&1234u16.to_le_bytes());
-    buf[10..12].copy_from_slice(&0u16.to_le_bytes());
-    buf[12..14].copy_from_slice(&6u16.to_le_bytes());
-    buf[14..16].copy_from_slice(&0x4355u16.to_le_bytes());
+    buf[2] = (-47i8) as u8; // rssi
+    buf[3] = 0x88; // fc
+    buf[4..10].copy_from_slice(&[0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]); // SrcMac
+    buf[10..12].copy_from_slice(&1234u16.to_le_bytes()); // seqCnt
+    buf[12..14].copy_from_slice(&0u16.to_le_bytes()); // csiconf
+    buf[14..16].copy_from_slice(&6u16.to_le_bytes()); // chanspec (channel 6)
+    buf[16..18].copy_from_slice(&0x4355u16.to_le_bytes()); // chip
     for i in 0..64 {
-        let off = 16 + i * 4;
+        let off = 18 + i * 4;
         let re = (i as i16) - 32;
         let im = 32 - (i as i16);
         buf[off..off + 2].copy_from_slice(&re.to_le_bytes());

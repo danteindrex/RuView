@@ -54,16 +54,28 @@ fn motion_energy(current: &[f32], previous: Option<&[f32]>) -> f32 {
     sum / len as f32
 }
 
+/// Compact deterministic codec: keep every second (even-indexed) subcarrier,
+/// emitting its raw I byte then Q byte (`i8` two's complement), so signs
+/// survive the round trip. Inverse is [`decompress_iq`].
 fn compress_iq(frame: &RawFrame) -> Vec<u8> {
-    // Compact but deterministic payload: keep every second subcarrier as i16 packed.
-    let mut payload = Vec::with_capacity(frame.iq.len());
+    // 2 bytes per kept (even-indexed) subcarrier.
+    let mut payload = Vec::with_capacity(frame.iq.len().div_ceil(2) * 2);
     for (idx, (i, q)) in frame.iq.iter().enumerate() {
         if idx % 2 == 0 {
-            let packed = ((*i as i16) << 8) | (*q as i16 & 0x00ff);
-            payload.extend_from_slice(&packed.to_le_bytes());
+            payload.push(*i as u8);
+            payload.push(*q as u8);
         }
     }
     payload
+}
+
+/// Inverse of `compress_iq`: reconstruct the kept (even-indexed) subcarriers
+/// from a compressed payload (any trailing odd byte is ignored).
+pub fn decompress_iq(payload: &[u8]) -> Vec<(i8, i8)> {
+    payload
+        .chunks_exact(2)
+        .map(|pair| (pair[0] as i8, pair[1] as i8))
+        .collect()
 }
 
 pub fn process_frame(state: &mut EdgeDspState, frame: &RawFrame, timestamp_ms: u64) -> EdgeOutputs {
@@ -131,4 +143,44 @@ pub fn process_frame(state: &mut EdgeDspState, frame: &RawFrame, timestamp_ms: u
 
     state.prev_amplitudes = Some(amplitudes);
     outputs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn frame_with_iq(iq: Vec<(i8, i8)>) -> RawFrame {
+        RawFrame {
+            node_id: 10,
+            n_antennas: 1,
+            n_subcarriers: iq.len() as u16,
+            freq_mhz: 2437,
+            sequence: 7,
+            rssi: -48,
+            noise_floor: -92,
+            iq,
+        }
+    }
+
+    #[test]
+    fn compress_iq_round_trips_signed_values() {
+        let iq = vec![(-128, 127), (5, -5), (-1, 0), (64, -64), (100, -100)];
+        let frame = frame_with_iq(iq.clone());
+        let decoded = decompress_iq(&compress_iq(&frame));
+        let kept: Vec<(i8, i8)> = iq.iter().copied().step_by(2).collect();
+        assert_eq!(decoded, kept);
+    }
+
+    #[test]
+    fn tier2_compressed_packet_payload_is_recoverable() {
+        let mut state = EdgeDspState::new(2);
+        let frame = frame_with_iq(vec![(-100, 50), (25, -25), (-7, 7), (0, -128)]);
+        let outputs = process_frame(&mut state, &frame, 1_000);
+        let packet = outputs
+            .compressed
+            .expect("tier >= 2 must emit a compressed packet");
+        // Skip the 10-byte header written by encode_compressed_packet.
+        let decoded = decompress_iq(&packet[10..]);
+        assert_eq!(decoded, vec![(-100, 50), (-7, 7)]);
+    }
 }
