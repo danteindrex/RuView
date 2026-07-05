@@ -4,15 +4,15 @@
   "version": "0.4.4",
   "identifier": "net.ruv.wave",
   "build": {
-    "frontendDist": "ui-v2/dist",
+    "frontendDist": "../../../../ui-v2/dist",
     "devUrl": "http://localhost:5174",
     "beforeDevCommand": {
       "script": "npm run dev",
-      "cwd": "ui-v2"
+      "cwd": "../../../../ui-v2"
     },
     "beforeBuildCommand": {
       "script": "npm run build",
-      "cwd": "ui-v2"
+      "cwd": "../../../../ui-v2"
     }
   },
   "app": {

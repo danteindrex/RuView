@@ -25,6 +25,15 @@ pub struct ServerState {
     pub child: Option<Child>,
     pub start_time: Option<Instant>,
     pub logs: Arc<Mutex<ServerLogBuffer>>,
+    /// Configuration used for the most recent (or current) start.
+    /// Kept across stop/crash so restart can reuse the full config.
+    pub last_config: Option<crate::commands::server::ServerConfig>,
+    /// Human-readable exit status of the last child that died
+    /// unexpectedly (None after a clean user-requested stop).
+    pub last_exit: Option<String>,
+    /// True when an already-running external server was adopted
+    /// (we did not spawn it and must not kill it).
+    pub external: bool,
 }
 
 /// Bounded stdout/stderr capture for the managed sensing server.
@@ -55,6 +64,9 @@ impl Default for ServerState {
             child: None,
             start_time: None,
             logs: Arc::new(Mutex::new(ServerLogBuffer::default())),
+            last_config: None,
+            last_exit: None,
+            external: false,
         }
     }
 }

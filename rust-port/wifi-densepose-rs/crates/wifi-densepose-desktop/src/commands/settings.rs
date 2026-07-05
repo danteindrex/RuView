@@ -117,15 +117,13 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app_dir.join("settings.json"))
 }
 
-/// Load settings from disk.
-#[tauri::command]
-pub async fn get_settings(
-    access_token: String,
-    app: AppHandle,
-    auth: State<'_, Arc<AuthManager>>,
-) -> Result<Option<AppSettings>, String> {
-    guard::require_auth(&access_token, &auth)?;
-    let path = settings_path(&app)?;
+/// Load settings from disk without an auth guard.
+///
+/// Used internally by the application-startup auto-start path, which runs
+/// before any user has logged in. External (IPC) access must go through the
+/// `get_settings` command, which enforces authentication.
+pub fn load_settings_inner(app: &AppHandle) -> Result<Option<AppSettings>, String> {
+    let path = settings_path(app)?;
 
     if !path.exists() {
         return Ok(None);
@@ -138,6 +136,17 @@ pub async fn get_settings(
         .map_err(|e| format!("Failed to parse settings: {}", e))?;
 
     Ok(Some(settings))
+}
+
+/// Load settings from disk.
+#[tauri::command]
+pub async fn get_settings(
+    access_token: String,
+    app: AppHandle,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<Option<AppSettings>, String> {
+    guard::require_auth(&access_token, &auth)?;
+    load_settings_inner(&app)
 }
 
 /// Save settings to disk.
