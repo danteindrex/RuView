@@ -47,6 +47,9 @@ export function ObservatoryMarkup() {
           >
             Pose Fusion
           </a>
+          <button id="place-nodes-btn" title="Drag node markers to where the physical devices sit">
+            PLACE NODES
+          </button>
           <button id="settings-btn" title="Settings">
             ⚙
           </button>

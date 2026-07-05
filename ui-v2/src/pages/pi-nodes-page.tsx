@@ -162,6 +162,10 @@ export function PiNodesPage() {
 
   return (
     <div className="space-y-6">
+      <p className="text-sm text-muted-foreground">
+        Tip: once a node is streaming, open <span className="font-medium text-foreground">3D Pose &rarr; Place Nodes</span> and
+        drag its marker to where the device physically sits — saved positions immediately improve person-location tracking.
+      </p>
       <PageSection title="Pi Node Target" description="Connect to a Raspberry Pi over local SSH and manage the Wave Pi node agent service.">
         <div className="grid gap-4 md:grid-cols-3">
           <div className="space-y-2">

@@ -340,6 +340,18 @@ export class HudController {
   }
 
   // ============================================================
+  // Place-nodes mode (drag 3D node markers)
+  // ============================================================
+
+  initPlaceNodes() {
+    const btn = document.getElementById('place-nodes-btn');
+    const np = this._obs._nodePlacement;
+    if (!btn || !np) return;
+    np.onModeChanged = (active) => btn.classList.toggle('active', active);
+    btn.addEventListener('click', () => np.toggleMode());
+  }
+
+  // ============================================================
   // Toggle / save / preset
   // ============================================================
 

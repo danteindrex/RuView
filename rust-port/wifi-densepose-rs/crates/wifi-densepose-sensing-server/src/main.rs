@@ -3839,6 +3839,8 @@ async fn nodes_endpoint(State(state): State<SharedState>) -> Json<serde_json::Va
                 "person_count": ns.prev_person_count,
                 // Producing parser: "esp32_legacy" | "nexmon" (null until known).
                 "origin": ns.origin,
+                // Configured room position (meters), null until placed.
+                "position": s.node_positions.get(&id),
             })
         })
         .collect();
@@ -3846,6 +3848,117 @@ async fn nodes_endpoint(State(state): State<SharedState>) -> Json<serde_json::Va
         "nodes": nodes,
         "total": nodes.len(),
     }))
+}
+
+// ── Node position placement API ──────────────────────────────────────────────
+//
+// Positions set by the UI (dragging node markers in the 3D view) persist to
+// NODE_POSITIONS_FILE and take precedence over the --node-positions flag at
+// startup, making the server the single source of truth for room geometry.
+
+const NODE_POSITIONS_FILE: &str = "data/node_positions.json";
+
+fn load_node_positions_file() -> Option<HashMap<u8, [f64; 3]>> {
+    let raw = std::fs::read_to_string(NODE_POSITIONS_FILE).ok()?;
+    let parsed: HashMap<String, [f64; 3]> = serde_json::from_str(&raw).ok()?;
+    Some(
+        parsed
+            .into_iter()
+            .filter_map(|(k, v)| k.parse::<u8>().ok().map(|id| (id, v)))
+            .collect(),
+    )
+}
+
+fn save_node_positions_file(positions: &HashMap<u8, [f64; 3]>) -> std::io::Result<()> {
+    let as_str_keys: HashMap<String, [f64; 3]> = positions
+        .iter()
+        .map(|(id, p)| (id.to_string(), *p))
+        .collect();
+    if let Some(parent) = std::path::Path::new(NODE_POSITIONS_FILE).parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(
+        NODE_POSITIONS_FILE,
+        serde_json::to_string_pretty(&as_str_keys).unwrap_or_default(),
+    )
+}
+
+/// GET /api/v1/config/node-positions — current room geometry.
+async fn get_node_positions(State(state): State<SharedState>) -> Json<serde_json::Value> {
+    let s = state.read().await;
+    let positions: HashMap<String, [f64; 3]> = s
+        .node_positions
+        .iter()
+        .map(|(id, p)| (id.to_string(), *p))
+        .collect();
+    Json(serde_json::json!({ "positions": positions }))
+}
+
+/// PUT /api/v1/config/node-positions — replace or merge room geometry.
+///
+/// Body: {"positions": {"1": [x,y,z], "10": [x,y,z]}, "merge": true}
+/// With merge (default true) only the listed nodes change — a drag of one
+/// marker must not wipe the others. merge=false replaces the whole map.
+async fn put_node_positions(
+    State(state): State<SharedState>,
+    Json(body): Json<serde_json::Value>,
+) -> Json<serde_json::Value> {
+    let Some(obj) = body.get("positions").and_then(|v| v.as_object()) else {
+        return Json(serde_json::json!({
+            "success": false,
+            "error": "missing 'positions' object: {\"positions\": {\"1\": [x,y,z]}}"
+        }));
+    };
+    let merge = body.get("merge").and_then(|v| v.as_bool()).unwrap_or(true);
+
+    let mut incoming: HashMap<u8, [f64; 3]> = HashMap::new();
+    for (k, v) in obj {
+        let Ok(id) = k.parse::<u8>() else {
+            return Json(serde_json::json!({
+                "success": false,
+                "error": format!("invalid node id '{k}' (expected 0-255)")
+            }));
+        };
+        let coords: Option<Vec<f64>> = v
+            .as_array()
+            .map(|a| a.iter().filter_map(|x| x.as_f64()).collect());
+        match coords {
+            Some(c) if c.len() == 3 && c.iter().all(|x| x.is_finite()) => {
+                incoming.insert(id, [c[0], c[1], c[2]]);
+            }
+            _ => {
+                return Json(serde_json::json!({
+                    "success": false,
+                    "error": format!("node '{k}': expected [x, y, z] finite numbers")
+                }));
+            }
+        }
+    }
+
+    let snapshot = {
+        let mut s = state.write().await;
+        if merge {
+            s.node_positions.extend(incoming);
+        } else {
+            s.node_positions = incoming;
+        }
+        s.node_positions.clone()
+    };
+
+    match save_node_positions_file(&snapshot) {
+        Ok(()) => {
+            info!("Node positions updated ({} nodes) and persisted", snapshot.len());
+            Json(serde_json::json!({ "success": true, "count": snapshot.len() }))
+        }
+        Err(e) => {
+            warn!("Node positions updated in memory but persist failed: {e}");
+            Json(serde_json::json!({
+                "success": true,
+                "count": snapshot.len(),
+                "warning": format!("applied live but not persisted: {e}")
+            }))
+        }
+    }
 }
 
 async fn info_page() -> Html<String> {
@@ -5373,12 +5486,28 @@ async fn main() {
         } else {
             None
         },
-        node_positions: args.node_positions.as_deref()
-            .map(field_bridge::parse_node_position_map)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|(id, p)| (id, [p[0] as f64, p[1] as f64, p[2] as f64]))
-            .collect(),
+        node_positions: {
+            // Source-of-truth precedence: the UI-persisted file wins over the
+            // CLI flag, so positions placed by dragging in the 3D view survive
+            // restarts regardless of how the server is launched.
+            let from_flag: HashMap<u8, [f64; 3]> = args.node_positions.as_deref()
+                .map(field_bridge::parse_node_position_map)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(id, p)| (id, [p[0] as f64, p[1] as f64, p[2] as f64]))
+                .collect();
+            match load_node_positions_file() {
+                Some(from_file) if !from_file.is_empty() => {
+                    info!(
+                        "Node positions loaded from {} ({} nodes; overrides CLI flag)",
+                        NODE_POSITIONS_FILE,
+                        from_file.len()
+                    );
+                    from_file
+                }
+                _ => from_flag,
+            }
+        },
         inference_compat: None,
     }));
 
@@ -5439,6 +5568,10 @@ async fn main() {
         .route("/api/v1/sensing/latest", get(latest))
         // Per-node health endpoint
         .route("/api/v1/nodes", get(nodes_endpoint))
+        .route(
+            "/api/v1/config/node-positions",
+            get(get_node_positions).put(put_node_positions),
+        )
         // Vital sign endpoints
         .route("/api/v1/vital-signs", get(vital_signs_endpoint))
         .route("/api/v1/edge-vitals", get(edge_vitals_endpoint))

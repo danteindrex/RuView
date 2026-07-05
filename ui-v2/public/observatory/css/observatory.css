@@ -478,6 +478,55 @@ body.wave-observatory-page,
   color: var(--green-glow);
 }
 
+/* ---- Place Nodes button + toast ---- */
+#place-nodes-btn {
+  pointer-events: auto;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: var(--text-secondary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 17px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center;
+}
+#place-nodes-btn:hover {
+  background: rgba(0, 216, 120, 0.15);
+  border-color: var(--green-glow);
+  color: var(--green-glow);
+}
+#place-nodes-btn.active {
+  background: rgba(255, 176, 32, 0.15);
+  border-color: var(--amber);
+  color: var(--amber);
+  box-shadow: 0 0 12px rgba(255, 176, 32, 0.25);
+}
+
+#node-toast {
+  position: absolute;
+  bottom: 96px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 16px;
+  border-radius: 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 1px;
+  background: var(--bg-panel);
+  border: 1px solid var(--bg-panel-border);
+  color: var(--green-glow);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: 20;
+}
+#node-toast.show { opacity: 1; }
+#node-toast.error { color: var(--red-alert); border-color: rgba(255, 48, 64, 0.4); }
+
 /* ---- Settings Dialog ---- */
 .settings-overlay {
   position: fixed;

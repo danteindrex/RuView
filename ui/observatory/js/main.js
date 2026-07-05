@@ -19,6 +19,7 @@ import { PoseSystem } from './pose-system.js';
 import { ScenarioProps } from './scenario-props.js';
 import { HudController, DEFAULTS, SETTINGS_VERSION, PRESETS, SCENARIO_NAMES } from './hud-controller.js';
 import { normalizeLiveFrame } from './live-data-mapper.js';
+import { NodePlacement } from './node-placement.js';
 
 // ---- Palette ----
 const C = {
@@ -140,6 +141,17 @@ class Observatory {
     // HUD controller (settings dialog, sparkline, vital displays)
     this._hud = new HudController(this);
 
+    // Draggable 3D node markers (ESP32 / Pi placement)
+    this._apiBase = null;
+    this._nodePlacement = new NodePlacement({
+      scene: this._scene,
+      camera: this._camera,
+      canvas: this._canvas,
+      controls: this._controls,
+      root: document,
+      getApiBase: () => this._apiBase,
+    });
+
     // State
     this._autopilot = false;
     this._autoAngle = 0;
@@ -158,6 +170,7 @@ class Observatory {
     this._initKeyboard();
     this._hud.initSettings();
     this._hud.initQuickSelect();
+    this._hud.initPlaceNodes();
     window.addEventListener('resize', () => this._onResize());
 
     // Start
@@ -497,6 +510,14 @@ class Observatory {
   _connectWS(url) {
     this._disconnectWS();
     try {
+      // Single source of truth for the HTTP API base: derived from the WS URL
+      // (covers auto-detect and manually entered endpoints alike).
+      try {
+        const u = new URL(url);
+        this._apiBase = `${u.protocol === 'wss:' ? 'https:' : 'http:'}//${u.host}`;
+      } catch {
+        this._apiBase = null;
+      }
       this._wsTargetUrl = url;
       this._ws = new WebSocket(url);
       this._ws.onopen = () => {
@@ -589,6 +610,7 @@ class Observatory {
     this._updateSignalField(data);
     this._hud.updateHUD(data, this._demoData);
     this._hud.updateSparkline(data);
+    this._nodePlacement.update(data, dt, elapsed);
 
     // Router LED
     this._routerLed.material.opacity = 0.5 + 0.5 * Math.sin(elapsed * 8);

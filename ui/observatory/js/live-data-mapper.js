@@ -14,8 +14,9 @@
  */
 
 // Scene floor extents (room is 12 x 10 units; keep figures inside the walls).
-const ROOM_HALF_X = 5.5;
-const ROOM_HALF_Z = 4.5;
+// Exported so node-placement.js maps markers with the same convention.
+export const ROOM_HALF_X = 5.5;
+export const ROOM_HALF_Z = 4.5;
 // Rust person-detection canvas dimensions (see sensing-server main.rs).
 const CANVAS_W = 640;
 const CANVAS_H = 480;
@@ -67,6 +68,25 @@ function motionScore(data) {
   return Number.isFinite(power) ? clamp(power * 100, 0, 200) : 0;
 }
 
+/**
+ * Centroid of the frame's node positions in room meters. This is THE
+ * meters→scene recentering origin — figures (via positionFromLocationHint)
+ * and node markers (node-placement.js) must both use it or they drift apart.
+ * Returns {x, z, count} with zeros when no node has a usable position.
+ */
+export function nodeCentroid(nodes) {
+  let cx = 0, cz = 0, n = 0;
+  for (const node of nodes || []) {
+    const p = node?.position;
+    if (Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])) {
+      cx += p[0];
+      cz += p[1];
+      n += 1;
+    }
+  }
+  return { x: n ? cx / n : 0, z: n ? cz / n : 0, count: n };
+}
+
 /** Scene [x, z] from the room-meter location hint, centered on the node mesh. */
 function positionFromLocationHint(data) {
   const hint = data?.location_hint;
@@ -76,17 +96,9 @@ function positionFromLocationHint(data) {
   }
   // location_hint is expressed in configured node-position coordinates —
   // recenter on the node centroid so the figure lands inside the rendered room.
-  let cx = 0, cz = 0, n = 0;
-  for (const node of data?.nodes || []) {
-    const p = node?.position;
-    if (Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])) {
-      cx += p[0];
-      cz += p[1];
-      n += 1;
-    }
-  }
-  const x = hint[0] - (n ? cx / n : 0);
-  const z = hint[1] - (n ? cz / n : 0);
+  const c = nodeCentroid(data?.nodes);
+  const x = hint[0] - c.x;
+  const z = hint[1] - c.z;
   return [clamp(x, -ROOM_HALF_X, ROOM_HALF_X), clamp(z, -ROOM_HALF_Z, ROOM_HALF_Z)];
 }
 

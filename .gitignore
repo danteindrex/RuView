@@ -253,3 +253,6 @@ firmware/esp32-csi-node/build_firmware.batdata/
 models/
 demo_pointcloud.ply
 demo_splats.json
+
+# Runtime room geometry written by the node-placement UI
+rust-port/wifi-densepose-rs/data/node_positions.json
