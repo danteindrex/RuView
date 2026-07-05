@@ -246,7 +246,7 @@ function toNumber(value: string, fallback?: number | null): number | null {
 
 export function SensingPage({ status, onStatusRefresh }: SensingPageProps) {
   const { accessToken } = useAuthStore();
-  const { latestUpdate, connected: wsConnected } = useSensingStore();
+  const { latestUpdate, connected: wsConnected, edgeVitals, wasmEvents, featureStates } = useSensingStore();
   const [config, setConfig] = useState<ServerConfig>(DEFAULT_CONFIG);
   const [logs, setLogs] = useState<ServerLogsResponse | null>(null);
   const [streamLogs, setStreamLogs] = useState<LogEntry[]>([]);
@@ -536,6 +536,62 @@ export function SensingPage({ status, onStatusRefresh }: SensingPageProps) {
                 </div>
               ))
             )}
+          </div>
+        </div>
+      </PageSection>
+
+      <PageSection title="Edge Events" description="Per-node feature state, edge vitals, and WASM runtime events from sensing nodes.">
+        <div className="grid gap-4 xl:grid-cols-2">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Node Feature State</p>
+            {Object.keys(featureStates).length === 0 ? (
+              <div className="rounded-md border border-border/60 bg-background/70 p-3 text-sm text-muted-foreground">No feature_state messages received.</div>
+            ) : (
+              Object.values(featureStates).map((fs) => (
+                <div key={fs.node_id} className="rounded-md border border-border/60 bg-background/70 p-3">
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">Node {fs.node_id}</Badge>
+                    <span className="text-[10px] font-mono text-muted-foreground">
+                      {fs.received_at ? formatTimestamp(new Date(fs.received_at)) : ""}
+                    </span>
+                  </div>
+                  <pre className="max-h-24 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-muted-foreground">
+                    {JSON.stringify({ ...fs, type: undefined, received_at: undefined })}
+                  </pre>
+                </div>
+              ))
+            )}
+            {edgeVitals ? (
+              <div className="rounded-md border border-border/60 bg-background/70 p-3">
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">Edge Vitals — Node {edgeVitals.node_id}</Badge>
+                  <Badge variant={edgeVitals.fall_detected ? "danger" : edgeVitals.presence ? "success" : "outline"}>
+                    {edgeVitals.fall_detected ? "FALL" : edgeVitals.presence ? "Presence" : "Idle"}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  BR {edgeVitals.breathing_rate_bpm?.toFixed(1) ?? "--"} rpm, HR {(edgeVitals.heartrate_bpm ?? edgeVitals.heart_rate_bpm)?.toFixed(0) ?? "--"} bpm,
+                  motion {edgeVitals.motion_energy?.toFixed(1) ?? edgeVitals.motion ?? "--"}, RSSI {edgeVitals.rssi ?? "--"} dBm
+                </p>
+              </div>
+            ) : null}
+          </div>
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">WASM Events (last {wasmEvents.length})</p>
+            <div className="max-h-64 overflow-auto rounded-md border border-border/60 bg-background/70 p-3 font-mono text-[11px]">
+              {wasmEvents.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No wasm_event messages received.</div>
+              ) : (
+                [...wasmEvents].reverse().map((evt, index) => (
+                  <div key={`${evt.received_at}-${index}`} className="leading-5">
+                    <span className="text-muted-foreground">{evt.received_at ? formatTimestamp(new Date(evt.received_at)) : ""}</span>{" "}
+                    <span className="text-primary">node {evt.node_id}</span>{" "}
+                    <span className="text-muted-foreground">module {evt.module_id ?? "?"}</span>{" "}
+                    <span className="break-all">{JSON.stringify(evt.events)}</span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </PageSection>

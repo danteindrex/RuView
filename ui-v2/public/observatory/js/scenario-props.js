@@ -647,7 +647,11 @@ export class ScenarioProps {
   // ========================================
 
   update(data, currentScenario) {
-    const scenario = data?.scenario || currentScenario;
+    // With live sensor data, never show demo scenario furniture (bed, rubble,
+    // cameras...) — the real room's contents are unknown, so props would be
+    // fabricated context. Demo scenarios keep their staged props.
+    const isLive = data?.source && data.source !== 'demo';
+    const scenario = isLive ? (data?.scenario || 'live') : (data?.scenario || currentScenario);
     const elapsed = Date.now() * 0.001;
 
     // Switch visible props when scenario changes

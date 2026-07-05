@@ -79,6 +79,11 @@ const SCENARIO_DESCRIPTIONS = {
   elderly_care:      'Continuous gait analysis for early mobility-decline detection.',
   fitness_tracking:  'Rep counting and exercise classification from body kinematics.',
   security_patrol:   'Multi-zone presence patrol with camera-free motion heatmaps.',
+  // Live-data derived scenario keys (see updateHUD)
+  empty:             'Live sensing — no human presence detected.',
+  breathing:         'Live sensing — stationary presence, vitals extraction active.',
+  walking:           'Live sensing — motion tracked from CSI variance.',
+  fall:              'Live sensing — fall posture detected. Check on the occupant.',
 };
 
 // Edge modules active per scenario
@@ -96,6 +101,11 @@ const SCENARIO_EDGE_MODULES = {
   elderly_care:      ['GAIT', 'VITALS', 'FALL'],
   fitness_tracking:  ['GESTURE', 'GAIT'],
   security_patrol:   ['PRESENCE', 'ALERT', 'TRACKING'],
+  // Live-data derived scenario keys (see updateHUD)
+  empty:             [],
+  breathing:         ['VITALS', 'PRESENCE'],
+  walking:           ['TRACKING', 'PRESENCE'],
+  fall:              ['FALL', 'VITALS'],
 };
 
 // Edge-module badge colors
@@ -439,10 +449,22 @@ export class HudController {
     }
 
     const fallEl = document.getElementById('fall-alert');
-    if (fallEl) fallEl.style.display = cls.fall_detected ? 'block' : 'none';
+    if (fallEl) fallEl.style.display = (cls.fall_detected || data.posture === 'lying_down') ? 'block' : 'none';
 
-    // Scenario description and edge modules
-    const scenarioKey = demoData._autoMode ? (demoData.currentScenario || 'auto') : (demoData.currentScenario || 'auto');
+    // Scenario description and edge modules.
+    // With live sensor data, derive the scenario from what the data actually
+    // shows — never from the demo generator's selected scenario, which would
+    // display fabricated context (e.g. "Fall Event" badges) over real readings.
+    const isLive = data.source && data.source !== 'demo';
+    let scenarioKey;
+    if (isLive) {
+      if (cls.fall_detected || data.posture === 'lying_down') scenarioKey = 'fall';
+      else if ((cls.motion_level || '') === 'active' || (cls.motion_level || '').includes('moving')) scenarioKey = 'walking';
+      else if (cls.presence) scenarioKey = 'breathing';
+      else scenarioKey = 'empty';
+    } else {
+      scenarioKey = demoData.currentScenario || 'auto';
+    }
     if (scenarioKey !== this._currentScenarioKey) {
       this._currentScenarioKey = scenarioKey;
       this._updateScenarioDescription(scenarioKey);

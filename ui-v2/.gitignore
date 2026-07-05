@@ -1,0 +1,4 @@
+# Re-include src/lib/ — the repo-root .gitignore's generic "lib/" rule (line 57)
+# would otherwise silently ignore the production frontend's library code
+# (SensingProvider, sensing-store, tauri-api, auth-store, ...).
+!src/lib/

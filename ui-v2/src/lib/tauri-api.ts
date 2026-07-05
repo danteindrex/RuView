@@ -1,0 +1,196 @@
+import { invoke } from "@tauri-apps/api/core";
+import type {
+  AppSettings,
+  BatchOtaResult,
+  ChipInfo,
+  DiscoveredNode,
+  EspflashInfo,
+  FlashProgress,
+  FlashResult,
+  MeshNodeConfig,
+  OtaEndpointInfo,
+  OtaResult,
+  PiAgentConfig,
+  PiNodeBuildRequest,
+  PiNodeCommandResult,
+  PiNodeTarget,
+  PiServiceAction,
+  ProvisionResult,
+  ProvisioningConfig,
+  SerialPortInfo,
+  ServerConfig,
+  ServerLogsResponse,
+  ServerStartResult,
+  ServerStatusResponse,
+  ValidationResult,
+  VerifyResult,
+  WasmControlResult,
+  WasmModuleDetail,
+  WasmModuleInfo,
+  WasmRuntimeStats,
+  WasmSupportInfo,
+  WasmUploadResult,
+} from "@/types";
+
+async function invokeTauri<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  return invoke<T>(command, args);
+}
+
+export const tauriApi = {
+  discoverNodes(accessToken: string, timeoutMs = 3000) {
+    return invokeTauri<DiscoveredNode[]>("discover_nodes", { accessToken, timeoutMs });
+  },
+  listSerialPorts(accessToken: string) {
+    return invokeTauri<SerialPortInfo[]>("list_serial_ports", { accessToken });
+  },
+  configureEsp32Wifi(accessToken: string, port: string, ssid: string, password: string) {
+    return invokeTauri<string>("configure_esp32_wifi", { accessToken, port, ssid, password });
+  },
+  flashFirmware(accessToken: string, params: { port: string; firmwarePath: string; chip?: string; baud?: number }) {
+    return invokeTauri<FlashResult>("flash_firmware", { accessToken, ...params });
+  },
+  flashProgress(accessToken: string) {
+    return invokeTauri<FlashProgress>("flash_progress", { accessToken });
+  },
+  verifyFirmware(accessToken: string, params: { port: string; firmwarePath: string; chip?: string }) {
+    return invokeTauri<VerifyResult>("verify_firmware", { accessToken, ...params });
+  },
+  checkEspflash(accessToken: string) {
+    return invokeTauri<EspflashInfo>("check_espflash", { accessToken });
+  },
+  supportedChips(accessToken: string) {
+    return invokeTauri<ChipInfo[]>("supported_chips", { accessToken });
+  },
+  otaUpdate(accessToken: string, params: { nodeIp: string; firmwarePath: string; psk?: string }) {
+    return invokeTauri<OtaResult>("ota_update", { accessToken, ...params });
+  },
+  batchOtaUpdate(accessToken: string, params: {
+    nodeIps: string[];
+    firmwarePath: string;
+    psk?: string;
+    strategy?: string;
+    maxConcurrent?: number;
+  }) {
+    return invokeTauri<BatchOtaResult>("batch_ota_update", { accessToken, ...params });
+  },
+  checkOtaEndpoint(accessToken: string, nodeIp: string) {
+    return invokeTauri<OtaEndpointInfo>("check_ota_endpoint", { accessToken, nodeIp });
+  },
+  wasmList(accessToken: string, nodeIp: string) {
+    return invokeTauri<WasmModuleInfo[]>("wasm_list", { accessToken, nodeIp });
+  },
+  wasmUpload(accessToken: string, params: { nodeIp: string; wasmPath: string; moduleName?: string; autoStart?: boolean }) {
+    return invokeTauri<WasmUploadResult>("wasm_upload", { accessToken, ...params });
+  },
+  wasmControl(accessToken: string, params: { nodeIp: string; moduleId: string; action: string }) {
+    return invokeTauri<WasmControlResult>("wasm_control", { accessToken, ...params });
+  },
+  wasmInfo(accessToken: string, params: { nodeIp: string; moduleId: string }) {
+    return invokeTauri<WasmModuleDetail>("wasm_info", { accessToken, ...params });
+  },
+  wasmStats(accessToken: string, nodeIp: string) {
+    return invokeTauri<WasmRuntimeStats>("wasm_stats", { accessToken, nodeIp });
+  },
+  checkWasmSupport(accessToken: string, nodeIp: string) {
+    return invokeTauri<WasmSupportInfo>("check_wasm_support", { accessToken, nodeIp });
+  },
+  startServer(accessToken: string, config: ServerConfig) {
+    return invokeTauri<ServerStartResult>("start_server", { accessToken, config });
+  },
+  stopServer(accessToken: string) {
+    return invokeTauri<void>("stop_server", { accessToken });
+  },
+  serverStatus(accessToken: string) {
+    return invokeTauri<ServerStatusResponse>("server_status", { accessToken });
+  },
+  restartServer(accessToken: string, config?: ServerConfig) {
+    return invokeTauri<ServerStartResult>("restart_server", { accessToken, config });
+  },
+  serverLogs(accessToken: string, lines?: number) {
+    return invokeTauri<ServerLogsResponse>("server_logs", { accessToken, lines });
+  },
+  piNodeProbe(accessToken: string, target: PiNodeTarget) {
+    return invokeTauri<PiNodeCommandResult>("pi_node_probe", { accessToken, target });
+  },
+  piNodeBuildAgent(accessToken: string, request: PiNodeBuildRequest) {
+    return invokeTauri<PiNodeCommandResult>("pi_node_build_agent", { accessToken, request });
+  },
+  piNodeDeployBinary(accessToken: string, params: { target: PiNodeTarget; localBinaryPath: string; remoteBinaryPath?: string }) {
+    return invokeTauri<PiNodeCommandResult>("pi_node_deploy_binary", {
+      accessToken,
+      request: {
+        target: params.target,
+        local_binary_path: params.localBinaryPath,
+        remote_binary_path: params.remoteBinaryPath,
+      },
+    });
+  },
+  piNodeCheckPrereqs(accessToken: string, params: { target: PiNodeTarget; installPackages?: boolean }) {
+    return invokeTauri<PiNodeCommandResult>("pi_node_check_prereqs", {
+      accessToken,
+      request: { target: params.target, install_packages: params.installPackages },
+    });
+  },
+  piNodeCsiHealth(accessToken: string, params: { target: PiNodeTarget; nexmonPort?: number; captureSeconds?: number; serviceName?: string }) {
+    return invokeTauri<PiNodeCommandResult>("pi_node_csi_health", {
+      accessToken,
+      request: {
+        target: params.target,
+        nexmon_port: params.nexmonPort,
+        capture_seconds: params.captureSeconds,
+        service_name: params.serviceName,
+      },
+    });
+  },
+  piNodePushConfig(accessToken: string, params: { target: PiNodeTarget; config: PiAgentConfig; envPath?: string }) {
+    return invokeTauri<PiNodeCommandResult>("pi_node_push_config", {
+      accessToken,
+      request: { target: params.target, config: params.config, env_path: params.envPath },
+    });
+  },
+  piNodeInstallService(accessToken: string, params: {
+    target: PiNodeTarget;
+    config: PiAgentConfig;
+    serviceName?: string;
+    binaryPath?: string;
+    envPath?: string;
+  }) {
+    return invokeTauri<PiNodeCommandResult>("pi_node_install_service", {
+      accessToken,
+      request: {
+        target: params.target,
+        config: params.config,
+        service_name: params.serviceName,
+        binary_path: params.binaryPath,
+        env_path: params.envPath,
+      },
+    });
+  },
+  piNodeService(accessToken: string, params: { target: PiNodeTarget; action: PiServiceAction; serviceName?: string }) {
+    return invokeTauri<PiNodeCommandResult>("pi_node_service", {
+      accessToken,
+      request: { target: params.target, action: params.action, service_name: params.serviceName },
+    });
+  },
+  provisionNode(accessToken: string, port: string, config: ProvisioningConfig) {
+    return invokeTauri<ProvisionResult>("provision_node", { accessToken, port, config });
+  },
+  readNvs(accessToken: string, port: string) {
+    return invokeTauri<ProvisioningConfig>("read_nvs", { accessToken, port });
+  },
+  eraseNvs(accessToken: string, port: string) {
+    return invokeTauri<ProvisionResult>("erase_nvs", { accessToken, port });
+  },
+  validateConfig(accessToken: string, config: ProvisioningConfig) {
+    return invokeTauri<ValidationResult>("validate_config", { accessToken, config });
+  },
+  generateMeshConfigs(accessToken: string, baseConfig: ProvisioningConfig, nodeCount: number) {
+    return invokeTauri<MeshNodeConfig[]>("generate_mesh_configs", { accessToken, baseConfig, nodeCount });
+  },
+  getSettings(accessToken: string) {
+    return invokeTauri<AppSettings | null>("get_settings", { accessToken });
+  },
+  saveSettings(accessToken: string, settings: AppSettings) {
+    return invokeTauri<void>("save_settings", { accessToken, settings });
+  },
+};

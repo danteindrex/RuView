@@ -18,6 +18,7 @@ import { FigurePool, SKELETON_PAIRS } from './figure-pool.js';
 import { PoseSystem } from './pose-system.js';
 import { ScenarioProps } from './scenario-props.js';
 import { HudController, DEFAULTS, SETTINGS_VERSION, PRESETS, SCENARIO_NAMES } from './hud-controller.js';
+import { normalizeLiveFrame } from './live-data-mapper.js';
 
 // ---- Palette ----
 const C = {
@@ -459,9 +460,9 @@ class Observatory {
     // Probe sensing server health on same origin, then common ports
     const host = window.location.hostname || 'localhost';
     const candidates = [
-      window.location.origin,                   // same origin (e.g. :3000)
+      window.location.origin,                   // same origin
       `http://${host}:8765`,                     // default WS port
-      `http://${host}:3000`,                     // default HTTP port
+      `http://${host}:8080`,                     // default HTTP port
     ];
     // Deduplicate
     const unique = [...new Set(candidates)];
@@ -506,7 +507,16 @@ class Observatory {
         }
         this._hud.updateSourceBadge('ws', this._ws);
       };
-      this._ws.onmessage = (evt) => { try { this._liveData = JSON.parse(evt.data); } catch {} };
+      this._ws.onmessage = (evt) => {
+        try {
+          const msg = JSON.parse(evt.data);
+          // Only sensing_update frames drive the scene; edge_vitals /
+          // wasm_event / feature_state messages must not clobber (and blank)
+          // the live state between sensing updates.
+          if (!msg || (msg.type && msg.type !== 'sensing_update')) return;
+          this._liveData = normalizeLiveFrame(msg);
+        } catch {}
+      };
       this._ws.onclose = () => {
         console.log('[Observatory] WebSocket closed, retrying live connection');
         this._ws = null;
