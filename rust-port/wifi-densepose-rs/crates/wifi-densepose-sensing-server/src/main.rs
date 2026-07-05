@@ -171,7 +171,8 @@ struct Args {
     #[arg(long, value_name = "TYPE")]
     build_index: Option<String>,
 
-    /// Node positions for multistatic fusion (format: "x,y,z;x,y,z;...")
+    /// Node positions for multistatic fusion. Explicit ids: "1:x,y,z;10:x,y,z"
+    /// (Pi nodes start at id 10). Bare "x,y,z;x,y,z" means ids 1..n.
     #[arg(long, env = "SENSING_NODE_POSITIONS")]
     node_positions: Option<String>,
 
@@ -327,6 +328,17 @@ struct NodeState {
     vital_detector: VitalSignDetector,
     latest_vitals: VitalSigns,
     pub(crate) last_frame_time: Option<std::time::Instant>,
+    /// Instant of the last *raw CSI* frame (edge vitals/wasm packets do not
+    /// count) — drives the measured sample rate and inference staleness gate.
+    last_raw_frame_time: Option<std::time::Instant>,
+    /// Instant of the last model inference for this node.
+    last_inference_time: Option<std::time::Instant>,
+    /// EMA of the inter-frame interval for raw CSI frames, in seconds.
+    ema_frame_interval_s: Option<f64>,
+    /// Sample rate the node's `vital_detector` was constructed with (Hz).
+    detector_rate_hz: f64,
+    /// Which parser produced this node's data ("esp32_legacy" | "nexmon").
+    origin: Option<&'static str>,
     edge_vitals: Option<Esp32VitalsPacket>,
     /// Latest extracted features for cross-node fusion.
     latest_features: Option<FeatureInfo>,
@@ -352,6 +364,16 @@ const MAX_BONE_CHANGE_RATIO: f64 = 0.20;
 /// Number of motion_energy frames to track for coherence scoring.
 const COHERENCE_WINDOW: usize = 20;
 
+/// Initial per-node sample-rate assumption (Hz) until measured from real
+/// inter-frame intervals. Firmware sends up to 50 Hz; the detector is
+/// reparameterized once the measured rate drifts >20% from this.
+const DEFAULT_NODE_SAMPLE_RATE_HZ: f64 = 10.0;
+/// EMA alpha for the measured inter-frame interval.
+const FRAME_INTERVAL_EMA_ALPHA: f64 = 0.2;
+/// Relative drift between measured rate and detector rate that triggers a
+/// detector reparameterization.
+const SAMPLE_RATE_DRIFT_THRESHOLD: f64 = 0.2;
+
 impl NodeState {
     pub(crate) fn new() -> Self {
         Self {
@@ -371,9 +393,14 @@ impl NodeState {
             hr_buffer: VecDeque::with_capacity(8),
             br_buffer: VecDeque::with_capacity(8),
             rssi_history: VecDeque::new(),
-            vital_detector: VitalSignDetector::new(10.0),
+            vital_detector: VitalSignDetector::new(DEFAULT_NODE_SAMPLE_RATE_HZ),
             latest_vitals: VitalSigns::default(),
             last_frame_time: None,
+            last_raw_frame_time: None,
+            last_inference_time: None,
+            ema_frame_interval_s: None,
+            detector_rate_hz: DEFAULT_NODE_SAMPLE_RATE_HZ,
+            origin: None,
             edge_vitals: None,
             latest_features: None,
             prev_keypoints: None,
@@ -414,6 +441,45 @@ impl NodeState {
         } else {
             TEMPORAL_EMA_ALPHA_DEFAULT
         }
+    }
+
+    /// Record a raw CSI frame arrival, update the measured inter-frame
+    /// interval EMA, and return the measured sample rate (Hz) for feature
+    /// extraction. Reparameterizes the vital detector when the measured
+    /// rate drifts more than 20% from the detector's configured rate.
+    fn observe_raw_frame(&mut self, node_id: u8, now: std::time::Instant) -> f64 {
+        if let Some(prev) = self.last_raw_frame_time {
+            let dt = now.duration_since(prev).as_secs_f64();
+            // Ignore implausible gaps (node offline / burst duplicates).
+            if dt > 1e-4 && dt < 5.0 {
+                self.ema_frame_interval_s = Some(match self.ema_frame_interval_s {
+                    Some(ema) => ema * (1.0 - FRAME_INTERVAL_EMA_ALPHA) + dt * FRAME_INTERVAL_EMA_ALPHA,
+                    None => dt,
+                });
+            }
+        }
+        self.last_raw_frame_time = Some(now);
+
+        let measured = self
+            .ema_frame_interval_s
+            .filter(|e| *e > 1e-4)
+            .map(|e| 1.0 / e)
+            .unwrap_or(self.detector_rate_hz);
+
+        // Wait for the interval EMA to settle before reparameterizing.
+        if self.frame_history.len() >= 10
+            && (measured - self.detector_rate_hz).abs() / self.detector_rate_hz
+                > SAMPLE_RATE_DRIFT_THRESHOLD
+        {
+            info!(
+                "node {node_id}: measured frame rate {measured:.1} Hz drifted >20% from \
+                 detector rate {:.1} Hz — reparameterizing vital detector",
+                self.detector_rate_hz
+            );
+            self.vital_detector = VitalSignDetector::new(measured);
+            self.detector_rate_hz = measured;
+        }
+        measured
     }
 }
 
@@ -532,14 +598,19 @@ struct AppStateInner {
     multistatic_fuser: MultistaticFuser,
     /// SVD-based room field model for eigenvalue person counting (None until calibration).
     field_model: Option<FieldModel>,
-    /// Configured node positions from `--node-positions` (room meters).
-    /// Entry `i` corresponds to `node_id == i + 1` (nodes are provisioned 1-based).
-    node_positions: Vec<[f64; 3]>,
+    /// Configured node positions from `--node-positions` (room meters),
+    /// keyed by node_id. Supports explicit `"1:x,y,z;10:x,y,z"` syntax;
+    /// bare `"x,y,z;x,y,z"` keeps the legacy meaning of ids 1..n.
+    node_positions: HashMap<u8, [f64; 3]>,
     /// Trained linear pose models for live keypoint inference (auto-loaded
     /// from `data/models/*.rvf` at startup, extendable via /api/v1/models/load).
-    /// Inference picks the model whose subcarrier width matches the incoming
-    /// frame, so ESP32 (56) and Nexmon (192+) models can coexist.
+    /// Inference prefers the model whose subcarrier width matches the incoming
+    /// frame exactly and adapts to the nearest width otherwise, so ESP32 (56)
+    /// and Nexmon (64-256) frames both work.
     pose_models: Vec<pose_inference::LoadedPoseModel>,
+    /// Compatibility of the last inference attempt (exact/adapted/incompatible)
+    /// for /api/v1/models/active and model_status.
+    inference_compat: Option<pose_inference::InferenceCompat>,
 }
 
 /// If no CSI frame arrives within this duration, source reverts to offline.
@@ -609,9 +680,23 @@ struct Esp32VitalsPacket {
     motion_energy: f32,
     presence_score: f32,
     timestamp_ms: u32,
+    // ── ADR-063 fused-vitals mmWave extension (0xC5110004, 48 bytes) ──
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mmwave_hr_bpm: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mmwave_br_bpm: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mmwave_distance_cm: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mmwave_targets: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mmwave_confidence: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fusion_confidence: Option<u8>,
 }
 
-/// Parse a 32-byte edge vitals packet (magic 0xC511_0002).
+/// Parse a 32-byte edge vitals packet (magic 0xC511_0002) or a 48-byte
+/// fused-vitals packet with mmWave extension (magic 0xC511_0004).
 fn parse_esp32_vitals(buf: &[u8]) -> Option<Esp32VitalsPacket> {
     protocol::esp32_legacy::parse_esp32_vitals_or_fused(buf).map(|pkt| Esp32VitalsPacket {
         node_id: pkt.node_id,
@@ -625,6 +710,12 @@ fn parse_esp32_vitals(buf: &[u8]) -> Option<Esp32VitalsPacket> {
         motion_energy: pkt.motion_energy,
         presence_score: pkt.presence_score,
         timestamp_ms: pkt.timestamp_ms,
+        mmwave_hr_bpm: pkt.mmwave_hr_bpm,
+        mmwave_br_bpm: pkt.mmwave_br_bpm,
+        mmwave_distance_cm: pkt.mmwave_distance_cm,
+        mmwave_targets: pkt.mmwave_targets,
+        mmwave_confidence: pkt.mmwave_confidence,
+        fusion_confidence: pkt.fusion_confidence,
     })
 }
 
@@ -663,9 +754,14 @@ fn parse_wasm_output(buf: &[u8]) -> Option<WasmOutputPacket> {
 
 // ── ESP32 UDP frame parser ───────────────────────────────────────────────────
 
-fn parse_esp32_frame(buf: &[u8]) -> Option<Esp32Frame> {
+/// Parse a raw CSI frame, returning which parser produced it
+/// (`"esp32_legacy"` or `"nexmon"`) so nodes can be labeled by origin.
+fn parse_esp32_frame(buf: &[u8]) -> Option<(Esp32Frame, &'static str)> {
     protocol::esp32_legacy::parse_esp32_frame(buf)
-        .or_else(|| protocol::nexmon::parse_nexmon_as_esp32_frame(buf, 10))
+        .map(|f| (f, "esp32_legacy"))
+        .or_else(|| {
+            protocol::nexmon::parse_nexmon_as_esp32_frame(buf, 10).map(|f| (f, "nexmon"))
+        })
 }
 
 fn parse_esp32_feature(buf: &[u8]) -> Option<Esp32FeaturePacket> {
@@ -1394,6 +1490,20 @@ fn parse_netsh_interfaces_output(output: &str) -> Option<(f64, f64, String)> {
     }
 }
 
+/// Serialize a PostureClass as a stable snake_case string (the UI matches
+/// these literally; never use the Debug format here).
+fn posture_to_str(p: wifi_densepose_wifiscan::domain::result::PostureClass) -> &'static str {
+    use wifi_densepose_wifiscan::domain::result::PostureClass;
+    match p {
+        PostureClass::Empty => "empty",
+        PostureClass::Standing => "standing",
+        PostureClass::Sitting => "sitting",
+        PostureClass::LyingDown => "lying_down",
+        PostureClass::Walking => "walking",
+        PostureClass::Unknown => "unknown",
+    }
+}
+
 async fn windows_wifi_task(state: SharedState, tick_ms: u64) {
     let mut interval = tokio::time::interval(Duration::from_millis(tick_ms));
     let mut seq: u32 = 0;
@@ -1410,9 +1520,12 @@ async fn windows_wifi_task(state: SharedState, tick_ms: u64) {
     loop {
         interval.tick().await;
 
-        // A live ESP32 node has taken over (the always-on UDP listener
+        // A live ESP32/Pi node has taken over (the always-on UDP listeners
         // flipped the source) — yield until it goes offline again.
-        if state.read().await.effective_source() == "esp32" {
+        if matches!(
+            state.read().await.effective_source().as_str(),
+            "esp32" | "nexmon"
+        ) {
             continue;
         }
         seq += 1;
@@ -1460,6 +1573,16 @@ async fn windows_wifi_task(state: SharedState, tick_ms: u64) {
         };
 
         let obs_count = observations.len();
+
+        // The netsh scan takes ~1 s; a CSI frame may have arrived meanwhile.
+        // Re-check before mutating shared state so a live node keeps the
+        // source and history.
+        if matches!(
+            state.read().await.effective_source().as_str(),
+            "esp32" | "nexmon"
+        ) {
+            continue;
+        }
 
         // Derive SSID from the first observation for the source label.
         let ssid = observations
@@ -1525,7 +1648,8 @@ async fn windows_wifi_task(state: SharedState, tick_ms: u64) {
             })
         });
 
-        let posture_str = enhanced.posture.map(|p| format!("{p:?}"));
+        // Snake_case posture strings — the UI compares these literally.
+        let posture_str = enhanced.posture.map(posture_to_str).map(str::to_string);
         let sig_quality_score = Some(enhanced.signal_quality.score);
         let verdict_str = Some(format!("{:?}", enhanced.verdict));
         let bssid_n = Some(enhanced.bssid_count);
@@ -1811,10 +1935,28 @@ async fn probe_nexmon(port: u16) -> bool {
     let addr = format!("0.0.0.0:{port}");
     match UdpSocket::bind(&addr).await {
         Ok(sock) => {
-            let mut buf = [0u8; 2048];
-            match tokio::time::timeout(Duration::from_secs(2), sock.recv_from(&mut buf)).await {
-                Ok(Ok((len, _))) => protocol::nexmon::parse_nexmon_payload(&buf[..len]).is_some(),
-                _ => false,
+            // Buffer must hold a full Nexmon frame (18-byte header + up to
+            // 256 subcarriers x 4 bytes); an oversized datagram is an error
+            // (not a truncation) on Windows.
+            let mut buf = [0u8; 4096];
+            // Keep listening until the deadline instead of judging only the
+            // first packet — other traffic can share the port and Pis
+            // throttle when the room is static (same pattern as probe_esp32).
+            let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+            loop {
+                let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+                if remaining.is_zero() {
+                    return false;
+                }
+                match tokio::time::timeout(remaining, sock.recv_from(&mut buf)).await {
+                    Ok(Ok((len, _))) => {
+                        if protocol::nexmon::parse_nexmon_payload(&buf[..len]).is_some() {
+                            return true;
+                        }
+                    }
+                    Ok(Err(_)) => continue,
+                    Err(_) => return false,
+                }
             }
         }
         Err(_) => false,
@@ -2519,24 +2661,44 @@ fn derive_single_person_pose(
     }
 }
 
-/// Configured room position for a node, falling back to the legacy placeholder.
-/// `--node-positions` entry `i` maps to `node_id == i + 1`.
-fn node_position_for(positions: &[[f64; 3]], node_id: u8) -> [f64; 3] {
-    positions
-        .get((node_id as usize).saturating_sub(1))
-        .copied()
-        .unwrap_or([2.0, 0.0, 1.5])
+/// Warn only once per node id (avoids per-frame log spam).
+fn warn_once_for_node(node_id: u8, msg: &str) {
+    use std::sync::{Mutex, OnceLock};
+    static WARNED: OnceLock<Mutex<std::collections::HashSet<u8>>> = OnceLock::new();
+    let warned = WARNED.get_or_init(|| Mutex::new(std::collections::HashSet::new()));
+    if let Ok(mut set) = warned.lock() {
+        if set.insert(node_id) {
+            warn!("node {node_id}: {msg}");
+        }
+    }
+}
+
+/// Configured room position for a node, falling back to the legacy
+/// placeholder. Positions come from the explicit `--node-positions`
+/// id→position map, so Pi nodes (node_base 10) resolve correctly.
+fn node_position_for(positions: &HashMap<u8, [f64; 3]>, node_id: u8) -> [f64; 3] {
+    if let Some(pos) = positions.get(&node_id) {
+        return *pos;
+    }
+    if !positions.is_empty() {
+        warn_once_for_node(
+            node_id,
+            "active node has no configured position in --node-positions; using placeholder",
+        );
+    }
+    [2.0, 0.0, 1.5]
 }
 
 /// Energy-weighted centroid of configured node positions.
 ///
 /// A person disturbs the link of the nearest node the most, so weighting each
 /// node's position by its recent motion energy biases the centroid toward the
-/// person. This is deliberately coarse (no true triangulation) but is derived
-/// from live per-node measurements, unlike the fixed canvas-center placement.
+/// person. Each node's weight is the z-score of its latest motion energy
+/// against its *own* recent history, so vitals-path motion_energy and
+/// raw-path band power (different scales) don't skew the centroid.
 /// Returns None unless >= 2 fresh nodes have configured positions.
 fn estimate_location_hint(
-    node_positions: &[[f64; 3]],
+    node_positions: &HashMap<u8, [f64; 3]>,
     node_states: &HashMap<u8, NodeState>,
     now: std::time::Instant,
 ) -> Option<[f64; 2]> {
@@ -2545,7 +2707,12 @@ fn estimate_location_hint(
     let mut y = 0.0;
     let mut fresh_nodes = 0;
     for (&id, ns) in node_states {
-        let Some(pos) = node_positions.get((id as usize).saturating_sub(1)) else {
+        if id == 0 {
+            // node_id 0 marks unprovisioned hardware or the WiFi fallback path.
+            warn_once_for_node(0, "node_id 0 (unprovisioned) excluded from location hint");
+            continue;
+        }
+        let Some(pos) = node_positions.get(&id) else {
             continue;
         };
         let fresh = ns
@@ -2559,9 +2726,26 @@ fn estimate_location_hint(
             .as_ref()
             .map(|f| f.motion_band_power)
             .unwrap_or(0.0);
+        // Normalize against the node's own recent motion history (z-score)
+        // so per-node scale differences cancel out. Fall back to the raw
+        // energy until enough history accumulates.
+        let hist = &ns.motion_energy_history;
+        let z = if hist.len() >= 4 {
+            let n = hist.len() as f64;
+            let mean = hist.iter().sum::<f64>() / n;
+            let var = hist.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / (n - 1.0);
+            let std = var.sqrt();
+            if std > 1e-9 {
+                (energy - mean) / std
+            } else {
+                0.0
+            }
+        } else {
+            energy
+        };
         // Floor keeps an undisturbed node contributing, so the centroid stays
         // inside the mesh instead of snapping onto a single node.
-        let w = energy.max(0.05);
+        let w = z.max(0.05);
         wsum += w;
         x += pos[0] * w;
         y += pos[1] * w;
@@ -2631,9 +2815,10 @@ fn person_from_model_keypoints(kps: &[[f64; 4]], base_confidence: f64) -> Person
         id: 0,
         confidence: (base_confidence * 0.5 + mean_conf * 0.5).clamp(0.0, 1.0),
         keypoints,
+        // bbox uses top-left semantics everywhere else in the pipeline.
         bbox: BoundingBox {
-            x: (min_x + max_x) / 2.0,
-            y: (min_y + max_y) / 2.0,
+            x: min_x,
+            y: min_y,
             width: (max_x - min_x).max(1.0),
             height: (max_y - min_y).max(1.0),
         },
@@ -2874,6 +3059,13 @@ async fn list_models(State(state): State<SharedState>) -> Json<serde_json::Value
 /// GET /api/v1/models/active — return currently loaded model or null.
 async fn get_active_model(State(state): State<SharedState>) -> Json<serde_json::Value> {
     let s = state.read().await;
+    // Inference compatibility: exact width match, adapted via resample,
+    // or incompatible (see pose_inference::InferenceCompat).
+    let inference = s
+        .inference_compat
+        .as_ref()
+        .map(|c| serde_json::json!(c))
+        .unwrap_or(serde_json::Value::Null);
     match &s.active_model_id {
         Some(id) => {
             let model = s.discovered_models.iter().find(|m| {
@@ -2881,9 +3073,13 @@ async fn get_active_model(State(state): State<SharedState>) -> Json<serde_json::
             });
             Json(serde_json::json!({
                 "active": model.cloned().unwrap_or_else(|| serde_json::json!({ "id": id })),
+                "inference": inference,
             }))
         }
-        None => Json(serde_json::json!({ "active": serde_json::Value::Null })),
+        None => Json(serde_json::json!({
+            "active": serde_json::Value::Null,
+            "inference": inference,
+        })),
     }
 }
 
@@ -3641,6 +3837,8 @@ async fn nodes_endpoint(State(state): State<SharedState>) -> Json<serde_json::Va
                 "rssi_dbm": rssi,
                 "motion_level": &ns.current_motion_level,
                 "person_count": ns.prev_person_count,
+                // Producing parser: "esp32_legacy" | "nexmon" (null until known).
+                "origin": ns.origin,
             })
         })
         .collect();
@@ -3668,6 +3866,21 @@ async fn info_page() -> Html<String> {
 
 // ── UDP receiver task ────────────────────────────────────────────────────────
 
+/// Model status blob for sensing updates: how many models are loaded, whether
+/// inference produced keypoints this frame, and the width compatibility of
+/// the last inference attempt (exact / adapted / incompatible).
+fn model_status_json(s: &AppStateInner, inference_active: bool) -> Option<serde_json::Value> {
+    if s.pose_models.is_empty() {
+        return None;
+    }
+    Some(serde_json::json!({
+        "models_loaded": s.pose_models.len(),
+        "type": "linear",
+        "inference_active": inference_active,
+        "inference": s.inference_compat.as_ref().map(|c| serde_json::json!(c)),
+    }))
+}
+
 async fn udp_receiver_task(state: SharedState, udp_port: u16) {
     let addr = format!("0.0.0.0:{udp_port}");
     let socket = match UdpSocket::bind(&addr).await {
@@ -3681,7 +3894,10 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
         }
     };
 
-    let mut buf = [0u8; 2048];
+    // Buffer must hold a full CSI frame (Windows errors on datagrams larger
+    // than the buffer instead of truncating): ESP32 raw frames can reach
+    // 20 + 512*2*2 bytes; Nexmon 80 MHz frames 18 + 256*4 bytes.
+    let mut buf = [0u8; 4096];
     loop {
         match socket.recv_from(&mut buf).await {
             Ok((len, src)) => {
@@ -3691,8 +3907,9 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                            vitals.node_id, vitals.breathing_rate_bpm,
                            vitals.heartrate_bpm, vitals.presence);
                     let mut s = state.write().await;
-                    // Broadcast vitals via WebSocket.
-                    if let Ok(json) = serde_json::to_string(&serde_json::json!({
+                    // Broadcast vitals via WebSocket (including the ADR-063
+                    // mmWave extension fields when present).
+                    let mut vitals_msg = serde_json::json!({
                         "type": "edge_vitals",
                         "node_id": vitals.node_id,
                         "presence": vitals.presence,
@@ -3704,7 +3921,28 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                         "motion_energy": vitals.motion_energy,
                         "presence_score": vitals.presence_score,
                         "rssi": vitals.rssi,
-                    })) {
+                    });
+                    if let Some(obj) = vitals_msg.as_object_mut() {
+                        if let Some(v) = vitals.mmwave_hr_bpm {
+                            obj.insert("mmwave_hr".into(), serde_json::json!(v));
+                        }
+                        if let Some(v) = vitals.mmwave_br_bpm {
+                            obj.insert("mmwave_br".into(), serde_json::json!(v));
+                        }
+                        if let Some(v) = vitals.mmwave_distance_cm {
+                            obj.insert("mmwave_distance_cm".into(), serde_json::json!(v));
+                        }
+                        if let Some(v) = vitals.mmwave_targets {
+                            obj.insert("mmwave_targets".into(), serde_json::json!(v));
+                        }
+                        if let Some(v) = vitals.mmwave_confidence {
+                            obj.insert("mmwave_confidence".into(), serde_json::json!(v));
+                        }
+                        if let Some(v) = vitals.fusion_confidence {
+                            obj.insert("fusion_confidence".into(), serde_json::json!(v));
+                        }
+                    }
+                    if let Ok(json) = serde_json::to_string(&vitals_msg) {
                         let _ = s.tx.send(json);
                     }
 
@@ -3721,6 +3959,8 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     let node_id = vitals.node_id;
                     let ns = s.node_states.entry(node_id).or_insert_with(NodeState::new);
                     ns.last_frame_time = Some(std::time::Instant::now());
+                    ns.origin = Some("esp32_legacy");
+                    ns.update_coherence(vitals.motion_energy as f64);
                     ns.edge_vitals = Some(vitals.clone());
                     ns.rssi_history.push_back(vitals.rssi as f64);
                     if ns.rssi_history.len() > 60 { ns.rssi_history.pop_front(); }
@@ -3820,17 +4060,37 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                         (vitals.presence_score as f64).min(1.0), &[],
                     );
 
-                    // Trained-model inference: real keypoints from this node's
-                    // amplitude history. The model is chosen by matching its
-                    // training subcarrier width to the live frame width
-                    // (None => pose stays signal-derived).
+                    // Trained-model inference on this node's amplitude
+                    // history. Skipped unless a raw CSI frame arrived since
+                    // the last inference — vitals packets carry no new
+                    // amplitudes, so re-running would feed the Kalman
+                    // tracker the same stale keypoints again.
+                    // Sample rate 10.0 Hz is the trainer's constant.
                     let model_kps = s.node_states.get(&node_id).and_then(|ns| {
-                        let width = ns.frame_history.back().map(|f| f.len())?;
-                        s.pose_models
-                            .iter()
-                            .find(|pm| pm.stats.n_subcarriers == width)
-                            .and_then(|pm| pose_inference::infer_pose(pm, &ns.frame_history, 20.0))
+                        let fresh_raw = match (ns.last_raw_frame_time, ns.last_inference_time) {
+                            (Some(raw), Some(inf)) => raw > inf,
+                            (Some(_), None) => true,
+                            (None, _) => false,
+                        };
+                        if !fresh_raw {
+                            return None;
+                        }
+                        let (kps, compat) =
+                            pose_inference::infer_pose_auto(&s.pose_models, &ns.frame_history, 10.0);
+                        Some((kps, compat))
                     });
+                    let model_kps = match model_kps {
+                        Some((kps, compat)) => {
+                            if let Some(ns) = s.node_states.get_mut(&node_id) {
+                                ns.last_inference_time = Some(std::time::Instant::now());
+                            }
+                            if compat.is_some() {
+                                s.inference_compat = compat;
+                            }
+                            kps
+                        }
+                        None => None,
+                    };
                     let update_has_model_kps = model_kps.is_some();
 
                     let mut update = SensingUpdate {
@@ -3856,15 +4116,7 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                         quality_verdict: None,
                         bssid_count: None,
                         pose_keypoints: model_kps,
-                        model_status: if s.pose_models.is_empty() {
-                            None
-                        } else {
-                            Some(serde_json::json!({
-                                "models_loaded": s.pose_models.len(),
-                                "type": "linear",
-                                "inference_active": update_has_model_kps,
-                            }))
-                        },
+                        model_status: model_status_json(&s, update_has_model_kps),
                         persons: None,
                         estimated_persons: if total_persons > 0 { Some(total_persons) } else { None },
                         node_features: None,
@@ -3889,7 +4141,65 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     continue;
                 }
 
-                // ADR-040/090: WASM output packets (legacy 0xC511_0004, v2 0xC511_0006).
+                // ADR-081: feature state packets (0xC5110006, 60 bytes,
+                // CRC32-gated). Must be tried BEFORE the WASM parser: legacy
+                // firmware used the same magic for WASM output, so only a
+                // CRC failure falls through to the WASM branch below.
+                if let Some(fs) = protocol::esp32_legacy::parse_rv_feature_state(&buf[..len]) {
+                    debug!("Feature state from {src}: node={} seq={} presence={:.2} motion={:.2}",
+                           fs.node_id, fs.seq, fs.presence_score, fs.motion_score);
+                    let mut s = state.write().await;
+                    if let Ok(json) = serde_json::to_string(&serde_json::json!({
+                        "type": "feature_state",
+                        "node_id": fs.node_id,
+                        "mode": fs.mode,
+                        "seq": fs.seq,
+                        "ts_us": fs.ts_us,
+                        "motion_score": fs.motion_score,
+                        "presence_score": fs.presence_score,
+                        "respiration_bpm": fs.respiration_bpm,
+                        "respiration_conf": fs.respiration_conf,
+                        "heartbeat_bpm": fs.heartbeat_bpm,
+                        "heartbeat_conf": fs.heartbeat_conf,
+                        "anomaly_score": fs.anomaly_score,
+                        "env_shift_score": fs.env_shift_score,
+                        "node_coherence": fs.node_coherence,
+                        "quality_flags": fs.quality_flags,
+                    })) {
+                        let _ = s.tx.send(json);
+                    }
+
+                    // Liveness + presence/motion, mirroring the edge-vitals path.
+                    if s.source != "nexmon" {
+                        s.source = "esp32".to_string();
+                    }
+                    s.last_csi_frame = Some(std::time::Instant::now());
+                    let prev_rssi = s
+                        .node_states
+                        .get(&fs.node_id)
+                        .and_then(|ns| ns.rssi_history.back().copied())
+                        .unwrap_or(-60.0);
+                    let ns = s.node_states.entry(fs.node_id).or_insert_with(NodeState::new);
+                    ns.last_frame_time = Some(std::time::Instant::now());
+                    ns.origin = Some("esp32_legacy");
+                    ns.update_coherence(fs.motion_score as f64);
+                    let presence = fs.presence_score > 0.5;
+                    ns.prev_person_count = if presence { 1 } else { 0 };
+                    ns.latest_features = Some(FeatureInfo {
+                        mean_rssi: prev_rssi,
+                        variance: fs.motion_score as f64,
+                        motion_band_power: fs.motion_score as f64,
+                        breathing_band_power: if presence { 0.5 } else { 0.0 },
+                        dominant_freq_hz: fs.respiration_bpm as f64 / 60.0,
+                        change_points: 0,
+                        spectral_power: fs.motion_score as f64,
+                    });
+                    continue;
+                }
+
+                // ADR-040/090: WASM output packets (legacy 0xC511_0004,
+                // 0xC511_0006 when the feature-state CRC gate failed, and
+                // v2 0xC511_0007).
                 if let Some(wasm_output) = parse_wasm_output(&buf[..len]) {
                     debug!("WASM output from {src}: node={} module={} events={}",
                            wasm_output.node_id, wasm_output.module_id,
@@ -3904,6 +4214,15 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     })) {
                         let _ = s.tx.send(json);
                     }
+                    // Edge-only nodes must still count as live traffic.
+                    if s.source != "nexmon" {
+                        s.source = "esp32".to_string();
+                    }
+                    s.last_csi_frame = Some(std::time::Instant::now());
+                    let node_id = wasm_output.node_id;
+                    let ns = s.node_states.entry(node_id).or_insert_with(NodeState::new);
+                    ns.last_frame_time = Some(std::time::Instant::now());
+                    ns.origin = Some("esp32_legacy");
                     s.latest_wasm_events = Some(wasm_output);
                     continue;
                 }
@@ -3922,6 +4241,14 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     })) {
                         let _ = s.tx.send(json);
                     }
+                    // Edge-only nodes must still count as live traffic.
+                    if s.source != "nexmon" {
+                        s.source = "esp32".to_string();
+                    }
+                    s.last_csi_frame = Some(std::time::Instant::now());
+                    let ns = s.node_states.entry(feature.node_id).or_insert_with(NodeState::new);
+                    ns.last_frame_time = Some(std::time::Instant::now());
+                    ns.origin = Some("esp32_legacy");
                     continue;
                 }
 
@@ -3940,15 +4267,25 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     })) {
                         let _ = s.tx.send(json);
                     }
+                    // Edge-only nodes must still count as live traffic.
+                    if s.source != "nexmon" {
+                        s.source = "esp32".to_string();
+                    }
+                    s.last_csi_frame = Some(std::time::Instant::now());
+                    let ns = s.node_states.entry(compressed.node_id).or_insert_with(NodeState::new);
+                    ns.last_frame_time = Some(std::time::Instant::now());
+                    ns.origin = Some("esp32_legacy");
                     continue;
                 }
 
-                if let Some(frame) = parse_esp32_frame(&buf[..len]) {
-                    debug!("ESP32 frame from {src}: node={}, subs={}, seq={}",
+                if let Some((frame, frame_origin)) = parse_esp32_frame(&buf[..len]) {
+                    debug!("CSI frame from {src} ({frame_origin}): node={}, subs={}, seq={}",
                            frame.node_id, frame.n_subcarriers, frame.sequence);
 
                     let mut s = state.write().await;
-                    if s.source != "nexmon" {
+                    if frame_origin == "nexmon" {
+                        s.source = "nexmon".to_string();
+                    } else if s.source != "nexmon" {
                         s.source = "esp32".to_string();
                     }
                     s.last_csi_frame = Some(std::time::Instant::now());
@@ -3971,14 +4308,20 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     let adaptive_model_clone = s.adaptive_model.clone();
 
                     let ns = s.node_states.entry(node_id).or_insert_with(NodeState::new);
-                    ns.last_frame_time = Some(std::time::Instant::now());
+                    let frame_instant = std::time::Instant::now();
+                    ns.last_frame_time = Some(frame_instant);
+                    ns.origin = Some(frame_origin);
 
                     ns.frame_history.push_back(frame.amplitudes.clone());
                     if ns.frame_history.len() > FRAME_HISTORY_CAPACITY {
                         ns.frame_history.pop_front();
                     }
 
-                    let sample_rate_hz = 1000.0 / 500.0_f64;
+                    // Measured per-node sample rate from real inter-frame
+                    // intervals (firmware sends up to 50 Hz — never assume a
+                    // fixed tick). Also reparameterizes the vital detector
+                    // when the rate drifts >20%.
+                    let sample_rate_hz = ns.observe_raw_frame(node_id, frame_instant);
                     let (features, mut classification, breathing_rate_hz, sub_variances, raw_motion) =
                         extract_features_from_frame(&frame, &ns.frame_history, sample_rate_hz);
                     smooth_and_classify_node(ns, &mut classification, raw_motion);
@@ -4029,7 +4372,10 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                         ns.prev_person_count = 0;
                     }
 
-                    // Store latest features on node for cross-node fusion.
+                    // Store latest features on node for cross-node fusion,
+                    // and feed the node's own motion history (used for the
+                    // z-score weights in estimate_location_hint).
+                    ns.update_coherence(features.motion_band_power);
                     ns.latest_features = Some(features.clone());
 
                     // Done with per-node mutable borrow; now read aggregated
@@ -4095,16 +4441,23 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                         .collect();
 
                     // Trained-model inference: real keypoints from this node's
-                    // amplitude history. The model is chosen by matching its
-                    // training subcarrier width to the live frame width
-                    // (None => pose stays signal-derived).
-                    let model_kps = s.node_states.get(&node_id).and_then(|ns| {
-                        let width = ns.frame_history.back().map(|f| f.len())?;
-                        s.pose_models
-                            .iter()
-                            .find(|pm| pm.stats.n_subcarriers == width)
-                            .and_then(|pm| pose_inference::infer_pose(pm, &ns.frame_history, 20.0))
-                    });
+                    // amplitude history. Prefers an exact subcarrier-width
+                    // model and adapts to the nearest width otherwise.
+                    // Sample rate 10.0 Hz is the trainer's constant — feature
+                    // extraction must match training exactly.
+                    let (model_kps, inference_compat) = s
+                        .node_states
+                        .get(&node_id)
+                        .map(|ns| {
+                            pose_inference::infer_pose_auto(&s.pose_models, &ns.frame_history, 10.0)
+                        })
+                        .unwrap_or((None, None));
+                    if let Some(ns) = s.node_states.get_mut(&node_id) {
+                        ns.last_inference_time = Some(std::time::Instant::now());
+                    }
+                    if inference_compat.is_some() {
+                        s.inference_compat = inference_compat;
+                    }
                     let update_has_model_kps = model_kps.is_some();
 
                     let mut update = SensingUpdate {
@@ -4127,15 +4480,7 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                         quality_verdict: None,
                         bssid_count: None,
                         pose_keypoints: model_kps,
-                        model_status: if s.pose_models.is_empty() {
-                            None
-                        } else {
-                            Some(serde_json::json!({
-                                "models_loaded": s.pose_models.len(),
-                                "type": "linear",
-                                "inference_active": update_has_model_kps,
-                            }))
-                        },
+                        model_status: model_status_json(&s, update_has_model_kps),
                         persons: None,
                         estimated_persons: if total_persons > 0 { Some(total_persons) } else { None },
                         node_features: None,
@@ -4188,13 +4533,21 @@ async fn simulated_data_task(state: SharedState, tick_ms: u64) {
     loop {
         interval.tick().await;
 
-        // A live ESP32 node has taken over (the always-on UDP listener
+        // A live ESP32/Pi node has taken over (the always-on UDP listeners
         // flipped the source) — yield until it goes offline again.
-        if state.read().await.effective_source() == "esp32" {
+        if matches!(
+            state.read().await.effective_source().as_str(),
+            "esp32" | "nexmon"
+        ) {
             continue;
         }
 
         let mut s = state.write().await;
+        // Resuming after a hardware node went offline: reclaim the source so
+        // /health stops reporting "<hw>:offline" while simulated data streams.
+        if s.source != "simulated" {
+            s.source = "simulated".to_string();
+        }
         s.tick += 1;
         let tick = s.tick;
 
@@ -4323,9 +4676,17 @@ async fn broadcast_tick_task(state: SharedState, tick_ms: u64) {
             continue;
         }
         if let Some(ref update) = s.latest_update {
+            // Only fill a real gap: when the latest update is younger than
+            // one tick the UDP path just broadcast it, and re-sending would
+            // duplicate every WS message in esp32/nexmon mode.
+            let age_ms =
+                chrono::Utc::now().timestamp_millis() as f64 - update.timestamp * 1000.0;
+            if age_ms < tick_ms as f64 {
+                continue;
+            }
             if s.tx.receiver_count() > 0 {
                 // Re-broadcast the latest sensing_update so pose WS clients
-                // always get data even when ESP32 pauses between frames.
+                // always get data even when the node pauses between frames.
                 if let Ok(json) = serde_json::to_string(update) {
                     let _ = s.tx.send(json);
                 }
@@ -4997,10 +5358,11 @@ async fn main() {
                 ..Default::default()
             });
             if let Some(ref pos_str) = args.node_positions {
-                let positions = field_bridge::parse_node_positions(pos_str);
-                if !positions.is_empty() {
-                    info!("Configured {} node positions for multistatic fusion", positions.len());
-                    fuser.set_node_positions(positions);
+                let mut pairs = field_bridge::parse_node_position_map(pos_str);
+                pairs.sort_by_key(|(id, _)| *id);
+                if !pairs.is_empty() {
+                    info!("Configured {} node positions for multistatic fusion", pairs.len());
+                    fuser.set_node_positions(pairs.into_iter().map(|(_, p)| p).collect());
                 }
             }
             fuser
@@ -5012,36 +5374,29 @@ async fn main() {
             None
         },
         node_positions: args.node_positions.as_deref()
-            .map(field_bridge::parse_node_positions)
+            .map(field_bridge::parse_node_position_map)
             .unwrap_or_default()
             .into_iter()
-            .map(|p| [p[0] as f64, p[1] as f64, p[2] as f64])
+            .map(|(id, p)| (id, [p[0] as f64, p[1] as f64, p[2] as f64]))
             .collect(),
+        inference_compat: None,
     }));
 
-    // Start background tasks based on source
+    // Start background tasks based on source. BOTH UDP listeners run in
+    // every mode (ADR-090): ESP32 nodes stream to :5005 and Pi/Nexmon nodes
+    // to :5500, and either kind can power on after the server starts. When a
+    // frame arrives the receiver flips the source and any fallback task
+    // yields — hot-plug without a restart, ESP32 + Pi coexistence included.
+    tokio::spawn(udp_receiver_task(state.clone(), args.udp_port));
+    tokio::spawn(udp_receiver_task(state.clone(), args.nexmon_port));
+    tokio::spawn(broadcast_tick_task(state.clone(), args.tick_ms));
     match source {
-        "esp32" => {
-            tokio::spawn(udp_receiver_task(state.clone(), args.udp_port));
-            tokio::spawn(broadcast_tick_task(state.clone(), args.tick_ms));
-        }
-        "nexmon" => {
-            tokio::spawn(udp_receiver_task(state.clone(), args.nexmon_port));
-            tokio::spawn(broadcast_tick_task(state.clone(), args.tick_ms));
-        }
-        // For wifi/simulate, also keep the ESP32 UDP listener running: nodes
-        // often power on after the server starts (auto-detect races them).
-        // When a frame arrives the receiver flips source to "esp32" and the
-        // fallback task yields — hot-plug without a restart.
+        "esp32" | "nexmon" => {}
         "wifi" => {
             tokio::spawn(windows_wifi_task(state.clone(), args.tick_ms));
-            tokio::spawn(udp_receiver_task(state.clone(), args.udp_port));
-            tokio::spawn(broadcast_tick_task(state.clone(), args.tick_ms));
         }
         _ => {
             tokio::spawn(simulated_data_task(state.clone(), args.tick_ms));
-            tokio::spawn(udp_receiver_task(state.clone(), args.udp_port));
-            tokio::spawn(broadcast_tick_task(state.clone(), args.tick_ms));
         }
     }
 

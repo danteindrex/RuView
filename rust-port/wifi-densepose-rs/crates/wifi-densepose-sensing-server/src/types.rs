@@ -233,6 +233,20 @@ pub struct EdgeVitalsPacket {
     pub motion_energy: f32,
     pub presence_score: f32,
     pub timestamp_ms: u32,
+    // ── ADR-063 fused-vitals mmWave extension (magic 0xC5110004, 48 bytes) ──
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mmwave_hr_bpm: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mmwave_br_bpm: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mmwave_distance_cm: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mmwave_targets: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mmwave_confidence: Option<u8>,
+    /// Fusion quality 0-100 from the firmware's CSI+mmWave Kalman fusion.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fusion_confidence: Option<u8>,
 }
 
 /// Backward-compatibility alias.

@@ -126,9 +126,96 @@ pub fn parse_node_positions(input: &str) -> Vec<[f32; 3]> {
         .collect()
 }
 
+/// Parse an explicit node_id → position map from `--node-positions`.
+///
+/// Two syntaxes, mixable per entry:
+/// - `"1:x,y,z;10:x,y,z"` — explicit node ids (Pi nodes start at node_base 10,
+///   so the legacy index convention cannot address them).
+/// - `"x,y,z;x,y,z"` — bare triplets keep the legacy meaning: ids 1..n.
+///
+/// Malformed entries, duplicate ids, and id 0 (unprovisioned) are skipped
+/// with a warning.
+pub fn parse_node_position_map(input: &str) -> Vec<(u8, [f32; 3])> {
+    if input.trim().is_empty() {
+        return Vec::new();
+    }
+    let mut out: Vec<(u8, [f32; 3])> = Vec::new();
+    for (idx, entry) in input.split(';').enumerate() {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            continue;
+        }
+        let (id, triplet) = match entry.split_once(':') {
+            Some((id_str, rest)) => match id_str.trim().parse::<u8>() {
+                Ok(id) => (id, rest),
+                Err(_) => {
+                    tracing::warn!("Skipping node position entry {idx}: bad node id '{id_str}'");
+                    continue;
+                }
+            },
+            None => ((idx + 1).min(u8::MAX as usize) as u8, entry),
+        };
+        if id == 0 {
+            tracing::warn!("Skipping node position entry {idx}: node id 0 is reserved/unprovisioned");
+            continue;
+        }
+        let parts: Vec<&str> = triplet.split(',').collect();
+        if parts.len() != 3 {
+            tracing::warn!("Skipping malformed node position entry {idx}: '{triplet}' (expected x,y,z)");
+            continue;
+        }
+        match (
+            parts[0].trim().parse::<f32>(),
+            parts[1].trim().parse::<f32>(),
+            parts[2].trim().parse::<f32>(),
+        ) {
+            (Ok(x), Ok(y), Ok(z)) => {
+                if out.iter().any(|(existing, _)| *existing == id) {
+                    tracing::warn!("Skipping duplicate node position for node {id}");
+                    continue;
+                }
+                out.push((id, [x, y, z]));
+            }
+            _ => {
+                tracing::warn!("Skipping unparseable node position entry {idx}: '{triplet}'");
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_node_position_map_bare_is_one_based() {
+        let map = parse_node_position_map("0,0,1.5;3,0,1.5");
+        assert_eq!(map, vec![(1, [0.0, 0.0, 1.5]), (2, [3.0, 0.0, 1.5])]);
+    }
+
+    #[test]
+    fn test_parse_node_position_map_explicit_ids() {
+        let map = parse_node_position_map("1:0,0,1.5;10:3,0,1.5");
+        assert_eq!(map, vec![(1, [0.0, 0.0, 1.5]), (10, [3.0, 0.0, 1.5])]);
+    }
+
+    #[test]
+    fn test_parse_node_position_map_rejects_id_zero_and_duplicates() {
+        let map = parse_node_position_map("0:1,1,1;5:2,2,2;5:3,3,3");
+        assert_eq!(map, vec![(5, [2.0, 2.0, 2.0])]);
+    }
+
+    #[test]
+    fn test_parse_node_position_map_skips_malformed() {
+        let map = parse_node_position_map("abc;10:1,2;7:1,2,3");
+        assert_eq!(map, vec![(7, [1.0, 2.0, 3.0])]);
+    }
+
+    #[test]
+    fn test_parse_node_position_map_empty() {
+        assert!(parse_node_position_map("").is_empty());
+    }
 
     #[test]
     fn test_parse_node_positions() {
