@@ -436,8 +436,9 @@ body {
   color: var(--green-glow);
 }
 
-/* ---- Place Nodes button + toast ---- */
-#place-nodes-btn {
+/* ---- Place Nodes / Range Nodes buttons + toast ---- */
+#place-nodes-btn,
+#range-nodes-btn {
   pointer-events: auto;
   background: rgba(255,255,255,0.06);
   border: 1px solid rgba(255,255,255,0.1);
@@ -452,7 +453,8 @@ body {
   transition: all 0.2s;
   display: flex; align-items: center; justify-content: center;
 }
-#place-nodes-btn:hover {
+#place-nodes-btn:hover,
+#range-nodes-btn:hover:not(:disabled) {
   background: rgba(0, 216, 120, 0.15);
   border-color: var(--green-glow);
   color: var(--green-glow);
@@ -462,6 +464,10 @@ body {
   border-color: var(--amber);
   color: var(--amber);
   box-shadow: 0 0 12px rgba(255, 176, 32, 0.25);
+}
+#range-nodes-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 #node-toast {

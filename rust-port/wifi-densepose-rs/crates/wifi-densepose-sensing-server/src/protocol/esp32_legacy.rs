@@ -8,6 +8,7 @@
 //! - ADR-081 feature state packets (`0xC5110006`, CRC32-gated).
 //! - WASM output packets (legacy `0xC5110004`, `0xC5110006` when the CRC
 //!   gate fails, and v2 `0xC5110007`).
+//! - FTM range reports (`0xC5110008`, exactly 24 bytes).
 
 use serde::Serialize;
 
@@ -413,6 +414,61 @@ pub fn parse_rv_feature_state(buf: &[u8]) -> Option<RvFeatureState> {
 }
 
 
+// ── FTM range report (magic 0xC5110008, exactly 24 bytes) ───────────────────
+
+/// Wire size of an FTM range report.
+pub const RANGE_REPORT_LEN: usize = 24;
+
+/// Ranging status codes carried in [`RangeReport::status`].
+pub const RANGE_STATUS_OK: u8 = 0;
+pub const RANGE_STATUS_FAIL: u8 = 1;
+pub const RANGE_STATUS_UNSUPPORTED: u8 = 2;
+pub const RANGE_STATUS_BUSY: u8 = 3;
+
+/// Decoded FTM range report sent by an initiator node after a
+/// `RUVIEW_RANGE|<peer_mac>` control command.
+///
+/// Wire layout (little-endian, 24 bytes):
+/// magic u32 @0, node_id u8 @4, status u8 @5 (0=ok,1=fail,2=unsupported,
+/// 3=busy), peer_mac [6]u8 @6, distance_cm u32 @12, rtt_est_ns u32 @16,
+/// num_frames u8 @20, reserved [3]u8 @21.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RangeReport {
+    pub node_id: u8,
+    pub status: u8,
+    pub peer_mac: [u8; 6],
+    pub distance_cm: u32,
+    pub rtt_est_ns: u32,
+    pub num_frames: u8,
+}
+
+impl RangeReport {
+    pub fn is_ok(&self) -> bool {
+        self.status == RANGE_STATUS_OK
+    }
+
+    pub fn distance_m(&self) -> f64 {
+        self.distance_cm as f64 / 100.0
+    }
+}
+
+/// Parse an FTM range report. Gate: magic + exact 24-byte length.
+pub fn parse_range_report(buf: &[u8]) -> Option<RangeReport> {
+    if buf.len() != RANGE_REPORT_LEN || magic(buf)? != 0xC511_0008 {
+        return None;
+    }
+    let mut peer_mac = [0u8; 6];
+    peer_mac.copy_from_slice(&buf[6..12]);
+    Some(RangeReport {
+        node_id: buf[4],
+        status: buf[5],
+        peer_mac,
+        distance_cm: u32::from_le_bytes([buf[12], buf[13], buf[14], buf[15]]),
+        rtt_est_ns: u32::from_le_bytes([buf[16], buf[17], buf[18], buf[19]]),
+        num_frames: buf[20],
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -576,6 +632,55 @@ mod tests {
         // Trailing byte breaks the exact-length rule -> not WASM.
         p.push(0);
         assert!(parse_esp32_wasm_output(&p).is_none());
+    }
+
+    /// Golden 24-byte FTM range report per the ADR wire contract:
+    /// node 3 measured 4.25 m to AA:BB:CC:DD:EE:FF over 28 FTM frames.
+    fn golden_range_report() -> Vec<u8> {
+        let mut p = Vec::with_capacity(24);
+        p.extend_from_slice(&0xC511_0008u32.to_le_bytes()); // magic @0
+        p.push(3); // node_id @4
+        p.push(0); // status @5 (ok)
+        p.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]); // peer_mac @6
+        p.extend_from_slice(&425u32.to_le_bytes()); // distance_cm @12
+        p.extend_from_slice(&28_333u32.to_le_bytes()); // rtt_est_ns @16
+        p.push(28); // num_frames @20
+        p.extend_from_slice(&[0, 0, 0]); // reserved @21
+        assert_eq!(p.len(), RANGE_REPORT_LEN);
+        p
+    }
+
+    #[test]
+    fn parses_golden_range_report() {
+        let r = parse_range_report(&golden_range_report()).expect("must parse");
+        assert_eq!(r.node_id, 3);
+        assert_eq!(r.status, RANGE_STATUS_OK);
+        assert!(r.is_ok());
+        assert_eq!(r.peer_mac, [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]);
+        assert_eq!(r.distance_cm, 425);
+        assert!((r.distance_m() - 4.25).abs() < 1e-12);
+        assert_eq!(r.rtt_est_ns, 28_333);
+        assert_eq!(r.num_frames, 28);
+    }
+
+    #[test]
+    fn range_report_requires_exact_length_and_magic() {
+        let good = golden_range_report();
+        // Wrong length: one byte short / one byte long.
+        assert!(parse_range_report(&good[..23]).is_none());
+        let mut long = good.clone();
+        long.push(0);
+        assert!(parse_range_report(&long).is_none());
+        // Wrong magic.
+        let mut bad_magic = good.clone();
+        bad_magic[0..4].copy_from_slice(&0xC511_0007u32.to_le_bytes());
+        assert!(parse_range_report(&bad_magic).is_none());
+        // Non-ok status still parses (fail/unsupported/busy are meaningful).
+        let mut busy = good;
+        busy[5] = RANGE_STATUS_BUSY;
+        let r = parse_range_report(&busy).expect("busy report must parse");
+        assert!(!r.is_ok());
+        assert_eq!(r.status, RANGE_STATUS_BUSY);
     }
 
     #[test]

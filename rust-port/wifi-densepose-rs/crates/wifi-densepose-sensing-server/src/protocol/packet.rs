@@ -4,8 +4,9 @@ use crate::types::{Esp32Frame, Esp32VitalsPacket, WasmOutputPacket};
 
 use super::esp32_legacy::{
     parse_esp32_compressed_packet, parse_esp32_feature_packet, parse_esp32_frame,
-    parse_esp32_vitals_or_fused, parse_esp32_wasm_output, parse_rv_feature_state,
-    Esp32CompressedPacket, Esp32FeaturePacket, RvFeatureState,
+    parse_esp32_vitals_or_fused, parse_esp32_wasm_output, parse_range_report,
+    parse_rv_feature_state, Esp32CompressedPacket, Esp32FeaturePacket, RangeReport,
+    RvFeatureState,
 };
 
 #[repr(u32)]
@@ -20,6 +21,8 @@ pub enum Magic {
     /// magic for WASM output, which is what a CRC failure falls back to.
     FeatureState = 0xC511_0006,
     WasmOutputV2 = 0xC511_0007,
+    /// FTM range report from an initiator node (exactly 24 bytes).
+    RangeReport = 0xC511_0008,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +33,7 @@ pub enum DecodedPacket {
     Compressed(Esp32CompressedPacket),
     FeatureState(RvFeatureState),
     WasmOutput(WasmOutputPacket),
+    RangeReport(RangeReport),
 }
 
 pub fn decode_packet(buf: &[u8]) -> Option<DecodedPacket> {
@@ -64,6 +68,9 @@ pub fn decode_packet(buf: &[u8]) -> Option<DecodedPacket> {
         }
         x if x == Magic::WasmOutputV2 as u32 => {
             parse_esp32_wasm_output(buf).map(DecodedPacket::WasmOutput)
+        }
+        x if x == Magic::RangeReport as u32 => {
+            parse_range_report(buf).map(DecodedPacket::RangeReport)
         }
         x if x == Magic::RawFrame as u32 => parse_esp32_frame(buf).map(DecodedPacket::RawFrame),
         _ => {

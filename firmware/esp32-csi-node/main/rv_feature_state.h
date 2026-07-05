@@ -14,6 +14,7 @@
  *   0xC5110005 — ADR-039 compressed CSI (edge_processing.h)
  *   0xC5110006 — ADR-081 feature state  (this file) ← new
  *   0xC5110007 — ADR-040 WASM output v2 (wasm_runtime.h; was 0xC5110004)
+ *   0xC5110008 — ADR-091 FTM range report (ftm_ranging.h)
  */
 
 #ifndef RV_FEATURE_STATE_H

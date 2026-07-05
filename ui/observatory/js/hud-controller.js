@@ -349,6 +349,20 @@ export class HudController {
     if (!btn || !np) return;
     np.onModeChanged = (active) => btn.classList.toggle('active', active);
     btn.addEventListener('click', () => np.toggleMode());
+
+    // RANGE NODES: server-side FTM ranging measures node-to-node distances
+    // and auto-places the constellation. Needs >=2 online non-Pi nodes.
+    const rangeBtn = document.getElementById('range-nodes-btn');
+    if (rangeBtn) {
+      rangeBtn.disabled = true;
+      np.onServerState = () => {
+        rangeBtn.disabled = np.rangeableCount < 2;
+        rangeBtn.title = np.rangeableCount < 2
+          ? 'Needs at least 2 online ESP32 nodes'
+          : 'Nodes range each other (WiFi FTM) and markers auto-place';
+      };
+      rangeBtn.addEventListener('click', () => np.runRanging());
+    }
   }
 
   // ============================================================

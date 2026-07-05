@@ -9,6 +9,11 @@
  * the hub PC receives a new DHCP lease.  The new target is persisted to
  * NVS so it survives reboot.
  *
+ * ADR-091 extends the same socket with FTM ranging control:
+ *   "RUVIEW_RANGE|<peer_mac>"     -> initiate an FTM session (no ack here;
+ *                                    the report goes to the aggregator)
+ *   "RUVIEW_FTM_RESPONDER|on/off" -> toggle FTM responder mode
+ *
  * Beacon field order MUST match parse_beacon_response in
  * wifi-densepose-desktop/src/commands/discovery.rs:
  *   RUVIEW_BEACON|<mac>|<node_id>|<version>|<chip>|<role>|<tdm_slot>|<tdm_total>
@@ -31,6 +36,7 @@
 
 #include "nvs_config.h"
 #include "stream_sender.h"
+#include "ftm_ranging.h"
 
 static const char *TAG = "discovery";
 
@@ -103,6 +109,60 @@ static void handle_hub_announce(char *msg)
     persist_target(ip, (uint16_t)port);
 }
 
+/**
+ * Handle a "RUVIEW_RANGE|AA:BB:CC:DD:EE:FF" request (ADR-091).
+ * Non-blocking: nothing is acked on :5006 — the range report flows to the
+ * aggregator (:5005) as a 24-byte packet with magic 0xC5110008.
+ */
+static void handle_range_request(const char *msg)
+{
+    uint8_t mac[6];
+    if (sscanf(msg + 13, "%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx",
+               &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]) != 6) {
+        ESP_LOGW(TAG, "Malformed RUVIEW_RANGE request: %s", msg);
+        return;
+    }
+    /* Failure/busy cases are reported to the aggregator by ftm_ranging. */
+    ftm_ranging_start_session(mac);
+}
+
+/**
+ * Handle "RUVIEW_FTM_RESPONDER|on" / "RUVIEW_FTM_RESPONDER|off" (ADR-091).
+ * On success the setting is persisted to NVS key "ftm_resp" so it survives
+ * reboot (same pattern as the RUVIEW_HUB target persistence).
+ */
+static void handle_ftm_responder(const char *msg)
+{
+    const char *arg = msg + 21;
+    bool enable;
+    if (strcmp(arg, "on") == 0) {
+        enable = true;
+    } else if (strcmp(arg, "off") == 0) {
+        enable = false;
+    } else {
+        ESP_LOGW(TAG, "Malformed RUVIEW_FTM_RESPONDER request: %s", msg);
+        return;
+    }
+
+    if (ftm_ranging_set_responder(enable) != ESP_OK) {
+        return;  /* ftm_ranging already logged the reason. */
+    }
+    g_nvs_config.ftm_responder = enable ? 1 : 0;
+
+    nvs_handle_t handle;
+    if (nvs_open("csi_cfg", NVS_READWRITE, &handle) != ESP_OK) {
+        ESP_LOGW(TAG, "NVS open for ftm_resp persist failed");
+        return;
+    }
+    if (nvs_set_u8(handle, "ftm_resp", g_nvs_config.ftm_responder) == ESP_OK &&
+        nvs_commit(handle) == ESP_OK) {
+        ESP_LOGI(TAG, "ftm_resp=%u persisted to NVS", (unsigned)g_nvs_config.ftm_responder);
+    } else {
+        ESP_LOGW(TAG, "Failed to persist ftm_resp to NVS");
+    }
+    nvs_close(handle);
+}
+
 /** Build the RUVIEW_BEACON reply from live node state. */
 static int build_beacon(char *out, size_t out_len)
 {
@@ -162,6 +222,12 @@ static void discovery_task(void *arg)
         }
         rx[len] = '\0';
 
+        /* Trim trailing whitespace so "on\n" still matches "on". */
+        while (len > 0 && (rx[len - 1] == '\n' || rx[len - 1] == '\r' ||
+                           rx[len - 1] == ' ' || rx[len - 1] == '\t')) {
+            rx[--len] = '\0';
+        }
+
         if (strncmp(rx, "RUVIEW_DISCOVER", 15) == 0) {
             int n = build_beacon(beacon, sizeof(beacon));
             if (n > 0 && n < (int)sizeof(beacon)) {
@@ -172,6 +238,10 @@ static void discovery_task(void *arg)
             }
         } else if (strncmp(rx, "RUVIEW_HUB|", 11) == 0) {
             handle_hub_announce(rx);
+        } else if (strncmp(rx, "RUVIEW_RANGE|", 13) == 0) {
+            handle_range_request(rx);
+        } else if (strncmp(rx, "RUVIEW_FTM_RESPONDER|", 21) == 0) {
+            handle_ftm_responder(rx);
         }
         /* Anything else: silently ignore (unknown broadcast traffic). */
     }

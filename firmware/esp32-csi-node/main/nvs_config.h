@@ -56,6 +56,9 @@ typedef struct {
     uint8_t  filter_mac[6];                  /**< MAC address to filter CSI frames. */
     uint8_t  filter_mac_set;                 /**< 1 if filter_mac was loaded from NVS. */
 
+    /* ADR-091: 802.11 FTM ranging */
+    uint8_t  ftm_responder;                  /**< 1 = enable FTM responder (hidden SoftAP) at boot. Default 0. */
+
     /* ADR-066: Swarm bridge configuration */
     char     seed_url[64];                /**< Cognitum Seed base URL (empty = disabled). */
     char     seed_token[64];             /**< Seed Bearer token (from pairing). */

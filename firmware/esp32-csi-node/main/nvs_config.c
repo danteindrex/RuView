@@ -96,6 +96,11 @@ void nvs_config_load(nvs_config_t *cfg)
     cfg->filter_mac_set = 0;
     memset(cfg->filter_mac, 0, 6);
 
+    /* ADR-091: FTM responder default OFF — the STA->APSTA switch has an
+     * unvalidated coexistence risk with continuous CSI capture, so the
+     * responder is on-demand (RUVIEW_FTM_RESPONDER|on) unless opted in. */
+    cfg->ftm_responder = 0;
+
     /* Try to override from NVS */
     nvs_handle_t handle;
     esp_err_t err = nvs_open("csi_cfg", NVS_READONLY, &handle);
@@ -300,6 +305,13 @@ void nvs_config_load(nvs_config_t *cfg)
         ESP_LOGI(TAG, "NVS override: filter_mac=%02x:%02x:%02x:%02x:%02x:%02x",
                  cfg->filter_mac[0], cfg->filter_mac[1], cfg->filter_mac[2],
                  cfg->filter_mac[3], cfg->filter_mac[4], cfg->filter_mac[5]);
+    }
+
+    /* ADR-091: FTM responder enable at boot. */
+    uint8_t ftm_resp_val;
+    if (nvs_get_u8(handle, "ftm_resp", &ftm_resp_val) == ESP_OK) {
+        cfg->ftm_responder = ftm_resp_val ? 1 : 0;
+        ESP_LOGI(TAG, "NVS override: ftm_resp=%u", (unsigned)cfg->ftm_responder);
     }
 
     /* ADR-066: Swarm bridge */

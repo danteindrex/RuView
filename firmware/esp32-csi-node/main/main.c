@@ -22,6 +22,7 @@
 #include "csi_collector.h"
 #include "stream_sender.h"
 #include "discovery_responder.h"
+#include "ftm_ranging.h"
 #include "nvs_config.h"
 #include "edge_processing.h"
 #include "ota_update.h"
@@ -191,6 +192,17 @@ void app_main(void)
             g_nvs_config.channel_list,
             g_nvs_config.channel_hop_count,
             g_nvs_config.dwell_ms);
+    }
+#endif
+
+#ifndef CONFIG_CSI_MOCK_SKIP_WIFI_CONNECT
+    /* ADR-091: FTM ranging (initiator always ready; responder per NVS
+     * ftm_resp / RUVIEW_FTM_RESPONDER control message, default off).
+     * Runs after csi_collector_init() so csi_collector_get_node_id()
+     * reflects the NVS node_id in reports and the responder SSID. */
+    esp_err_t ftm_ret = ftm_ranging_init();
+    if (ftm_ret != ESP_OK) {
+        ESP_LOGW(TAG, "FTM ranging init failed: %s", esp_err_to_name(ftm_ret));
     }
 #endif
 

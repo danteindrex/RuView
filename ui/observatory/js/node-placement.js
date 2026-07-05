@@ -76,8 +76,13 @@ export class NodePlacement {
     this._root = root && root.querySelector ? root : document;
     this._getApiBase = getApiBase || (() => null);
     this.onModeChanged = null;
+    /** Fired after each server poll (rangeableCount is fresh). */
+    this.onServerState = null;
+    /** Online non-Pi nodes (Pi/nexmon can't FTM) — gates the RANGE button. */
+    this.rangeableCount = 0;
 
     this._mode = false;
+    this._frame = null;              // node-positions provenance: manual | ftm-auto
     this._markers = new Map();       // key (string node id) -> marker record
     this._origin = { x: 0, z: 0 };   // meters->scene recentering (mapper convention)
     this._liveNodes = null;
@@ -148,6 +153,7 @@ export class NodePlacement {
         fetch(`${base}/api/v1/config/node-positions`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
       ]);
       if (this._disposed) return;
+      if (posRes && typeof posRes.frame === 'string') this._frame = posRes.frame;
       if (nodesRes || posRes) {
         this._applyServerState(nodesRes?.nodes || [], posRes?.positions || {});
       }
@@ -201,8 +207,37 @@ export class NodePlacement {
         this._markers.delete(key);
       }
     }
+    this.rangeableCount = nodes.filter(
+      (n) => n && (n.status || 'active') === 'active' && n.origin !== 'nexmon'
+    ).length;
     this._computeOrigin();
     this._refreshTargets();
+    if (this.onServerState) this.onServerState();
+  }
+
+  // ---- FTM ranging (server-side auto placement) ----
+
+  /** POST /api/v1/ranging/run and toast the outcome. Solved positions land
+   *  via the regular poll (frame flips to "ftm-auto" unless a manual
+   *  placement exists, which always wins). */
+  async runRanging() {
+    const base = this._getApiBase();
+    if (!base) {
+      this._toast('NO SENSING SERVER — CANNOT RANGE', true);
+      return false;
+    }
+    try {
+      const res = await fetch(`${base}/api/v1/ranging/run`, { method: 'POST' });
+      const body = res.ok ? await res.json() : null;
+      if (!body || body.started !== true) {
+        throw new Error(body?.error || `HTTP ${res.status}`);
+      }
+      this._toast('RANGING NODES — AUTO-PLACING WHEN SOLVED', false, 3000);
+      return true;
+    } catch (err) {
+      this._toast(`RANGING FAILED — ${String(err?.message || err).toUpperCase()}`, true, 3000);
+      return false;
+    }
   }
 
   // ---- Markers ----
@@ -266,6 +301,13 @@ export class NodePlacement {
     hintLabel.visible = false;
     group.add(hintLabel);
 
+    // Amber "AUTO" chip shown while the position frame is FTM-solved
+    // (disappears as soon as a human drags any marker → frame = manual).
+    const autoBadge = makeLabelSprite('AUTO', '#ffb020', 0.55);
+    autoBadge.position.y = 0.66;
+    autoBadge.visible = false;
+    group.add(autoBadge);
+
     // Floor ring + stem so an elevated marker keeps a readable XZ anchor.
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.16, 0.2, 24),
@@ -286,7 +328,7 @@ export class NodePlacement {
 
     this._group.add(group);
     return {
-      key, origin: origin || null, group, halo, led, label, hintLabel, ring, stem,
+      key, origin: origin || null, group, halo, led, label, hintLabel, autoBadge, ring, stem,
       status: 'active', meters: null, savedMeters: null, parked: true,
       dragging: false, saveTimer: null, flash: 0,
       target: new THREE.Vector3(0, 0, ROOM_HALF_Z + 0.2),
@@ -343,6 +385,7 @@ export class NodePlacement {
         m.target.copy(this._sceneFromMeters(m.meters));
       }
       m.hintLabel.visible = m.parked;
+      m.autoBadge.visible = this._frame === 'ftm-auto' && !m.parked;
     }
   }
 
@@ -564,6 +607,9 @@ export class NodePlacement {
         if (!res || res.success !== true) throw new Error(res?.error || 'rejected');
         m.savedMeters = meters;
         m.flash = 1.0;
+        // The server flips the frame to manual on any PUT — mirror it
+        // immediately so the AUTO chips drop without waiting for a poll.
+        this._frame = 'manual';
         this._computeOrigin();
         this._refreshTargets();
         this._toast(`NODE ${m.key} POSITION SAVED`);

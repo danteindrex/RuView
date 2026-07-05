@@ -50,6 +50,13 @@ export function ObservatoryMarkup() {
           <button id="place-nodes-btn" title="Drag node markers to where the physical devices sit">
             PLACE NODES
           </button>
+          <button
+            id="range-nodes-btn"
+            title="Nodes range each other (WiFi FTM) and markers auto-place"
+            disabled
+          >
+            RANGE NODES
+          </button>
           <button id="settings-btn" title="Settings">
             ⚙
           </button>

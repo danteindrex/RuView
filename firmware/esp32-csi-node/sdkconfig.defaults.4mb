@@ -18,6 +18,9 @@ CONFIG_COMPILER_OPTIMIZATION_SIZE=y
 # CSI support
 CONFIG_ESP_WIFI_CSI_ENABLED=y
 
+# ADR-091: 802.11 FTM ranging (initiator + responder)
+CONFIG_ESP_WIFI_FTM_ENABLE=y
+
 # Disable display support to save flash (ADR-045 display requires 8MB)
 # CONFIG_DISPLAY_ENABLE is not set
 

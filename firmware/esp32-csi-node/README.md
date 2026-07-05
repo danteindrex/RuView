@@ -151,10 +151,11 @@ All packets are sent over UDP to the configured aggregator. The magic number in 
 | `0xC5110001` | CSI Frame (ADR-018) | ~20 Hz | Variable | Raw I/Q per subcarrier per antenna |
 | `0xC5110002` | Vitals Packet | 1 Hz | 32 bytes | Presence, breathing BPM, heart rate, fall flag, occupancy |
 | `0xC5110007` | WASM Output | Event-driven | Variable | Custom events from WASM modules (u8 type + f32 value). Was `0xC5110004`, migrated to resolve the collision with the fused-vitals packet. |
+| `0xC5110008` | FTM Range Report (ADR-091) | On command | 24 bytes | Node-to-node 802.11 FTM distance: status, peer MAC, distance_cm, rtt_est_ns, num_frames |
 
 ### Discovery / Hub Re-announcement (UDP :5006)
 
-The node also listens on UDP port 5006 for two plain-text datagrams:
+The node also listens on UDP port 5006 for these plain-text datagrams:
 
 - `RUVIEW_DISCOVER` -- replies to the sender with
   `RUVIEW_BEACON|<mac>|<node_id>|<version>|<chip>|<role>|<tdm_slot>|<tdm_total>`
@@ -162,6 +163,12 @@ The node also listens on UDP port 5006 for two plain-text datagrams:
 - `RUVIEW_HUB|<ip>|<port>` -- re-targets the CSI UDP stream at runtime and
   persists the new target to NVS (heals nodes after the hub PC's DHCP
   address changes).
+- `RUVIEW_RANGE|AA:BB:CC:DD:EE:FF` -- starts an 802.11 FTM ranging session
+  to the peer MAC (ADR-091). No reply on :5006; the result goes to the
+  aggregator as a 24-byte `0xC5110008` range report.
+- `RUVIEW_FTM_RESPONDER|on` / `RUVIEW_FTM_RESPONDER|off` -- toggles FTM
+  responder mode (hidden SoftAP `RV-FTM-<node_id>`; default off, persisted
+  to NVS key `ftm_resp`).
 
 ### ADR-018 Binary Frame Format
 

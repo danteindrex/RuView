@@ -14,6 +14,7 @@ pub mod cli;
 pub mod csi;
 pub mod protocol;
 mod field_bridge;
+mod ftm_orchestrator;
 mod multistatic_bridge;
 pub mod pose;
 mod pose_inference;
@@ -339,6 +340,11 @@ struct NodeState {
     detector_rate_hz: f64,
     /// Which parser produced this node's data ("esp32_legacy" | "nexmon").
     origin: Option<&'static str>,
+    /// Source address of the node's most recent UDP packet. Control messages
+    /// (FTM ranging, ADR wire contract) go to this IP on port 5006.
+    last_udp_addr: Option<SocketAddr>,
+    /// Node MAC address when learnable (discovery beacons carry it).
+    mac: Option<[u8; 6]>,
     edge_vitals: Option<Esp32VitalsPacket>,
     /// Latest extracted features for cross-node fusion.
     latest_features: Option<FeatureInfo>,
@@ -401,6 +407,8 @@ impl NodeState {
             ema_frame_interval_s: None,
             detector_rate_hz: DEFAULT_NODE_SAMPLE_RATE_HZ,
             origin: None,
+            last_udp_addr: None,
+            mac: None,
             edge_vitals: None,
             latest_features: None,
             prev_keypoints: None,
@@ -602,6 +610,14 @@ struct AppStateInner {
     /// keyed by node_id. Supports explicit `"1:x,y,z;10:x,y,z"` syntax;
     /// bare `"x,y,z;x,y,z"` keeps the legacy meaning of ids 1..n.
     node_positions: HashMap<u8, [f64; 3]>,
+    /// Provenance of `node_positions`: FRAME_MANUAL when a human placed them
+    /// (drag PUT or --node-positions flag), FRAME_FTM_AUTO when the FTM
+    /// orchestrator solved them, FRAME_UNSET when no positions exist yet.
+    /// The orchestrator never overwrites a manual frame (force-apply aside).
+    positions_frame: String,
+    /// FTM ranging orchestrator handle: feeds range reports in from the UDP
+    /// receiver and lets the REST handlers trigger runs / read status.
+    ranging: ftm_orchestrator::RangingHandle,
     /// Trained linear pose models for live keypoint inference (auto-loaded
     /// from `data/models/*.rvf` at startup, extendable via /api/v1/models/load).
     /// Inference prefers the model whose subcarrier width matches the incoming
@@ -3858,18 +3874,44 @@ async fn nodes_endpoint(State(state): State<SharedState>) -> Json<serde_json::Va
 
 const NODE_POSITIONS_FILE: &str = "data/node_positions.json";
 
-fn load_node_positions_file() -> Option<HashMap<u8, [f64; 3]>> {
+/// Positions frame values (provenance of node_positions).
+const FRAME_MANUAL: &str = "manual";
+const FRAME_FTM_AUTO: &str = "ftm-auto";
+const FRAME_UNSET: &str = "unset";
+
+/// Load positions + frame. Accepts the current wrapped format
+/// `{"positions": {...}, "frame": "manual"|"ftm-auto"}` and migrates the
+/// legacy flat `{"1": [x,y,z]}` format (flat files were only ever written by
+/// human drags, so they load as FRAME_MANUAL).
+fn load_node_positions_file() -> Option<(HashMap<u8, [f64; 3]>, String)> {
     let raw = std::fs::read_to_string(NODE_POSITIONS_FILE).ok()?;
-    let parsed: HashMap<String, [f64; 3]> = serde_json::from_str(&raw).ok()?;
-    Some(
+    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    let (positions_value, frame) = match value.get("positions") {
+        Some(p) => (
+            p.clone(),
+            value
+                .get("frame")
+                .and_then(|f| f.as_str())
+                .unwrap_or(FRAME_MANUAL)
+                .to_string(),
+        ),
+        None => (value, FRAME_MANUAL.to_string()),
+    };
+    let parsed: HashMap<String, [f64; 3]> =
+        serde_json::from_value(positions_value).ok()?;
+    Some((
         parsed
             .into_iter()
             .filter_map(|(k, v)| k.parse::<u8>().ok().map(|id| (id, v)))
             .collect(),
-    )
+        frame,
+    ))
 }
 
-fn save_node_positions_file(positions: &HashMap<u8, [f64; 3]>) -> std::io::Result<()> {
+fn save_node_positions_file(
+    positions: &HashMap<u8, [f64; 3]>,
+    frame: &str,
+) -> std::io::Result<()> {
     let as_str_keys: HashMap<String, [f64; 3]> = positions
         .iter()
         .map(|(id, p)| (id.to_string(), *p))
@@ -3879,7 +3921,11 @@ fn save_node_positions_file(positions: &HashMap<u8, [f64; 3]>) -> std::io::Resul
     }
     std::fs::write(
         NODE_POSITIONS_FILE,
-        serde_json::to_string_pretty(&as_str_keys).unwrap_or_default(),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "positions": as_str_keys,
+            "frame": frame,
+        }))
+        .unwrap_or_default(),
     )
 }
 
@@ -3891,7 +3937,7 @@ async fn get_node_positions(State(state): State<SharedState>) -> Json<serde_json
         .iter()
         .map(|(id, p)| (id.to_string(), *p))
         .collect();
-    Json(serde_json::json!({ "positions": positions }))
+    Json(serde_json::json!({ "positions": positions, "frame": s.positions_frame }))
 }
 
 /// PUT /api/v1/config/node-positions — replace or merge room geometry.
@@ -3942,10 +3988,13 @@ async fn put_node_positions(
         } else {
             s.node_positions = incoming;
         }
+        // A PUT is always a human edit (UI drag / manual API call) — the
+        // manual frame wins over FTM auto-placement from now on.
+        s.positions_frame = FRAME_MANUAL.to_string();
         s.node_positions.clone()
     };
 
-    match save_node_positions_file(&snapshot) {
+    match save_node_positions_file(&snapshot, FRAME_MANUAL) {
         Ok(()) => {
             info!("Node positions updated ({} nodes) and persisted", snapshot.len());
             Json(serde_json::json!({ "success": true, "count": snapshot.len() }))
@@ -4014,6 +4063,28 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
     loop {
         match socket.recv_from(&mut buf).await {
             Ok((len, src)) => {
+                // FTM range reports (magic 0xC511_0008, exactly 24 bytes) —
+                // feed the ranging orchestrator, which is waiting on them.
+                if let Some(report) = protocol::esp32_legacy::parse_range_report(&buf[..len]) {
+                    debug!(
+                        "Range report from {src}: node={} status={} peer={} dist={:.2}m frames={}",
+                        report.node_id,
+                        report.status,
+                        ftm_orchestrator::format_mac(&report.peer_mac),
+                        report.distance_m(),
+                        report.num_frames
+                    );
+                    let mut s = state.write().await;
+                    // Record the source IP like every other branch (entry, not
+                    // get_mut: keeps IP knowledge even if the node was evicted
+                    // mid-cycle). last_frame_time stays unset so a report-only
+                    // node never counts as an active CSI source.
+                    let ns = s.node_states.entry(report.node_id).or_insert_with(NodeState::new);
+                    ns.last_udp_addr = Some(src);
+                    s.ranging.ingest_report(report, src);
+                    continue;
+                }
+
                 // ADR-039: Try edge vitals packet first (magic 0xC511_0002).
                 if let Some(vitals) = parse_esp32_vitals(&buf[..len]) {
                     debug!("ESP32 vitals from {src}: node={} br={:.1} hr={:.1} pres={}",
@@ -4073,6 +4144,7 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     let ns = s.node_states.entry(node_id).or_insert_with(NodeState::new);
                     ns.last_frame_time = Some(std::time::Instant::now());
                     ns.origin = Some("esp32_legacy");
+                    ns.last_udp_addr = Some(src);
                     ns.update_coherence(vitals.motion_energy as f64);
                     ns.edge_vitals = Some(vitals.clone());
                     ns.rssi_history.push_back(vitals.rssi as f64);
@@ -4295,6 +4367,7 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     let ns = s.node_states.entry(fs.node_id).or_insert_with(NodeState::new);
                     ns.last_frame_time = Some(std::time::Instant::now());
                     ns.origin = Some("esp32_legacy");
+                    ns.last_udp_addr = Some(src);
                     ns.update_coherence(fs.motion_score as f64);
                     let presence = fs.presence_score > 0.5;
                     ns.prev_person_count = if presence { 1 } else { 0 };
@@ -4336,6 +4409,7 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     let ns = s.node_states.entry(node_id).or_insert_with(NodeState::new);
                     ns.last_frame_time = Some(std::time::Instant::now());
                     ns.origin = Some("esp32_legacy");
+                    ns.last_udp_addr = Some(src);
                     s.latest_wasm_events = Some(wasm_output);
                     continue;
                 }
@@ -4362,6 +4436,7 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     let ns = s.node_states.entry(feature.node_id).or_insert_with(NodeState::new);
                     ns.last_frame_time = Some(std::time::Instant::now());
                     ns.origin = Some("esp32_legacy");
+                    ns.last_udp_addr = Some(src);
                     continue;
                 }
 
@@ -4388,6 +4463,7 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     let ns = s.node_states.entry(compressed.node_id).or_insert_with(NodeState::new);
                     ns.last_frame_time = Some(std::time::Instant::now());
                     ns.origin = Some("esp32_legacy");
+                    ns.last_udp_addr = Some(src);
                     continue;
                 }
 
@@ -4424,6 +4500,7 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     let frame_instant = std::time::Instant::now();
                     ns.last_frame_time = Some(frame_instant);
                     ns.origin = Some(frame_origin);
+                    ns.last_udp_addr = Some(src);
 
                     ns.frame_history.push_back(frame.amplitudes.clone());
                     if ns.frame_history.len() > FRAME_HISTORY_CAPACITY {
@@ -5410,6 +5487,37 @@ async fn main() {
     let active_pose_model_id = pose_models.first().map(|m| m.id.clone());
     let any_pose_model = !pose_models.is_empty();
     let (tx, _) = broadcast::channel::<String>(256);
+
+    // Node positions + provenance frame. Source-of-truth precedence: the
+    // UI-persisted file wins over the CLI flag, so positions placed by
+    // dragging in the 3D view survive restarts regardless of how the server
+    // is launched. Both file (legacy flat format) and flag count as manual
+    // placement; only a fresh install starts FRAME_UNSET, which lets the FTM
+    // orchestrator auto-populate.
+    let (initial_positions, initial_frame) = {
+        let from_flag: HashMap<u8, [f64; 3]> = args.node_positions.as_deref()
+            .map(field_bridge::parse_node_position_map)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(id, p)| (id, [p[0] as f64, p[1] as f64, p[2] as f64]))
+            .collect();
+        match load_node_positions_file() {
+            Some((from_file, frame)) if !from_file.is_empty() => {
+                info!(
+                    "Node positions loaded from {} ({} nodes, frame={frame}; overrides CLI flag)",
+                    NODE_POSITIONS_FILE,
+                    from_file.len()
+                );
+                (from_file, frame)
+            }
+            _ if !from_flag.is_empty() => (from_flag, FRAME_MANUAL.to_string()),
+            _ => (from_flag, FRAME_UNSET.to_string()),
+        }
+    };
+
+    // FTM ranging orchestrator wiring (handle lives on the app state; the
+    // channel receivers go to the background task spawned below).
+    let (ranging_handle, ranging_channels) = ftm_orchestrator::ranging_channel();
     let state: SharedState = Arc::new(RwLock::new(AppStateInner {
         latest_update: None,
         rssi_history: VecDeque::new(),
@@ -5486,28 +5594,9 @@ async fn main() {
         } else {
             None
         },
-        node_positions: {
-            // Source-of-truth precedence: the UI-persisted file wins over the
-            // CLI flag, so positions placed by dragging in the 3D view survive
-            // restarts regardless of how the server is launched.
-            let from_flag: HashMap<u8, [f64; 3]> = args.node_positions.as_deref()
-                .map(field_bridge::parse_node_position_map)
-                .unwrap_or_default()
-                .into_iter()
-                .map(|(id, p)| (id, [p[0] as f64, p[1] as f64, p[2] as f64]))
-                .collect();
-            match load_node_positions_file() {
-                Some(from_file) if !from_file.is_empty() => {
-                    info!(
-                        "Node positions loaded from {} ({} nodes; overrides CLI flag)",
-                        NODE_POSITIONS_FILE,
-                        from_file.len()
-                    );
-                    from_file
-                }
-                _ => from_flag,
-            }
-        },
+        node_positions: initial_positions,
+        positions_frame: initial_frame,
+        ranging: ranging_handle,
         inference_compat: None,
     }));
 
@@ -5519,6 +5608,7 @@ async fn main() {
     tokio::spawn(udp_receiver_task(state.clone(), args.udp_port));
     tokio::spawn(udp_receiver_task(state.clone(), args.nexmon_port));
     tokio::spawn(broadcast_tick_task(state.clone(), args.tick_ms));
+    tokio::spawn(ftm_orchestrator::orchestrator_task(state.clone(), ranging_channels));
     match source {
         "esp32" | "nexmon" => {}
         "wifi" => {
@@ -5572,6 +5662,10 @@ async fn main() {
             "/api/v1/config/node-positions",
             get(get_node_positions).put(put_node_positions),
         )
+        // FTM ranging orchestration (auto node placement)
+        .route("/api/v1/ranging/run", post(ftm_orchestrator::ranging_run))
+        .route("/api/v1/ranging/status", get(ftm_orchestrator::ranging_status))
+        .route("/api/v1/ranging/apply", post(ftm_orchestrator::ranging_apply))
         // Vital sign endpoints
         .route("/api/v1/vital-signs", get(vital_signs_endpoint))
         .route("/api/v1/edge-vitals", get(edge_vitals_endpoint))

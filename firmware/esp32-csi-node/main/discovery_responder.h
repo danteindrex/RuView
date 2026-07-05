@@ -18,11 +18,15 @@
 /**
  * Start the discovery responder FreeRTOS task.
  *
- * Binds UDP :5006 and serves two datagram types:
+ * Binds UDP :5006 and serves these datagram types:
  *  - "RUVIEW_DISCOVER"        -> reply with
  *    "RUVIEW_BEACON|<mac>|<node_id>|<version>|<chip>|<role>|<tdm_slot>|<tdm_total>"
  *  - "RUVIEW_HUB|<ip>|<port>" -> re-target the CSI UDP stream (and persist
  *    the new target to NVS so it survives reboot).
+ *  - "RUVIEW_RANGE|<peer_mac>"       -> start an FTM ranging session
+ *    (ADR-091); no ack on :5006, report goes to the aggregator (:5005).
+ *  - "RUVIEW_FTM_RESPONDER|on/off"   -> toggle FTM responder mode
+ *    (ADR-091); persisted to NVS key "ftm_resp".
  *
  * Must be called after WiFi is connected and stream_sender is initialized.
  *

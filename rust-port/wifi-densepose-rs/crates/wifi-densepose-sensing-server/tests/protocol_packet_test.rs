@@ -38,6 +38,18 @@ fn make_wasm_v2_packet() -> Vec<u8> {
     buf
 }
 
+fn make_range_report_packet() -> Vec<u8> {
+    let mut buf = vec![0u8; 24];
+    buf[0..4].copy_from_slice(&(Magic::RangeReport as u32).to_le_bytes());
+    buf[4] = 5; // node_id
+    buf[5] = 0; // status: ok
+    buf[6..12].copy_from_slice(&[0x11, 0x22, 0x33, 0x44, 0x55, 0x66]); // peer_mac
+    buf[12..16].copy_from_slice(&312u32.to_le_bytes()); // distance_cm
+    buf[16..20].copy_from_slice(&20_800u32.to_le_bytes()); // rtt_est_ns
+    buf[20] = 16; // num_frames
+    buf
+}
+
 #[test]
 fn packet_magic_values_are_unique() {
     let all = vec![
@@ -47,6 +59,7 @@ fn packet_magic_values_are_unique() {
         Magic::FusedVitals as u32,
         Magic::Compressed as u32,
         Magic::WasmOutputV2 as u32,
+        Magic::RangeReport as u32,
     ];
     let mut uniq = all.clone();
     uniq.sort_unstable();
@@ -64,5 +77,24 @@ fn decode_supports_feature_compressed_and_wasm_v2_packets() {
 
     let wasm = decode_packet(&make_wasm_v2_packet());
     assert!(matches!(wasm, Some(DecodedPacket::WasmOutput(_))));
+}
+
+#[test]
+fn decode_supports_range_report_packets() {
+    match decode_packet(&make_range_report_packet()) {
+        Some(DecodedPacket::RangeReport(r)) => {
+            assert_eq!(r.node_id, 5);
+            assert_eq!(r.status, 0);
+            assert_eq!(r.peer_mac, [0x11, 0x22, 0x33, 0x44, 0x55, 0x66]);
+            assert_eq!(r.distance_cm, 312);
+            assert_eq!(r.rtt_est_ns, 20_800);
+            assert_eq!(r.num_frames, 16);
+        }
+        other => panic!("expected RangeReport, got {other:?}"),
+    }
+
+    // A truncated report must not decode as anything.
+    let short = make_range_report_packet()[..23].to_vec();
+    assert!(decode_packet(&short).is_none());
 }
 
