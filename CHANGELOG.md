@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Batch execution of the 2026-07-03 system audit (44 verified findings; plan in
+`docs/audit-plan-2026-07-03.md`) — PRs #1-#5, targeting full ESP32 + Raspberry
+Pi (Nexmon) dual support.
+
+### Fixed
+- **Server: nexmon parser matched a wrong 16-byte header** — both
+  `protocol/nexmon.rs` and the pi-node-agent's `nexmon_capture.rs` now parse
+  the real nexmon_csi extractor layout (rssi/fc fields, IQ at offset 18);
+  previously one Pi scattered into phantom node IDs with misaligned I/Q.
+- **Server: 0xC5110006 magic collision** — ADR-081 `rv_feature_state` packets
+  (firmware default upstream, 5 Hz) were misparsed as WASM output or dropped.
+  Dedicated CRC32-gated decoder added; new `feature_state` WS message.
+- **Server: 0xC5110004 fused-vitals vs WASM ambiguity** — exact-length WASM
+  rule; mmWave extension fields (HR/BR/distance/targets) now parsed.
+- **Server: hardcoded sample rates** — per-node measured inter-frame rate
+  replaces 2/10 Hz assumptions; vitals from raw ESP32 CSI were noise before.
+- **Model inference: Goertzel rate and feature-window off-by-one** now match
+  training; width adapter lets the 192-subcarrier model serve other widths.
+- **Desktop: production build was impossible** — `custom-protocol` feature and
+  corrected `frontendDist`/`beforeCommand` paths (ui-v2 lives at repo root).
+- **Desktop: stale RUNNING state after crashes** — PID liveness reconciliation
+  (`try_wait` + watcher thread), full-config restart, orphan adoption.
+- **ui-v2: fall detection was dead code** — posture strings now match the Rust
+  enum (`lying_down`; there is no "fallen" variant); WS message types routed so
+  edge packets no longer clobber the dashboard state.
+- **ui-v2: `src/lib/` was untracked** — root `.gitignore`'s `lib/` pattern
+  silently excluded the entire frontend data/auth layer from the repo.
+- **Observatory: live view read fields the server never sends** — new
+  live-data mapper consumes `pose_keypoints`, `location_hint`, bbox.
+- **scripts/start-ruview.ps1** aligned to the server's real port (8080).
+
+### Added
+- **Server: both UDP listeners (5005 ESP32 + 5500 Nexmon) always on** — nodes
+  hot-plug in any source mode; fallback sources yield to live hardware
+  (ADR-090 ESP32 + Pi coexistence).
+- **Server: explicit `id:x,y,z` node-position map** (Pi node_base compatible)
+  with normalized location-hint weighting.
+- **Firmware: discovery responder (UDP :5006)** — answers the desktop's
+  `RUVIEW_DISCOVER` broadcast so node registration finally works, and accepts
+  `RUVIEW_HUB|ip|port` re-announcements to survive hub DHCP address changes
+  (persisted to NVS).
+- **Firmware: WASM output v2 migrated to magic 0xC5110007** (server accepts
+  both during transition).
+- **scripts/setup-esp32-node.ps1**: `-TdmSlot`/`-TdmTotal` for multi-node TDM
+  meshes; DHCP-reservation warning after provisioning.
+- **ui-v2: store slots + UI for edge vitals, WASM events, feature state.**
+
+### Changed
+- Desktop auto-start reads persisted settings (ports, source, node positions)
+  instead of hardcoded values; unsupported serial-provisioning buttons are
+  disabled pending firmware support.
+
 ## [v0.6.2-esp32] — 2026-04-20
 
 Firmware release cutting ADR-081 and the Timer Svc stack fix discovered during
