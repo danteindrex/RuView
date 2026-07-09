@@ -9,9 +9,12 @@ import { Switch } from "@/components/ui/switch";
 import { JsonViewer } from "@/components/layout/json-viewer";
 import { useEnterpriseSettings } from "@/lib/enterprise-store";
 import { useAuthStore } from "@/lib/auth-store";
-import { QrCode, MessageSquare, ShieldCheck, Database } from "lucide-react";
+import { QrCode, MessageSquare, ShieldCheck, Database, Compass } from "lucide-react";
 import { isLoopbackHostPort } from "@/lib/utils";
+import { useOnboardingStore, STEP_COUNT } from "@/lib/onboarding-store";
 import type { AppSettings } from "@/types";
+
+const ONBOARDING_STEP_LABELS = ["Welcome", "Hub check", "Add node", "Place in 3D", "Calibrate", "Tour"];
 
 interface SettingsPageProps {
   theme: "light" | "dark";
@@ -71,6 +74,7 @@ function toNumber(value: string, fallback: number): number {
 
 export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const { accessToken } = useAuthStore();
+  const openOnboarding = useOnboardingStore((s) => s.openAt);
   const { settings: entSettings, saveSettings: saveEnt, getWhapiQR, sendTestMessage, loading: entLoading, error: entError } = useEnterpriseSettings();
   const [localEnt, setLocalEnt] = useState(entSettings);
   const [qrCode, setQrCode] = useState<string | null>(null);
@@ -152,6 +156,19 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
 
   return (
     <div className="space-y-6">
+      <PageSection title="Setup / Onboarding" description="Re-run the guided first-run setup, or jump straight to any step.">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => openOnboarding(0)}>
+            <Compass className="mr-2 h-4 w-4" /> Launch guided setup
+          </Button>
+          {Array.from({ length: STEP_COUNT }).map((_, index) => (
+            <Button key={index} variant="outline" size="sm" onClick={() => openOnboarding(index)}>
+              {index + 1}. {ONBOARDING_STEP_LABELS[index] ?? `Step ${index + 1}`}
+            </Button>
+          ))}
+        </div>
+      </PageSection>
+
       <PageSection title="Enterprise Infrastructure" description="Manage multi-tenant settings and communication integrations.">
         <Accordion type="multiple" defaultValue={["whatsapp", "runtime"]}>
           <AccordionItem value="protocols" className="border rounded-lg px-4 mb-4 bg-secondary/10">

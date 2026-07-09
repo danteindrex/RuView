@@ -37,7 +37,7 @@ export function DashboardPage({
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" data-tour="dashboard-metrics">
         <MetricCard title="Registered Nodes" value={String(nodes.length)} subtitle="Discovery scope" />
         <MetricCard title="Online Nodes" value={String(online)} subtitle={online > 0 ? "Active telemetry" : "No telemetry"} tone={online > 0 ? "success" : "warning"} />
         <MetricCard
@@ -65,6 +65,7 @@ export function DashboardPage({
         />
       </div>
 
+      <div data-tour="dashboard-control-plane">
       <PageSection title="Control Plane Status" description="Instant operational state across server runtime and network discovery.">
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
@@ -106,6 +107,7 @@ export function DashboardPage({
           </div>
         </div>
       </PageSection>
+      </div>
 
       <PageSection title="Operational Guidelines" description="Sensing telemetry is the primary data path. All interface controls are optimized for high-density administrative oversight.">
         <ul className="space-y-2 text-xs text-muted-foreground list-disc pl-4">

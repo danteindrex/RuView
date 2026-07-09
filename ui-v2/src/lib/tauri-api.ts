@@ -4,9 +4,12 @@ import type {
   BatchOtaResult,
   ChipInfo,
   DiscoveredNode,
+  Esp32ProvisionConfig,
   EspflashInfo,
+  FirmwareRelease,
   FlashProgress,
   FlashResult,
+  FlashSegment,
   MeshNodeConfig,
   OtaEndpointInfo,
   OtaResult,
@@ -186,6 +189,18 @@ export const tauriApi = {
   },
   generateMeshConfigs(accessToken: string, baseConfig: ProvisioningConfig, nodeCount: number) {
     return invokeTauri<MeshNodeConfig[]>("generate_mesh_configs", { accessToken, baseConfig, nodeCount });
+  },
+  // ─── First-run onboarding wizard (W3) — sibling-branch commands ───────────
+  // These land when W1's branch merges; call sites guard defensively so the
+  // build (and no-backend smoke test) still pass when they are absent.
+  fetchFirmwareRelease(accessToken: string, tag?: string) {
+    return invokeTauri<FirmwareRelease>("fetch_firmware_release", { accessToken, tag });
+  },
+  flashFirmwareBundle(accessToken: string, params: { port: string; chip: string; segments: FlashSegment[]; baud?: number }) {
+    return invokeTauri<FlashResult>("flash_firmware_bundle", { accessToken, ...params });
+  },
+  provisionEsp32Nvs(accessToken: string, params: { port: string; chip: string; config: Esp32ProvisionConfig; baud?: number }) {
+    return invokeTauri<ProvisionResult>("provision_esp32_nvs", { accessToken, ...params });
   },
   getSettings(accessToken: string) {
     return invokeTauri<AppSettings | null>("get_settings", { accessToken });

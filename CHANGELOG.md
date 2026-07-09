@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **First-run onboarding wizard (ui-v2)** — a guided setup that takes a new
+  operator from a sealed box to live tracking without leaving the desktop app:
+  hub reachability + port-conflict check, ESP32 node flash/provision and
+  Raspberry Pi (Nexmon) SSH setup with live "watching for node" polling, 3D
+  node placement in the embedded observatory (with FTM Range Nodes when 3+
+  ESP32 nodes are online), 90 s empty-room calibration driven by the
+  calibration API, and an anchored-tooltip tour of the dashboard, 3D view, and
+  medical page. Auto-opens on first dashboard entry (gated by an
+  `onboarding_complete` flag persisted via settings + a localStorage mirror)
+  and is re-runnable from Settings → Setup / Onboarding. All backend calls
+  degrade gracefully when the server or sibling Tauri commands are absent.
+
 Batch execution of the 2026-07-03 system audit (44 verified findings; plan in
 `docs/audit-plan-2026-07-03.md`) — PRs #1-#5, targeting full ESP32 + Raspberry
 Pi (Nexmon) dual support.
