@@ -627,6 +627,14 @@ struct AppStateInner {
     /// Compatibility of the last inference attempt (exact/adapted/incompatible)
     /// for /api/v1/models/active and model_status.
     inference_compat: Option<pose_inference::InferenceCompat>,
+    // ── Timed calibration (onboarding empty-room step) ───────────────────
+    /// Monotonically increasing run-id for calibration. Both `/calibration/start`
+    /// and `/calibration/stop` bump it; a pending auto-stop only finalizes if the
+    /// generation it captured still matches, so a superseded run never finalizes.
+    calibration_generation: u64,
+    /// State of the currently scheduled auto-stop, if any: `(captured_generation,
+    /// start_instant, duration_secs)`. `None` when no timed calibration is pending.
+    calibration_auto_stop: Option<(u64, std::time::Instant, u64)>,
 }
 
 /// If no CSI frame arrives within this duration, source reverts to offline.
@@ -3608,7 +3616,74 @@ async fn adaptive_unload(State(state): State<SharedState>) -> Json<serde_json::V
 
 // ── Field model calibration endpoints (eigenvalue person counting) ──────────
 
-async fn calibration_start(State(state): State<SharedState>) -> Json<serde_json::Value> {
+/// Minimum and maximum timed-calibration duration (seconds). The onboarding
+/// wizard passes a fixed duration in this window; out-of-range values are
+/// clamped rather than rejected.
+const CALIBRATION_MIN_SECS: u64 = 10;
+const CALIBRATION_MAX_SECS: u64 = 600;
+
+/// Query params for `POST /api/v1/calibration/start`.
+///
+/// `duration_secs` (optional) turns the calibration into a fixed-duration,
+/// auto-stopping run: after `duration_secs` the server finalizes the baseline
+/// itself, so the onboarding laptop need not stay awake to call `/stop`.
+#[derive(Debug, Deserialize)]
+struct CalibrationStartQuery {
+    duration_secs: Option<u64>,
+}
+
+/// Run `finalize_calibration` on a field model and format the JSON body that
+/// both the manual `/stop` and the auto-stop timer report.
+///
+/// This is the single finalize path shared by both callers. It is generation-
+/// agnostic — the caller decides *whether* to finalize (see
+/// [`auto_stop_should_finalize`]); this decides *what happens* when it does.
+fn run_field_finalize(field_model: &mut Option<FieldModel>) -> serde_json::Value {
+    if let Some(ref mut fm) = field_model {
+        let ts = chrono::Utc::now().timestamp_micros() as u64;
+        match fm.finalize_calibration(ts, 0) {
+            Ok(modes) => {
+                let baseline = modes.baseline_eigenvalue_count;
+                let variance_explained = modes.variance_explained;
+                info!("Field model calibrated: baseline_eigenvalues={baseline}, variance_explained={variance_explained:.2}");
+                serde_json::json!({
+                    "success": true,
+                    "baseline_eigenvalue_count": baseline,
+                    "variance_explained": variance_explained,
+                    "frame_count": fm.calibration_frame_count(),
+                })
+            }
+            Err(e) => serde_json::json!({
+                "success": false,
+                "error": format!("{e}"),
+            }),
+        }
+    } else {
+        serde_json::json!({
+            "success": false,
+            "error": "No field model active — call /calibration/start first.",
+        })
+    }
+}
+
+/// The generation gate for a pending auto-stop: finalize ONLY if the run that
+/// scheduled the timer is still the current run. A manual `/stop` or a newer
+/// `/start` bumps `current_gen`, so a superseded timer no-ops.
+fn auto_stop_should_finalize(current_gen: u64, captured_gen: u64) -> bool {
+    current_gen == captured_gen
+}
+
+/// Finalize the field model calibration (shared by manual `/stop` and the
+/// auto-stop timer). Clears any pending auto-stop schedule, then finalizes.
+fn finalize_field_calibration(s: &mut AppStateInner) -> serde_json::Value {
+    s.calibration_auto_stop = None;
+    run_field_finalize(&mut s.field_model)
+}
+
+async fn calibration_start(
+    State(state): State<SharedState>,
+    axum::extract::Query(query): axum::extract::Query<CalibrationStartQuery>,
+) -> Json<serde_json::Value> {
     let mut s = state.write().await;
     // Guard: don't discard an in-progress or fresh calibration
     if let Some(ref fm) = s.field_model {
@@ -3632,10 +3707,47 @@ async fn calibration_start(State(state): State<SharedState>) -> Json<serde_json:
     match FieldModel::new(field_bridge::single_link_config()) {
         Ok(fm) => {
             s.field_model = Some(fm);
-            Json(serde_json::json!({
-                "success": true,
-                "message": "Calibration started — keep room empty while frames accumulate.",
-            }))
+            // A new run supersedes any pending auto-stop from an earlier run.
+            s.calibration_generation = s.calibration_generation.wrapping_add(1);
+            let generation = s.calibration_generation;
+
+            match query.duration_secs {
+                Some(requested) => {
+                    let duration = requested.clamp(CALIBRATION_MIN_SECS, CALIBRATION_MAX_SECS);
+                    s.calibration_auto_stop = Some((generation, std::time::Instant::now(), duration));
+                    // Spawn the auto-stop timer. It finalizes ONLY if its captured
+                    // generation still matches — a manual /stop or a newer /start
+                    // bumps the generation and this task then no-ops.
+                    let state_for_timer = state.clone();
+                    tokio::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_secs(duration)).await;
+                        let mut s = state_for_timer.write().await;
+                        if !auto_stop_should_finalize(s.calibration_generation, generation) {
+                            debug!("Auto-stop for calibration run {generation} superseded — not finalizing.");
+                            return;
+                        }
+                        // This run is still current: finalize and bump the
+                        // generation so any later stray timer no-ops.
+                        s.calibration_generation = s.calibration_generation.wrapping_add(1);
+                        let result = finalize_field_calibration(&mut s);
+                        info!("Timed calibration run {generation} auto-stopped after {duration}s: {result}");
+                    });
+                    Json(serde_json::json!({
+                        "success": true,
+                        "message": format!("Timed calibration started — keep room empty for {duration}s; baseline finalizes automatically."),
+                        "duration_secs": duration,
+                        "auto_stop": true,
+                    }))
+                }
+                None => {
+                    s.calibration_auto_stop = None;
+                    Json(serde_json::json!({
+                        "success": true,
+                        "message": "Calibration started — keep room empty while frames accumulate.",
+                        "auto_stop": false,
+                    }))
+                }
+            }
         }
         Err(e) => Json(serde_json::json!({
             "success": false,
@@ -3646,44 +3758,33 @@ async fn calibration_start(State(state): State<SharedState>) -> Json<serde_json:
 
 async fn calibration_stop(State(state): State<SharedState>) -> Json<serde_json::Value> {
     let mut s = state.write().await;
-    if let Some(ref mut fm) = s.field_model {
-        let ts = chrono::Utc::now().timestamp_micros() as u64;
-        match fm.finalize_calibration(ts, 0) {
-            Ok(modes) => {
-                let baseline = modes.baseline_eigenvalue_count;
-                let variance_explained = modes.variance_explained;
-                info!("Field model calibrated: baseline_eigenvalues={baseline}, variance_explained={variance_explained:.2}");
-                Json(serde_json::json!({
-                    "success": true,
-                    "baseline_eigenvalue_count": baseline,
-                    "variance_explained": variance_explained,
-                    "frame_count": fm.calibration_frame_count(),
-                }))
-            }
-            Err(e) => Json(serde_json::json!({
-                "success": false,
-                "error": format!("{e}"),
-            })),
-        }
-    } else {
-        Json(serde_json::json!({
-            "success": false,
-            "error": "No field model active — call /calibration/start first.",
-        }))
-    }
+    // A manual stop supersedes any pending auto-stop so the timer no-ops.
+    s.calibration_generation = s.calibration_generation.wrapping_add(1);
+    Json(finalize_field_calibration(&mut s))
 }
 
 async fn calibration_status(State(state): State<SharedState>) -> Json<serde_json::Value> {
     let s = state.read().await;
+    let (auto_stop_scheduled, seconds_remaining) = match s.calibration_auto_stop {
+        Some((_, start, duration)) => {
+            let remaining = duration.saturating_sub(start.elapsed().as_secs());
+            (true, remaining)
+        }
+        None => (false, 0),
+    };
     match s.field_model.as_ref() {
         Some(fm) => Json(serde_json::json!({
             "active": true,
             "status": format!("{:?}", fm.status()),
             "frame_count": fm.calibration_frame_count(),
+            "auto_stop_scheduled": auto_stop_scheduled,
+            "seconds_remaining": seconds_remaining,
         })),
         None => Json(serde_json::json!({
             "active": false,
             "status": "none",
+            "auto_stop_scheduled": auto_stop_scheduled,
+            "seconds_remaining": seconds_remaining,
         })),
     }
 }
@@ -5598,6 +5699,8 @@ async fn main() {
         positions_frame: initial_frame,
         ranging: ranging_handle,
         inference_compat: None,
+        calibration_generation: 0,
+        calibration_auto_stop: None,
     }));
 
     // Start background tasks based on source. BOTH UDP listeners run in
@@ -5771,4 +5874,87 @@ async fn main() {
     }
 
     info!("Server shut down cleanly");
+}
+
+#[cfg(test)]
+mod calibration_tests {
+    use super::*;
+    use wifi_densepose_signal::ruvsense::field_model::{
+        CalibrationStatus, FieldModel, FieldModelConfig,
+    };
+
+    /// Small field model that finalizes after a handful of varied frames, so
+    /// tests run fast without the production 12k-frame requirement.
+    fn make_test_field_model() -> FieldModel {
+        let config = FieldModelConfig {
+            n_links: 1,
+            n_subcarriers: 8,
+            n_modes: 3,
+            min_calibration_frames: 20,
+            baseline_expiry_s: 86_400.0,
+        };
+        FieldModel::new(config).expect("test field model config is valid")
+    }
+
+    /// Feed enough *varied* frames that `finalize_calibration` would succeed.
+    /// Identical vectors make the covariance degenerate, so we vary each frame.
+    fn feed_enough_frames(fm: &mut FieldModel) {
+        for i in 0..30 {
+            let t = i as f64;
+            let obs: Vec<f64> = (0..8)
+                .map(|k| 1.0 + 0.1 * (t + k as f64) + 0.05 * ((t * 0.3 + k as f64).sin()))
+                .collect();
+            fm.feed_calibration(&[obs]).expect("feed_calibration");
+        }
+    }
+
+    /// The valuable test: a superseded auto-stop (generation mismatch) must NOT
+    /// finalize, even though enough frames were collected to succeed. The model
+    /// stays in `Collecting`.
+    #[test]
+    fn superseded_auto_stop_does_not_finalize() {
+        let mut field_model = Some(make_test_field_model());
+        feed_enough_frames(field_model.as_mut().unwrap());
+        assert_eq!(field_model.as_ref().unwrap().status(), CalibrationStatus::Collecting);
+
+        // Timer captured generation 1, but the current run has moved on to 2
+        // (a manual /stop or newer /start happened). The gate must block.
+        let captured_gen = 1_u64;
+        let current_gen = 2_u64;
+        assert!(!auto_stop_should_finalize(current_gen, captured_gen));
+
+        // Because the gate blocks, finalize is never run — status is unchanged.
+        assert_eq!(
+            field_model.as_ref().unwrap().status(),
+            CalibrationStatus::Collecting,
+            "superseded run must remain Collecting"
+        );
+    }
+
+    /// Positive control: with a matching generation, the gate allows finalize
+    /// and the shared finalize path drives the model to `Fresh`. This proves
+    /// the feed was sufficient, so the negative test above isn't passing merely
+    /// because finalize would have failed anyway.
+    #[test]
+    fn matching_generation_finalizes_to_fresh() {
+        let mut field_model = Some(make_test_field_model());
+        feed_enough_frames(field_model.as_mut().unwrap());
+
+        let captured_gen = 5_u64;
+        let current_gen = 5_u64;
+        assert!(auto_stop_should_finalize(current_gen, captured_gen));
+
+        let result = run_field_finalize(&mut field_model);
+        assert_eq!(result["success"], serde_json::json!(true), "finalize result: {result}");
+        assert_eq!(field_model.as_ref().unwrap().status(), CalibrationStatus::Fresh);
+    }
+
+    /// Finalizing a run with no field model reports a clear error rather than
+    /// panicking (defensive: the auto-stop timer could fire after a reset).
+    #[test]
+    fn finalize_without_model_is_graceful() {
+        let mut field_model: Option<FieldModel> = None;
+        let result = run_field_finalize(&mut field_model);
+        assert_eq!(result["success"], serde_json::json!(false));
+    }
 }
