@@ -87,6 +87,7 @@ export function ObservatoryHost({ mode, theme, wsUrl }: ObservatoryHostProps) {
       className="observatory-root"
       data-theme={theme}
       data-observatory-managed="react"
+      data-tour="observatory"
     >
       <ObservatoryMarkup />
     </div>

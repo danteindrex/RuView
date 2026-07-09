@@ -288,7 +288,51 @@ export interface MeshNodeConfig {
   config: ProvisioningConfig;
 }
 
+// ─── Onboarding / first-run wizard (W3) ─────────────────────────────────────
+
+/** One segment of a multi-image flash bundle (offset + local .bin path). */
+export interface FlashSegment {
+  offset: number;
+  path: string;
+}
+
+/** Firmware release resolved from GitHub (segments + release tag). */
+export interface FirmwareRelease {
+  segments: FlashSegment[];
+  tag: string;
+}
+
+/** NVS provisioning payload for ESP32 first-run setup. */
+export interface Esp32ProvisionConfig {
+  ssid: string;
+  password: string;
+  target_ip: string;
+  target_port: number;
+  node_id: number;
+  tdm_slot?: number | null;
+  tdm_nodes?: number | null;
+}
+
+/** Node record from the sensing-server `GET /api/v1/nodes` HTTP endpoint. */
+export interface ServerNode {
+  node_id: number | string;
+  status?: string | null;
+  origin?: string | null;
+  position?: [number, number, number] | null;
+}
+
+/** Live calibration status from `GET /api/v1/calibration/status`. */
+export interface CalibrationStatus {
+  running?: boolean;
+  scheduled?: boolean;
+  seconds_remaining?: number | null;
+  variance_explained?: number | null;
+  [extra: string]: unknown;
+}
+
 export interface AppSettings {
+  /** First-run wizard completion flag. Optional: older backends omit it. */
+  onboarding_complete?: boolean;
   server_http_port: number;
   server_ws_port: number;
   server_udp_port: number;

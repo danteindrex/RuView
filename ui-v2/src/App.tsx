@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LicenseActivationDialog } from "@/components/auth/license-dialog";
 import { AppShell, type ShellPage } from "@/components/layout/app-shell";
 import { DashboardPage } from "@/pages/dashboard-page";
@@ -25,6 +25,8 @@ import { tauriApi } from "@/lib/tauri-api";
 import { useAuthStore } from "@/lib/auth-store";
 import { usePermissions } from "@/hooks/use-permissions";
 import { SensingProvider } from "@/lib/SensingProvider";
+import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
+import { isOnboardingComplete, ONBOARDING_STEPS, useOnboardingStore } from "@/lib/onboarding-store";
 import type { DiscoveredNode, ServerStatusResponse } from "@/types";
 import { Shield, ShieldAlert, ShieldCheck, Users, AlertCircle, Settings2, Lock, Unlock, Activity, LayoutDashboard, HeartPulse, Box, Settings, Building2, Terminal } from "lucide-react";
 
@@ -53,6 +55,7 @@ function loadTheme(): "light" | "dark" {
 export default function App() {
   const { stage, initialize, user, isSuperAdmin, logout, license, accessToken } = useAuthStore();
   const { isSectionVisible } = usePermissions();
+  const { open: onboardingOpen, openAt: openOnboarding, tourPage, step: onboardingStep } = useOnboardingStore();
 
   const [activePage, setActivePage] = useState<PageId>("pose3d");
   const [navigationTenantId, setNavigationTenantId] = useState<string | undefined>(undefined);
@@ -127,6 +130,57 @@ export default function App() {
     return () => clearInterval(interval);
   }, [stage]);
 
+  // First-run onboarding: open the wizard the first time the operator reaches
+  // the dashboard, unless it was already completed (settings flag or the
+  // localStorage mirror). Runs once per dashboard entry.
+  const onboardingCheckedRef = useRef(false);
+  useEffect(() => {
+    if (stage !== "dashboard" || !accessToken || onboardingCheckedRef.current) return;
+    onboardingCheckedRef.current = true;
+    void (async () => {
+      try {
+        const settings = await tauriApi.getSettings(accessToken);
+        if (!isOnboardingComplete(settings)) {
+          openOnboarding(0);
+        }
+      } catch {
+        // Settings unavailable — fall back to the localStorage mirror only.
+        if (!isOnboardingComplete(null)) openOnboarding(0);
+      }
+    })();
+  }, [stage, accessToken, openOnboarding]);
+
+  // The tour step navigates the app to specific pages via the onboarding store.
+  useEffect(() => {
+    if (!tourPage) return;
+    const allowed: PageId[] = ["dashboard", "medical", "pose3d"];
+    if (allowed.includes(tourPage as PageId)) {
+      setActivePage(tourPage as PageId);
+    }
+  }, [tourPage]);
+
+  // Snapshot the page the operator was on when the wizard opens, and restore it
+  // when it closes (so launching setup from any page returns you there).
+  const preOnboardingPageRef = useRef<PageId | null>(null);
+  useEffect(() => {
+    if (onboardingOpen && preOnboardingPageRef.current === null) {
+      preOnboardingPageRef.current = activePage;
+    } else if (!onboardingOpen && preOnboardingPageRef.current !== null) {
+      setActivePage(preOnboardingPageRef.current);
+      preOnboardingPageRef.current = null;
+    }
+  }, [onboardingOpen, activePage]);
+
+  // The observatory HUD binds its toolbar handlers via document-global
+  // getElementById, so two live observatories cross-wire (the wizard's Place
+  // step embeds its own). While that step is active, keep the background page
+  // off pose3d so exactly one observatory exists and placement arms correctly.
+  useEffect(() => {
+    if (onboardingOpen && ONBOARDING_STEPS[onboardingStep] === "place" && activePage === "pose3d") {
+      setActivePage("dashboard");
+    }
+  }, [onboardingOpen, onboardingStep, activePage]);
+
   const title = useMemo(() => {
     const page = ALL_PAGES.find((entry) => entry.id === activePage);
     return page?.label ?? "Overview";
@@ -165,6 +219,9 @@ export default function App() {
   // Stage 3: Dashboard (with permission-filtered sidebar)
   return (
     <SensingProvider>
+      {onboardingOpen ? (
+        <OnboardingWizard accessToken={accessToken} serverStatus={serverStatus} onRefreshServer={refreshServer} />
+      ) : null}
       <AppShell
       pages={visiblePages}
       activePage={activePage}
