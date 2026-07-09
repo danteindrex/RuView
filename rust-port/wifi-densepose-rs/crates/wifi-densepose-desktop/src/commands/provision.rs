@@ -1,3 +1,4 @@
+use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -8,6 +9,11 @@ use tauri::State;
 use crate::commands::auth::AuthManager;
 use crate::commands::guard;
 use crate::domain::config::ProvisioningConfig;
+use crate::provision::nvs_gen::{generate_nvs_csi_cfg, Esp32NvsConfig};
+
+/// Flash offset of the ESP-IDF `nvs` partition on the standard partition table
+/// (matches provision.py's `NVS_PARTITION_OFFSET` and the firmware layout).
+const NVS_FLASH_OFFSET: u32 = 0x9000;
 
 /// Serial baud rate for provisioning communication.
 const PROVISION_BAUD: u32 = 115200;
@@ -267,6 +273,94 @@ pub async fn generate_mesh_configs(
     }
 
     Ok(configs)
+}
+
+/// Provision an ESP32's `csi_cfg` NVS namespace by generating the partition
+/// image natively (no Python NVS generator needed) and flashing it at offset
+/// `0x9000` with `python -m esptool`.
+///
+/// This completes audit item 2.14: the operator can configure WiFi + target on
+/// a factory ESP32 entirely from the desktop app. The generated image is a
+/// full replacement of the `csi_cfg` namespace (issue #391), so the WiFi trio
+/// in [`Esp32NvsConfig`] is mandatory and no partial-update mode is offered.
+///
+/// esptool itself is still required for the actual serial write; the removed
+/// Python dependency is only the NVS *generator* (`esp-idf-nvs-partition-gen`).
+#[tauri::command]
+pub async fn provision_esp32_nvs(
+    access_token: String,
+    port: String,
+    chip: Option<String>,
+    config: Esp32NvsConfig,
+    baud: Option<u32>,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<ProvisionResult, String> {
+    guard::require_auth(&access_token, &auth)?;
+
+    // Generate the NVS partition image (validates config internally).
+    let nvs_image = generate_nvs_csi_cfg(&config)?;
+
+    // Checksum for the caller's confirmation/logging.
+    let mut hasher = Sha256::new();
+    hasher.update(&nvs_image);
+    let checksum = hex::encode(&hasher.finalize()[..8]);
+
+    // Write the image to a temp file for esptool to flash. The filename mixes
+    // the content checksum with the PID and a nanosecond timestamp so two
+    // concurrent provisioning calls (e.g. flashing several nodes with the same
+    // config) never share a path — otherwise one call's cleanup could delete
+    // the file out from under another esptool process mid-read.
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let mut tmp = std::env::temp_dir();
+    tmp.push(format!(
+        "ruview-nvs-{}-{}-{}.bin",
+        checksum,
+        std::process::id(),
+        unique
+    ));
+    std::fs::write(&tmp, &nvs_image)
+        .map_err(|e| format!("Failed to write temp NVS image: {}", e))?;
+    let tmp_path = tmp.to_string_lossy().to_string();
+
+    let chip = chip.unwrap_or_else(|| "esp32s3".to_string());
+    let baud_rate = baud.unwrap_or(460800);
+
+    // python -m esptool --chip <chip> --port <port> --baud <baud>
+    //        write-flash 0x9000 <tmp>
+    let output = Command::new("python")
+        .args(["-m", "esptool"])
+        .args(["--chip", &chip])
+        .args(["--port", &port])
+        .args(["--baud", &baud_rate.to_string()])
+        .arg("write-flash")
+        .arg(format!("0x{:x}", NVS_FLASH_OFFSET))
+        .arg(&tmp_path)
+        .output()
+        .map_err(|e| format!("Failed to run esptool: {}. Is Python + esptool installed?", e));
+
+    // Always clean up the temp file.
+    let _ = std::fs::remove_file(&tmp);
+
+    let output = output?;
+
+    if output.status.success() {
+        Ok(ProvisionResult {
+            success: true,
+            message: format!(
+                "Provisioned csi_cfg NVS ({} bytes) to {} at 0x{:x}",
+                nvs_image.len(),
+                port,
+                NVS_FLASH_OFFSET
+            ),
+            checksum: Some(checksum),
+        })
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("esptool NVS flash failed: {}", stderr.trim()))
+    }
 }
 
 /// Serialize ProvisioningConfig to NVS binary format.

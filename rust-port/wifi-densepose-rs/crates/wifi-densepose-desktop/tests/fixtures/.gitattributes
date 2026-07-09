@@ -1,0 +1,6 @@
+# Golden NVS fixtures must be preserved byte-for-byte (the Rust golden test
+# compares against them via include_bytes!). Prevent EOL/encoding conversion.
+nvs_csi_cfg_golden.bin binary
+nvs_csi_cfg_golden.csv -text
+nvs_csi_cfg_long.bin binary
+nvs_csi_cfg_long.csv -text

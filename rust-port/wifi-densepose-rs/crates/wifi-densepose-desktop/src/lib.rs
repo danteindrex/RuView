@@ -1,9 +1,11 @@
 pub mod auth;
 pub mod commands;
 pub mod domain;
+pub mod provision;
 pub mod state;
 
-use commands::{discovery, flash, license, ota, pi_node, provision, server, settings, wasm};
+use commands::{discovery, flash, license, ota, pi_node, server, settings, wasm};
+use commands::provision as provision_cmd;
 use commands::auth as auth_cmd;
 use commands::users;
 use commands::roles;
@@ -131,12 +133,16 @@ pub fn run() {
             server::server_status,
             server::restart_server,
             server::server_logs,
-            // Provision
-            provision::provision_node,
-            provision::read_nvs,
-            provision::erase_nvs,
-            provision::validate_config,
-            provision::generate_mesh_configs,
+            // Provision (serial-based, legacy)
+            provision_cmd::provision_node,
+            provision_cmd::read_nvs,
+            provision_cmd::erase_nvs,
+            provision_cmd::validate_config,
+            provision_cmd::generate_mesh_configs,
+            // Firmware bundle flashing + native NVS provisioning (onboarding W1)
+            flash::fetch_firmware_release,
+            flash::flash_firmware_bundle,
+            provision_cmd::provision_esp32_nvs,
             // Settings
             settings::get_settings,
             settings::save_settings,

@@ -1,0 +1,9 @@
+key,type,encoding,value
+csi_cfg,namespace,,
+ssid,data,string,RuViewTest
+password,data,string,correcthorsebatterystaple-verylongpassphrase12
+target_ip,data,string,192.168.1.20
+target_port,data,u16,5005
+node_id,data,u8,1
+tdm_slot,data,u8,1
+tdm_nodes,data,u8,4
