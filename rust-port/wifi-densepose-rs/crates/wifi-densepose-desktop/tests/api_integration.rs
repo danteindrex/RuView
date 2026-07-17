@@ -80,7 +80,7 @@ fn test_settings_structure() {
     assert!(!settings.theme.is_empty(), "Theme should have a default");
     assert!(settings.discover_interval_ms > 0, "Discovery interval should be positive");
     assert!(settings.auto_discover, "Auto-discover should default to true");
-    assert_eq!(settings.server_http_port, 8080);
+    assert_eq!(settings.server_http_port, 4000);
 }
 
 #[test]

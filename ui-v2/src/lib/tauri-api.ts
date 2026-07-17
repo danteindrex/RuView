@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type {
   AppSettings,
   BatchOtaResult,
@@ -173,6 +174,21 @@ export const tauriApi = {
     return invokeTauri<PiNodeCommandResult>("pi_node_service", {
       accessToken,
       request: { target: params.target, action: params.action, service_name: params.serviceName },
+    });
+  },
+  /** Install Nexmon CSI on the Pi end-to-end (long-running; ~20-40 min, reboots
+   *  the Pi). Progress streams on the `pi-nexmon-progress` event — subscribe
+   *  with `onPiNexmonProgress` before calling this. Resolves when Nexmon is ready. */
+  piNodeInstallNexmon(accessToken: string, target: PiNodeTarget) {
+    return invokeTauri<PiNodeCommandResult>("pi_node_install_nexmon", {
+      accessToken,
+      request: { target },
+    });
+  },
+  /** Subscribe to Nexmon-install log lines. Returns an unlisten function. */
+  async onPiNexmonProgress(handler: (line: string) => void): Promise<() => void> {
+    return listen<{ line: string }>("pi-nexmon-progress", (event) => {
+      handler(event.payload?.line ?? "");
     });
   },
   provisionNode(accessToken: string, port: string, config: ProvisioningConfig) {
