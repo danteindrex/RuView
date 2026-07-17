@@ -794,12 +794,14 @@ fn non_empty(s: &str) -> Option<String> {
 
 impl ServerConfig {
     /// Fallback config mirroring the sensing-server binary's own defaults
-    /// (HTTP 8080, WS 8765, UDP 5005, Nexmon 5500). Ports must be explicit
-    /// so the frontend can read them back from server status.
+    /// (HTTP 4000, WS 4001, UDP 5005, Nexmon 5500). TCP ports live in the 4000
+    /// range to avoid colliding with common local dev stacks on 8080. UDP ports
+    /// stay at 5005/5500 — the ESP32/Pi firmware is provisioned to stream there.
+    /// Ports must be explicit so the frontend can read them back from status.
     pub fn with_default_ports() -> Self {
         ServerConfig {
-            http_port: Some(8080),
-            ws_port: Some(8765),
+            http_port: Some(4000),
+            ws_port: Some(4001),
             udp_port: Some(5005),
             nexmon_port: Some(5500),
             ..Default::default()
@@ -951,8 +953,8 @@ mod tests {
     #[test]
     fn test_with_default_ports_mirrors_server_defaults() {
         let config = ServerConfig::with_default_ports();
-        assert_eq!(config.http_port, Some(8080));
-        assert_eq!(config.ws_port, Some(8765));
+        assert_eq!(config.http_port, Some(4000));
+        assert_eq!(config.ws_port, Some(4001));
         assert_eq!(config.udp_port, Some(5005));
         assert_eq!(config.nexmon_port, Some(5500));
         assert_eq!(config.source, None);

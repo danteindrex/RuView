@@ -77,11 +77,11 @@ use wifi_densepose_signal::ruvsense::field_model::{FieldModel, CalibrationStatus
 #[command(name = "sensing-server", about = "WiFi-DensePose sensing server")]
 struct Args {
     /// HTTP port for UI and REST API
-    #[arg(long, default_value = "8080")]
+    #[arg(long, default_value = "4000")]
     http_port: u16,
 
     /// WebSocket port for sensing stream
-    #[arg(long, default_value = "8765")]
+    #[arg(long, default_value = "4001")]
     ws_port: u16,
 
     /// UDP port for ESP32/Pi CSI frames

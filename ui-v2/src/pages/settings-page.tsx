@@ -22,8 +22,8 @@ interface SettingsPageProps {
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
-  server_http_port: 8080,
-  server_ws_port: 8765,
+  server_http_port: 4000,
+  server_ws_port: 4001,
   server_udp_port: 5005,
   server_nexmon_port: 5500,
   bind_address: "127.0.0.1",

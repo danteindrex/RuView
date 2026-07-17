@@ -52,7 +52,7 @@ pub fn run() {
                     }
                 };
                 let state = server_handle.state::<state::AppState>();
-                let http_port = config.http_port.unwrap_or(8080);
+                let http_port = config.http_port.unwrap_or(4000);
                 if server::tcp_port_in_use(config.bind_address.as_deref(), http_port) {
                     tracing::info!(
                         "Port {http_port} already in use — adopting external sensing \

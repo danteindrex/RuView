@@ -37,8 +37,8 @@ interface ActivityEntry {
 }
 
 const DEFAULT_CONFIG: ServerConfig = {
-  http_port: 8080,
-  ws_port: 8765,
+  http_port: 4000,
+  ws_port: 4001,
   udp_port: 5005,
   nexmon_port: 5500,
   ui_path: "",

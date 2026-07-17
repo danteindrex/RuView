@@ -6,7 +6,7 @@
 #
 # NOTE: Use EITHER this standalone server OR the Wave Desktop app's managed
 # server (Control Plane -> Start) -- not both. They compete for ports
-# 8080 (HTTP), 8765 (WebSocket), 5005 (ESP32 UDP), and 5500 (nexmon UDP).
+# 4000 (HTTP), 4001 (WebSocket), 5005 (ESP32 UDP), and 5500 (nexmon UDP).
 # Stop this one with:  Get-Process sensing-server | Stop-Process
 #
 # NOTE: keep this file pure ASCII. PowerShell 5.1 reads BOM-less files as
@@ -21,7 +21,7 @@ param(
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $serverExe = Join-Path $repoRoot 'rust-port\wifi-densepose-rs\target\debug\sensing-server.exe'
 $taskName = 'RuView Sensing Server'
-$httpPort = 8080
+$httpPort = 4000
 
 if ($Unregister) {
     schtasks /Delete /TN $taskName /F
@@ -41,7 +41,7 @@ if ($RegisterStartup) {
 
 # A server may already be listening on the HTTP port -- either a previous run
 # of this script or the desktop app's managed server. Probe /health before
-# starting a second instance (they would fight over 8080/8765/5005/5500).
+# starting a second instance (they would fight over 4000/4001/5005/5500).
 $alreadyServing = $false
 try {
     $null = Invoke-WebRequest -Uri "http://localhost:$httpPort/health" -UseBasicParsing -TimeoutSec 2
@@ -62,6 +62,6 @@ if ($alreadyServing) {
         Write-Host "Sensing server running: $($h.Content)" -ForegroundColor Green
         Write-Host "UI: http://localhost:$httpPort/ui/index.html"
     } catch {
-        Write-Host "Server started but health check failed -- check if ports $httpPort/8765/5005/5500 are in use." -ForegroundColor Yellow
+        Write-Host "Server started but health check failed -- check if ports $httpPort/4001/5005/5500 are in use." -ForegroundColor Yellow
     }
 }

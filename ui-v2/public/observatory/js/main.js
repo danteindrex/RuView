@@ -604,8 +604,8 @@ class Observatory {
     const host = window.location.hostname || 'localhost';
     const candidates = [
       window.location.origin,                   // same origin
-      `http://${host}:8765`,                     // default WS port
-      `http://${host}:8080`,                     // default HTTP port
+      `http://${host}:4001`,                     // default WS port
+      `http://${host}:4000`,                     // default HTTP port
     ];
     // Deduplicate
     const unique = [...new Set(candidates)];
