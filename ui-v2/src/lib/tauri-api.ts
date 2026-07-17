@@ -21,7 +21,9 @@ import type {
   PiServiceAction,
   ProvisionResult,
   ProvisioningConfig,
+  HostNetworkInfo,
   SerialPortInfo,
+  WifiNetwork,
   ServerConfig,
   ServerLogsResponse,
   ServerStartResult,
@@ -46,6 +48,15 @@ export const tauriApi = {
   },
   listSerialPorts(accessToken: string) {
     return invokeTauri<SerialPortInfo[]>("list_serial_ports", { accessToken });
+  },
+  hostNetworkInfo(accessToken: string) {
+    return invokeTauri<HostNetworkInfo>("host_network_info", { accessToken });
+  },
+  scanWifiNetworks(accessToken: string) {
+    return invokeTauri<WifiNetwork[]>("scan_wifi_networks", { accessToken });
+  },
+  wifiSavedPassword(accessToken: string, ssid: string) {
+    return invokeTauri<string | null>("wifi_saved_password", { accessToken, ssid });
   },
   configureEsp32Wifi(accessToken: string, port: string, ssid: string, password: string) {
     return invokeTauri<string>("configure_esp32_wifi", { accessToken, port, ssid, password });

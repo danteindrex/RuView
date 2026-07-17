@@ -39,6 +39,20 @@ export interface SerialPortInfo {
   is_esp32_compatible: boolean;
 }
 
+export interface HostNetworkInfo {
+  ssid: string | null;
+  lan_ip: string | null;
+}
+
+export interface WifiNetwork {
+  ssid: string;
+  band_24ghz: boolean;
+  band_5ghz: boolean;
+  open: boolean;
+  saved: boolean;
+  connected: boolean;
+}
+
 export interface FlashProgress {
   phase: string;
   progress_pct: number;

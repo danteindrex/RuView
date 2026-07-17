@@ -1005,7 +1005,7 @@ mod tests {
         assert_eq!(config.ui_path, None);
         // Non-empty defaults survive.
         assert_eq!(config.bind_address.as_deref(), Some("127.0.0.1"));
-        assert_eq!(config.source.as_deref(), Some("auto"));
+        assert_eq!(config.source.as_deref(), Some("esp32"));
     }
 
     #[test]

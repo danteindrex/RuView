@@ -63,7 +63,12 @@ impl Default for AppSettings {
             server_udp_port: 5005,
             server_nexmon_port: 5500,
             bind_address: "127.0.0.1".into(),
-            server_source: "auto".into(),
+            // "esp32" (not "auto"): the sensing server's auto-detect briefly
+            // binds UDP 5005 to probe, which races the always-on ESP32 listener
+            // and can leave 5005 unbound so nodes are never received. Starting
+            // in esp32 mode binds 5005/5500 cleanly; the hot-plug listeners
+            // still accept Nexmon (5500) and flip source on the first frame.
+            server_source: "esp32".into(),
             server_tick_ms: 100,
             ui_path: String::new(),
             server_pi_diag: false,

@@ -101,6 +101,9 @@ pub fn run() {
             discovery::discover_nodes,
             discovery::list_serial_ports,
             discovery::configure_esp32_wifi,
+            discovery::host_network_info,
+            discovery::scan_wifi_networks,
+            discovery::wifi_saved_password,
             // Flash
             flash::flash_firmware,
             flash::flash_progress,

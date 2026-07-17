@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, Loader2, RadioTower, Usb, Zap } from "lucide-react";
+import { CheckCircle2, Loader2, RadioTower, RefreshCw, Usb, Wifi, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +23,7 @@ import { isLoopbackHostPort } from "@/lib/utils";
 import { StatusLine } from "../step-shell";
 import { deriveHubLanIp, fetchServerNodes, nodeIdNumber, resolveServerBase } from "../server-api";
 import { useNodeWatch } from "../use-node-watch";
-import type { FlashProgress, SerialPortInfo, ServerStatusResponse } from "@/types";
+import type { FlashProgress, SerialPortInfo, ServerStatusResponse, WifiNetwork } from "@/types";
 
 type Phase = "form" | "flashing" | "provisioning" | "watching" | "done";
 
@@ -42,6 +42,8 @@ export function Esp32Setup({ accessToken, serverStatus }: Esp32SetupProps) {
   const [password, setPassword] = useState("");
   const [targetIp, setTargetIp] = useState("");
   const [nodeId, setNodeId] = useState(1);
+  const [wifiList, setWifiList] = useState<WifiNetwork[]>([]);
+  const [scanningWifi, setScanningWifi] = useState(false);
 
   const [phase, setPhase] = useState<Phase>("form");
   const [progress, setProgress] = useState<FlashProgress | null>(null);
@@ -70,6 +72,69 @@ export function Esp32Setup({ accessToken, serverStatus }: Esp32SetupProps) {
       cancelled = true;
     };
   }, [accessToken]);
+
+  // Prefill WiFi SSID + hub LAN IP from the host PC's current network.
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const info = await tauriApi.hostNetworkInfo(accessToken);
+        if (cancelled) return;
+        if (info.ssid) setSsid((prev) => prev || info.ssid || "");
+        if (info.lan_ip) setTargetIp((prev) => prev || info.lan_ip || "");
+      } catch {
+        // command unavailable — leave the fields manual
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
+
+  // Scan nearby WiFi so the user can pick a network (auto-fills SSID + the saved
+  // password) instead of typing — the reliable way to avoid a wrong password.
+  async function rescanWifi() {
+    if (!accessToken) return;
+    setScanningWifi(true);
+    try {
+      setWifiList(await tauriApi.scanWifiNetworks(accessToken));
+    } catch {
+      // command unavailable — the manual SSID field stays usable
+    } finally {
+      setScanningWifi(false);
+    }
+  }
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+    void (async () => {
+      setScanningWifi(true);
+      try {
+        const nets = await tauriApi.scanWifiNetworks(accessToken);
+        if (!cancelled) setWifiList(nets);
+      } catch {
+        // unavailable
+      } finally {
+        if (!cancelled) setScanningWifi(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
+
+  async function selectNetwork(net: WifiNetwork) {
+    setSsid(net.ssid);
+    if (net.saved && accessToken) {
+      try {
+        const pw = await tauriApi.wifiSavedPassword(accessToken, net.ssid);
+        if (pw) setPassword(pw);
+      } catch {
+        // couldn't read saved password — user types it
+      }
+    }
+  }
 
   // Auto-increment node_id from the current roster + prefill hub IP.
   useEffect(() => {
@@ -249,6 +314,44 @@ export function Esp32Setup({ accessToken, serverStatus }: Esp32SetupProps) {
           <RadioTower className="h-4 w-4 text-primary" /> Network + identity
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5 sm:col-span-2">
+            <div className="flex items-center justify-between">
+              <Label className="flex items-center gap-1.5">
+                <Wifi className="h-3.5 w-3.5 text-primary" /> Scan nearby WiFi
+              </Label>
+              <Button variant="ghost" size="sm" onClick={() => void rescanWifi()} disabled={scanningWifi || !accessToken}>
+                {scanningWifi ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
+                Rescan
+              </Button>
+            </div>
+            {wifiList.length > 0 ? (
+              <Select
+                onValueChange={(v) => {
+                  const n = wifiList.find((w) => w.ssid === v);
+                  if (n) void selectNetwork(n);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pick a network — 2.4GHz only, saved ones auto-fill the password" />
+                </SelectTrigger>
+                <SelectContent>
+                  {wifiList.map((n) => (
+                    <SelectItem key={n.ssid} value={n.ssid} disabled={!n.band_24ghz}>
+                      {n.ssid}
+                      {n.connected ? " · connected" : ""}
+                      {n.band_24ghz ? " · 2.4GHz" : " · 5GHz only (ESP32 can't join)"}
+                      {n.saved ? " · saved" : ""}
+                      {n.open ? " · open" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {scanningWifi ? "Scanning for networks…" : "No networks found — type the SSID below."}
+              </p>
+            )}
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="esp-ssid">WiFi SSID</Label>
             <Input id="esp-ssid" value={ssid} onChange={(e) => setSsid(e.target.value)} placeholder="Your 2.4GHz network" />
