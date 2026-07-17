@@ -127,6 +127,7 @@ pub fn run() {
             pi_node::pi_node_push_config,
             pi_node::pi_node_install_service,
             pi_node::pi_node_service,
+            pi_node::pi_node_install_nexmon,
             // Server
             server::start_server,
             server::stop_server,

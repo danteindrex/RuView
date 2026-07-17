@@ -57,6 +57,11 @@ export function PiSetup({ accessToken, serverStatus }: PiSetupProps) {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [watching, setWatching] = useState(false);
+  // Nexmon CSI driver install (must run before the agent deploy on a fresh Pi).
+  const [skipNexmon, setSkipNexmon] = useState(false);
+  const [nexmonState, setNexmonState] = useState<"idle" | "installing" | "done" | "error">("idle");
+  const [nexmonLog, setNexmonLog] = useState<string[]>([]);
+  const [nexmonError, setNexmonError] = useState<string | null>(null);
 
   const base = useMemo(() => resolveServerBase(serverStatus), [serverStatus]);
 
@@ -95,6 +100,39 @@ export function PiSetup({ accessToken, serverStatus }: PiSetupProps) {
 
   const aggregatorInvalid = !aggregator || isLoopbackHostPort(aggregator);
 
+  async function installNexmon() {
+    if (!accessToken) {
+      setNexmonError("Not authenticated — sign in first.");
+      return;
+    }
+    if (!target.host.trim()) {
+      setNexmonError("Enter the Pi's SSH host first.");
+      return;
+    }
+    setNexmonState("installing");
+    setNexmonError(null);
+    setNexmonLog([]);
+    let unlisten: (() => void) | null = null;
+    try {
+      unlisten = await tauriApi.onPiNexmonProgress((line) => {
+        // Keep the last ~500 lines to bound memory on a long install.
+        setNexmonLog((prev) => (prev.length >= 500 ? [...prev.slice(-499), line] : [...prev, line]));
+      });
+      const result = await tauriApi.piNodeInstallNexmon(accessToken, target);
+      if (result.success) {
+        setNexmonState("done");
+      } else {
+        setNexmonState("error");
+        setNexmonError(result.stderr || result.stdout || "Nexmon install failed");
+      }
+    } catch (err) {
+      setNexmonState("error");
+      setNexmonError(err instanceof Error ? err.message : String(err));
+    } finally {
+      if (unlisten) unlisten();
+    }
+  }
+
   async function runSequence() {
     if (!accessToken) {
       setError("Not authenticated — sign in to run Pi setup.");
@@ -102,6 +140,10 @@ export function PiSetup({ accessToken, serverStatus }: PiSetupProps) {
     }
     if (!target.host.trim()) {
       setError("Enter the Pi's SSH host.");
+      return;
+    }
+    if (!skipNexmon && nexmonState !== "done") {
+      setError("Install the Nexmon CSI driver first, or check “already has Nexmon”.");
       return;
     }
     if (aggregatorInvalid) {
@@ -187,6 +229,47 @@ export function PiSetup({ accessToken, serverStatus }: PiSetupProps) {
         </div>
       </div>
 
+      <div className="space-y-2 rounded-lg border border-border/60 bg-secondary/10 p-3">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium">1. Nexmon CSI driver</p>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <input type="checkbox" checked={skipNexmon} onChange={(e) => setSkipNexmon(e.target.checked)} />
+            My Pi already has Nexmon — skip
+          </label>
+        </div>
+        {skipNexmon ? (
+          <p className="text-xs text-muted-foreground">Skipping the driver install — assuming Nexmon is already present.</p>
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground">
+              Installs the kernel CSI patch on a Raspberry Pi 4B (~20–40 min; the Pi reboots partway).{" "}
+              <span className="text-amber-500">Connect the Pi by Ethernet</span> — the install disables Wi-Fi mid-process and would sever a Wi-Fi SSH session.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={installNexmon}
+                disabled={nexmonState === "installing" || nexmonState === "done" || !accessToken}
+              >
+                {nexmonState === "installing" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {nexmonState === "done" ? "Nexmon installed" : "Install Nexmon CSI driver"}
+              </Button>
+              {nexmonState === "done" ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : null}
+              {nexmonState === "installing" ? (
+                <span className="text-xs text-muted-foreground">Running… the Pi will reboot itself; keep this open.</span>
+              ) : null}
+            </div>
+            {nexmonLog.length > 0 ? (
+              <pre className="max-h-48 overflow-auto rounded bg-black/40 p-2 text-[11px] leading-relaxed text-muted-foreground">
+                {nexmonLog.join("\n")}
+              </pre>
+            ) : null}
+            {nexmonError ? <StatusLine tone="error">{nexmonError}</StatusLine> : null}
+          </>
+        )}
+      </div>
+
+      <p className="text-sm font-medium">2. Deploy the sensing agent</p>
       <ul className="space-y-1.5">
         {checklist.map((item) => (
           <li key={item.key} className="flex items-center gap-2 text-sm">
@@ -220,7 +303,10 @@ export function PiSetup({ accessToken, serverStatus }: PiSetupProps) {
       {error ? <StatusLine tone="error">{error}</StatusLine> : null}
 
       <div className="flex flex-wrap gap-2">
-        <Button onClick={runSequence} disabled={running || !accessToken}>
+        <Button
+          onClick={runSequence}
+          disabled={running || !accessToken || (!skipNexmon && nexmonState !== "done")}
+        >
           {running ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           Run Pi setup
         </Button>

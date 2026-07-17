@@ -377,10 +377,16 @@ fi
 
 # ── Step 13 — Demo capturing CSI UDPs using tcpdump ─────────────────────────
 echo -e "\n${BOLD}=== Step 13: Demo capturing CSI UDPs using tcpdump ===${NC}"
-info "Starting tcpdump on wlan0 port 5500. Press Ctrl-C to stop and continue to reboot."
 info "NOTE: To reset the firmware to its default, and give control back to network manager, run:"
 info "  make -f Makefile.rpi restore-wifi"
-sudo tcpdump -i wlan0 dst port 5500 2>&1 || true
+# This demo blocks until Ctrl-C, which would hang any non-interactive run (e.g.
+# the RuView desktop app driving this over SSH). Only run it on a real TTY.
+if [ -t 0 ]; then
+    info "Starting tcpdump on wlan0 port 5500. Press Ctrl-C to stop and continue to reboot."
+    sudo tcpdump -i wlan0 dst port 5500 2>&1 || true
+else
+    info "Non-interactive run: skipping the tcpdump demo (Step 13)."
+fi
 
 # ── Step 14 — Reboot the system ──────────────────────────────────────────────
 echo -e "\n${BOLD}=== Step 14: Reboot the system ===${NC}"
@@ -391,6 +397,9 @@ echo ""
 echo -e "${YELLOW}On every subsequent startup, run nexmon_startup.sh to re-enable monitor mode (steps 16–17):${NC}"
 echo -e "  ${CYAN}bash nexmon_startup.sh${NC}"
 echo ""
+# Stable machine-readable marker so an automated driver (RuView desktop) can
+# tell an intentional reboot apart from a mid-install SSH failure. Do not remove.
+echo "RUVIEW_NEXMON_REBOOT"
 warn "Rebooting in 5 seconds — Ctrl-C to abort."
 sleep 5
 sudo reboot
