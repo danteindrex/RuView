@@ -1,0 +1,260 @@
+import { useMemo, useState } from "react";
+import { useAuthStore } from "@/lib/auth-store";
+import { ChevronDown, ChevronRight, Loader2, Wifi } from "lucide-react";
+import { tauriApi } from "@/lib/tauri-api";
+import { PageSection } from "@/components/layout/page-section";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import type { DiscoveredNode, SerialPortInfo } from "@/types";
+
+interface NetworkPageProps {
+  nodes: DiscoveredNode[];
+  onNodesUpdate: (nodes: DiscoveredNode[]) => void;
+}
+
+export function NetworkPage({ nodes, onNodesUpdate }: NetworkPageProps) {
+  const { accessToken } = useAuthStore();
+  const [loading, setLoading] = useState(false);
+  const [ports, setPorts] = useState<SerialPortInfo[]>([]);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [timeoutMs, setTimeoutMs] = useState("3000");
+  const [wifiPort, setWifiPort] = useState("");
+  const [ssid, setSsid] = useState("");
+  const [password, setPassword] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const nodeSummary = useMemo(() => {
+    const online = nodes.filter((n) => n.health === "online").length;
+    return `${online}/${nodes.length} online`;
+  }, [nodes]);
+
+  async function handleDiscover() {
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+    try {
+      if (!accessToken) return;
+      const discovered = await tauriApi.discoverNodes(accessToken, Number(timeoutMs || "3000"));
+      onNodesUpdate(discovered);
+      setMessage(`Discovery completed: ${discovered.length} nodes found.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleLoadPorts() {
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const found = await tauriApi.listSerialPorts(accessToken!);
+      setPorts(found);
+      if (!wifiPort && found.length > 0) {
+        setWifiPort(found[0].name);
+      }
+      setMessage(`Loaded ${found.length} serial ports.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleConfigureWifi() {
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+    try {
+      if (!accessToken) return;
+      const response = await tauriApi.configureEsp32Wifi(accessToken, wifiPort, ssid, password);
+      setMessage(response);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function keyForNode(node: DiscoveredNode) {
+    return node.mac ?? node.ip;
+  }
+
+  function formatUptime(seconds: number | null) {
+    if (seconds == null) return "N/A";
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return `${hours}h ${minutes}m`;
+  }
+
+  function capabilityText(node: DiscoveredNode) {
+    if (!node.capabilities) return "N/A";
+    const enabled = Object.entries(node.capabilities)
+      .filter(([, value]) => value)
+      .map(([key]) => key.toUpperCase());
+    return enabled.length > 0 ? enabled.join(", ") : "None";
+  }
+
+  return (
+    <div className="space-y-6">
+      <PageSection title="Discovery Control" description="Discover ESP32 nodes and inspect serial devices for provisioning readiness.">
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="space-y-2">
+            <Label htmlFor="discovery-timeout">Timeout (ms)</Label>
+            <Input id="discovery-timeout" value={timeoutMs} onChange={(e) => setTimeoutMs(e.target.value)} />
+          </div>
+          <div className="flex items-end gap-2">
+            <Button disabled={loading} onClick={handleDiscover}>
+              {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Discover Nodes
+            </Button>
+            <Button disabled={loading} variant="secondary" onClick={handleLoadPorts}>
+              Load Serial Ports
+            </Button>
+          </div>
+          <div className="flex items-end">
+            <Badge variant="outline">{nodeSummary}</Badge>
+          </div>
+        </div>
+      </PageSection>
+
+      <PageSection title="Node Registry" description="Current nodes in scope with health, firmware, and capability indicators.">
+        <Table>
+          <TableHeader>
+              <TableRow>
+                <TableHead></TableHead>
+                <TableHead>IP</TableHead>
+                <TableHead>MAC</TableHead>
+                <TableHead>Host</TableHead>
+                <TableHead>Health</TableHead>
+                <TableHead>Chip</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Firmware</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {nodes.map((node) => {
+              const key = keyForNode(node);
+              const expanded = expandedKey === key;
+              return (
+                <>
+                  <TableRow key={key} className="cursor-pointer" onClick={() => setExpandedKey(expanded ? null : key)}>
+                    <TableCell className="w-10">
+                      {expanded ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                    </TableCell>
+                    <TableCell>{node.ip}</TableCell>
+                    <TableCell>{node.mac ?? "N/A"}</TableCell>
+                    <TableCell>{node.hostname ?? "N/A"}</TableCell>
+                    <TableCell>
+                      <Badge variant={node.health === "online" ? "success" : node.health === "degraded" ? "warning" : "danger"}>
+                        {node.health}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{node.chip}</TableCell>
+                    <TableCell>{node.mesh_role}</TableCell>
+                    <TableCell>{node.firmware_version ?? "unknown"}</TableCell>
+                  </TableRow>
+                  {expanded ? (
+                    <TableRow key={`${key}-details`}>
+                      <TableCell colSpan={8}>
+                        <div className="grid gap-3 rounded-md border border-border/60 bg-background/70 p-4 text-sm md:grid-cols-3">
+                          <Detail label="Node ID" value={String(node.node_id)} />
+                          <Detail label="Last Seen" value={node.last_seen} />
+                          <Detail label="Discovery" value={node.discovery_method} />
+                          <Detail label="TDM Slot" value={node.tdm_slot != null && node.tdm_total != null ? `${node.tdm_slot} / ${node.tdm_total}` : "N/A"} />
+                          <Detail label="Edge Tier" value={node.edge_tier != null ? String(node.edge_tier) : "N/A"} />
+                          <Detail label="Uptime" value={formatUptime(node.uptime_secs)} />
+                          <Detail label="Capabilities" value={capabilityText(node)} />
+                          <Detail label="Friendly Name" value={node.friendly_name ?? "N/A"} />
+                          <Detail label="Notes" value={node.notes ?? "N/A"} />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : null}
+                </>
+              );
+            })}
+            {nodes.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center text-muted-foreground">
+                  No nodes discovered yet.
+                </TableCell>
+              </TableRow>
+            ) : null}
+          </TableBody>
+        </Table>
+      </PageSection>
+
+      <PageSection title="WiFi Provisioning Shortcut" description="Push WiFi credentials to a selected serial device using firmware provisioning command.">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="wifi-port">Serial Port</Label>
+            <Input id="wifi-port" value={wifiPort} onChange={(e) => setWifiPort(e.target.value)} placeholder="COM3 or /dev/ttyUSB0" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="wifi-ssid">WiFi SSID</Label>
+            <Input id="wifi-ssid" value={ssid} onChange={(e) => setSsid(e.target.value)} />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="wifi-password">WiFi Password</Label>
+            <Input id="wifi-password" value={password} type="password" onChange={(e) => setPassword(e.target.value)} />
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button disabled={loading || !wifiPort || !ssid} onClick={handleConfigureWifi}>
+            <Wifi className="mr-2 h-4 w-4" />
+            Configure WiFi
+          </Button>
+        </div>
+      </PageSection>
+
+      {ports.length > 0 ? (
+        <PageSection title="Serial Ports" description="Enumerated ports with ESP32 compatibility detection.">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Manufacturer</TableHead>
+                <TableHead>VID</TableHead>
+                <TableHead>PID</TableHead>
+                <TableHead>Compatible</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {ports.map((port) => (
+                <TableRow key={port.name}>
+                  <TableCell>{port.name}</TableCell>
+                  <TableCell>{port.manufacturer ?? "unknown"}</TableCell>
+                  <TableCell>{port.vid ?? "-"}</TableCell>
+                  <TableCell>{port.pid ?? "-"}</TableCell>
+                  <TableCell>
+                    <Badge variant={port.is_esp32_compatible ? "success" : "outline"}>
+                      {port.is_esp32_compatible ? "ESP32-ready" : "Unknown"}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </PageSection>
+      ) : null}
+
+      {message ? <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400">{message}</p> : null}
+      {error ? <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
+    </div>
+  );
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs uppercase text-muted-foreground">{label}</p>
+      <p className="truncate font-medium">{value}</p>
+    </div>
+  );
+}
