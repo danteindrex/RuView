@@ -71,6 +71,8 @@ hex = "0.4"
 
 # OS keyring for SSH key/passphrase storage
 keyring = "2"
+# Base64 encoding for cloud upload payloads
+base64 = "0.22"
 
 # Regex for parsing espflash output
 regex = "1.10"

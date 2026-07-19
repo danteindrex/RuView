@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod cloud;
 pub mod commands;
 pub mod domain;
 pub mod encryption;
@@ -13,6 +14,7 @@ use commands::plan as plan_cmd;
 use commands::users;
 use commands::roles;
 use commands::enterprise;
+use commands::cloud as cloud_cmd;
 use std::sync::Arc;
 use tauri::Manager;
 
@@ -179,6 +181,10 @@ pub fn run() {
             // SSH key management
             commands::security_keys::set_ssh_key,
             commands::security_keys::has_ssh_key,
+            // Cloud upload & consent
+            cloud_cmd::set_consent,
+            cloud_cmd::get_cloud_config,
+            cloud_cmd::upload_sensing_session,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

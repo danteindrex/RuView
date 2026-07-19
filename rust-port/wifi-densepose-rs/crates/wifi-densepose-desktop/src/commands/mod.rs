@@ -15,3 +15,4 @@ pub mod settings;
 pub mod telemetry;
 pub mod users;
 pub mod wasm;
+pub mod cloud;
