@@ -23,6 +23,7 @@ import { SysAdminPage } from "@/pages/sysadmin-page";
 import { Badge } from "@/components/ui/badge";
 import { tauriApi } from "@/lib/tauri-api";
 import { useAuthStore } from "@/lib/auth-store";
+import { usePlanStore } from "@/lib/plan-store";
 import { usePermissions } from "@/hooks/use-permissions";
 import { SensingProvider } from "@/lib/SensingProvider";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
@@ -117,6 +118,12 @@ export default function App() {
     document.documentElement.classList.toggle("dark", theme === "dark");
     localStorage.setItem("wave-v2-theme", theme);
   }, [theme]);
+
+  // Load plan tier once auth reaches dashboard stage
+  useEffect(() => {
+    if (stage !== "dashboard") return;
+    void usePlanStore.getState().load();
+  }, [stage]);
 
   // Only poll when in dashboard stage
   useEffect(() => {

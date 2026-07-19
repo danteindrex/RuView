@@ -131,6 +131,7 @@ pub struct AppState {
     pub settings: Mutex<SettingsState>,
     /// Stronghold-backed vault for encryption keys and sensitive secrets.
     pub vault: std::sync::Arc<crate::auth::vault::VaultManager>,
+    pub plan: crate::plan::PlanTier,
 }
 
 impl Default for AppState {
@@ -142,6 +143,8 @@ impl Default for AppState {
             ota: Mutex::new(OtaState::default()),
             settings: Mutex::new(SettingsState::default()),
             vault: std::sync::Arc::new(crate::auth::vault::VaultManager::new()),
+            // TODO: read license_type from licenses table after DB init and call PlanTier::from_license_type()
+            plan: crate::plan::PlanTier::Local,
         }
     }
 }

@@ -273,7 +273,7 @@ services/**/pgdata/
 services/**/__pycache__/
 services/**/*.pyc
 
-# HuggingFace cache (downloaded to system cache dir, not repo)
+# HuggingFace cache
 .cache/huggingface/
 **/.cache/huggingface/
 

@@ -2,12 +2,14 @@ pub mod auth;
 pub mod commands;
 pub mod domain;
 pub mod encryption;
+pub mod plan;
 pub mod provision;
 pub mod state;
 
 use commands::{discovery, flash, license, ota, pi_node, server, settings, wasm};
 use commands::provision as provision_cmd;
 use commands::auth as auth_cmd;
+use commands::plan as plan_cmd;
 use commands::users;
 use commands::roles;
 use commands::enterprise;
@@ -81,6 +83,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // Plan tier
+            plan_cmd::get_plan_tier,
             // Auth
             auth_cmd::login,
             auth_cmd::logout,

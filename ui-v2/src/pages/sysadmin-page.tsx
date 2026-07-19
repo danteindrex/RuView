@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { usePlanStore } from "@/lib/plan-store";
+import { UpgradePrompt } from "@/components/upgrade-prompt";
 import { NetworkPage } from "./network-page";
 import { FlashPage } from "./flash-page";
 import { OtaPage } from "./ota-page";
@@ -18,9 +20,10 @@ interface SysAdminPageProps {
   onRefreshNodes: () => Promise<void>;
 }
 
-export function SysAdminPage({ 
-  nodes, onNodesUpdate, serverStatus, onRefreshServer, onRefreshNodes 
+export function SysAdminPage({
+  nodes, onNodesUpdate, serverStatus, onRefreshServer, onRefreshNodes
 }: SysAdminPageProps) {
+  const { isCloud } = usePlanStore();
   return (
     <div className="flex flex-col h-full space-y-4">
       <div className="px-6 pt-4">
@@ -39,6 +42,7 @@ export function SysAdminPage({
             <TabsTrigger value="mesh" className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 shadow-none">Mesh</TabsTrigger>
             <TabsTrigger value="provisioning" className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 shadow-none">Provision</TabsTrigger>
             <TabsTrigger value="modules" className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 shadow-none">Edge Mods</TabsTrigger>
+            <TabsTrigger value="cloud-sync" className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-2 shadow-none">Cloud Sync</TabsTrigger>
           </TabsList>
         </div>
 
@@ -66,6 +70,15 @@ export function SysAdminPage({
           </TabsContent>
           <TabsContent value="modules" className="m-0 p-6 h-full focus-visible:outline-none">
             <ModulesPage />
+          </TabsContent>
+          <TabsContent value="cloud-sync" className="m-0 p-6 h-full focus-visible:outline-none">
+            {isCloud() ? (
+              <div className="text-sm text-muted-foreground">
+                Cloud Sync configuration and status will appear here.
+              </div>
+            ) : (
+              <UpgradePrompt feature="Cloud Sync" requiredPlan="cloud" />
+            )}
           </TabsContent>
         </div>
       </Tabs>
