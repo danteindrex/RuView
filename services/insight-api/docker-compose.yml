@@ -1,0 +1,12 @@
+version: "3.9"
+services:
+  insight-api:
+    build: .
+    ports: ["8001:8001"]
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - INGEST_SIGNING_KEY=${INGEST_SIGNING_KEY}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-https://cloud.langfuse.com}
+    restart: unless-stopped
