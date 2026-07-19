@@ -12,3 +12,4 @@ pub mod settings;
 pub mod users;
 pub mod wasm;
 pub mod enterprise;
+pub mod cloud;

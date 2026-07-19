@@ -59,6 +59,9 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
 # Hex encoding for hashes
 hex = "0.4"
 
+# Base64 encoding for cloud upload payloads
+base64 = "0.22"
+
 # Regex for parsing espflash output
 regex = "1.10"
 
