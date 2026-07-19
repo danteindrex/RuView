@@ -116,3 +116,69 @@ def get_deployments_summary(tenant_id=None):
     avg = sum(risk_map.get(d.active_risk_level or "low", 10) for d in deps) / total if total else 0
     return {"total": total, "online": online, "offline": total - online,
             "high_risk": high_risk, "avg_risk_score": round(avg, 1)}
+
+@frappe.whitelist(allow_guest=False)
+def ingest_csi_session(session_id: str, deployment_id: str, vital_summary=None,
+                        pose_anomalies=None, duration_seconds=0, csi_snr_db=0,
+                        hmac_signature=None):
+    """
+    Primary ingest endpoint called directly by the Tauri app (no FastAPI needed).
+    Stores as CSI Session DocType then auto-enqueues the LangGraph pipeline.
+    """
+    import json
+    import hmac as hmac_mod
+    import hashlib
+    import os
+
+    configured_key = os.getenv("INGEST_SIGNING_KEY") or \
+        frappe.db.get_single_value("RuView Settings", "ingest_signing_key")
+    if configured_key and hmac_signature:
+        payload_str = f"{session_id}:{deployment_id}:{duration_seconds}"
+        expected = hmac_mod.new(configured_key.encode(), payload_str.encode(), hashlib.sha256).hexdigest()
+        if not hmac_mod.compare_digest(expected, hmac_signature):
+            frappe.throw("Invalid HMAC signature", frappe.AuthenticationError)
+
+    vitals = json.loads(vital_summary) if isinstance(vital_summary, str) else (vital_summary or {})
+    anomalies = json.loads(pose_anomalies) if isinstance(pose_anomalies, str) else (pose_anomalies or [])
+
+    dep_name = frappe.db.get_value("RuView Deployment", {"deployment_id": deployment_id})
+    if not dep_name:
+        frappe.throw(f"Unknown deployment_id: {deployment_id}")
+
+    session = frappe.get_doc({
+        "doctype": "CSI Session",
+        "session_id": session_id,
+        "deployment": dep_name,
+        "duration_seconds": int(duration_seconds),
+        "csi_snr_db": float(csi_snr_db),
+        "hr_mean": vitals.get("hr_mean", 0),
+        "br_mean": vitals.get("br_mean", 0),
+        "presence_ratio": vitals.get("presence_ratio", 1.0) * 100,
+        "pose_anomalies": ", ".join(anomalies) if anomalies else "",
+        "anomaly_count": len(anomalies),
+    })
+    session.insert(ignore_permissions=True)
+    frappe.db.commit()
+
+    frappe.enqueue(
+        "ruview_care.ruview_care.insight_pipeline.run_pipeline",
+        session_name=session.name,
+        queue="long",
+        timeout=300,
+    )
+    return {"status": "ok", "session_name": session.name, "insight_queued": True}
+
+
+@frappe.whitelist(allow_guest=False)
+def run_insight(session_name: str):
+    """
+    Manually trigger (or re-trigger) the LangGraph pipeline for a CSI Session.
+    Returns job info. Tauri polls GET /api/resource/Insight Report?filters=...
+    """
+    job = frappe.enqueue(
+        "ruview_care.ruview_care.insight_pipeline.run_pipeline",
+        session_name=session_name,
+        queue="long",
+        timeout=300,
+    )
+    return {"job_id": job.id, "session_name": session_name}
