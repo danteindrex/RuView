@@ -183,12 +183,22 @@ pub fn tracker_update(
     let dt = last_instant.map_or(0.1_f32, |prev| now.duration_since(prev).as_secs_f32());
     *last_instant = Some(now);
 
+    // This frame's physics-based detection count. The emitted persons array is
+    // bounded to this below so `persons.len()` (which the UI reads as occupancy)
+    // can never exceed the real estimate.
+    let n_in = persons.len();
+
     // Predict all tracks forward
     tracker.predict_all(dt);
 
     if persons.is_empty() {
         tracker.prune_terminated();
-        return tracker_to_person_detections(tracker);
+        // No detections this frame ⇒ report zero people. The tracker still
+        // retains recent tracks internally for re-ID smoothing, but emitting
+        // them here reports phantom Lost/Tentative tracks as occupancy — the
+        // source of the "98 people" bug. Occupancy is presence-gated upstream,
+        // so an empty detection set genuinely means no one is present.
+        return Vec::new();
     }
 
     // Convert detections to f32 keypoint arrays
@@ -278,7 +288,24 @@ pub fn tracker_update(
     }
 
     tracker.prune_terminated();
-    tracker_to_person_detections(tracker)
+
+    // Bound the emitted persons to this frame's detection count. The tracker can
+    // hold transient Tentative/Lost phantom tracks (re-ID window) whose alive
+    // count balloons to dozens; emitting them all made `persons.len()` — used as
+    // occupancy across every UI tab, the 3D skeleton view, and the over-capacity
+    // alert — climb without bound (observed 111 for 3 real people). Keeping the
+    // `n_in` most-confident tracks (Active 0.9 > Tentative 0.5 > Lost 0.3) makes
+    // persons.len() equal the physics estimate, so all readouts agree.
+    let mut out = tracker_to_person_detections(tracker);
+    if out.len() > n_in {
+        out.sort_by(|a, b| {
+            b.confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        out.truncate(n_in);
+    }
+    out
 }
 
 #[cfg(test)]

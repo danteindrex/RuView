@@ -69,8 +69,12 @@ export function useAlertSystem() {
     }
 
     // --- 4. SECURITY: Crowd Density ---
-    if (latestUpdate.estimated_persons && latestUpdate.estimated_persons > settings.crowd_threshold) {
-      dispatchAlert("crowd", `👥 [SECURITY] CAPACITY EXCEEDED: ${latestUpdate.estimated_persons} people detected (Limit: ${settings.crowd_threshold}).`);
+    // Use the same person-count precedence as the dashboard/security cards
+    // (bounded persons array, then estimated_persons) so the alert never
+    // disagrees with the displayed occupancy.
+    const personCount = latestUpdate.persons?.length ?? latestUpdate.estimated_persons ?? 0;
+    if (personCount > settings.crowd_threshold) {
+      dispatchAlert("crowd", `👥 [SECURITY] CAPACITY EXCEEDED: ${personCount} people detected (Limit: ${settings.crowd_threshold}).`);
     }
 
   }, [latestUpdate, settings, accessToken]);

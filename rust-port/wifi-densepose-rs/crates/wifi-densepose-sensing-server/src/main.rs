@@ -5835,6 +5835,15 @@ async fn main() {
             axum::http::header::CACHE_CONTROL,
             HeaderValue::from_static("no-cache, no-store, must-revalidate"),
         ))
+        // Allow cross-origin reads of the REST API. The desktop app's webview
+        // runs on a `tauri://localhost` (Windows: `http://tauri.localhost`)
+        // origin and fetches this loopback server for the node roster,
+        // calibration status, etc. Without CORS the browser silently blocks the
+        // response body, so the onboarding node-watch hangs forever even though
+        // the node is streaming (the WebSocket pose stream is unaffected because
+        // WebSocket connections are not subject to CORS). Permissive is
+        // appropriate: this server binds loopback/LAN for a single local UI.
+        .layer(tower_http::cors::CorsLayer::permissive())
         .with_state(state.clone());
 
     let http_addr = SocketAddr::from((bind_ip, args.http_port));

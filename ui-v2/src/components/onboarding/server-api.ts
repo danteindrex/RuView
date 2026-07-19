@@ -11,7 +11,7 @@
  */
 
 import { isLoopbackHostPort } from "@/lib/utils";
-import type { CalibrationStatus, ServerNode, ServerStatusResponse } from "@/types";
+import type { CalibrationStatus, Chip, DiscoveredNode, ServerNode, ServerStatusResponse } from "@/types";
 
 /**
  * The hub's real LAN IP for prefilling node targets/aggregators, or "" when the
@@ -128,4 +128,64 @@ export function nodeIdNumber(node: ServerNode): number | null {
 export function isNodeOnline(node: ServerNode): boolean {
   const s = (node.status ?? "active").toLowerCase();
   return s === "active" || s === "online" || s === "streaming";
+}
+
+/**
+ * Merge the sensing-server streaming roster (`/api/v1/nodes`) into the Tauri
+ * discovery list so the whole app agrees on which nodes exist and are online.
+ *
+ * Discovery (`discoverNodes`) probes the network and carries IP/MAC/chip needed
+ * for flashing & OTA, but ESP32/Pi nodes stream to the aggregator without
+ * answering the probe — so discovery alone reports 0 while data flows. The
+ * roster is the source of truth for "online", so we:
+ *  - overlay roster status onto matching discovered nodes (by node_id), and
+ *  - append synthesized entries for roster nodes discovery never found,
+ * marking them online so the header/dashboard/mesh counts reflect reality.
+ */
+export function mergeRosterIntoNodes(
+  discovered: DiscoveredNode[],
+  roster: ServerNode[],
+): DiscoveredNode[] {
+  const rosterById = new Map<number, ServerNode>();
+  for (const r of roster) {
+    const id = nodeIdNumber(r);
+    if (id !== null) rosterById.set(id, r);
+  }
+
+  // 1. Overlay roster "online" onto matching discovered nodes.
+  const merged: DiscoveredNode[] = discovered.map((d) => {
+    const r = rosterById.get(d.node_id);
+    if (r && isNodeOnline(r)) return { ...d, health: "online" };
+    return d;
+  });
+
+  // 2. Append roster nodes discovery never found (streaming-only).
+  const discoveredIds = new Set(discovered.map((d) => d.node_id));
+  for (const r of roster) {
+    const id = nodeIdNumber(r);
+    if (id === null || discoveredIds.has(id)) continue;
+    // Infer chip class from the producing parser: nexmon ⇒ Pi (BCM43455).
+    const isNexmon = (r.origin ?? "").toLowerCase().includes("nexmon");
+    const chip: Chip = isNexmon ? "esp32" : "esp32s3";
+    merged.push({
+      ip: "",
+      mac: null,
+      hostname: null,
+      node_id: id,
+      firmware_version: null,
+      health: isNodeOnline(r) ? "online" : "offline",
+      last_seen: new Date().toISOString(),
+      chip,
+      mesh_role: "node",
+      discovery_method: "udp_probe",
+      tdm_slot: null,
+      tdm_total: null,
+      edge_tier: null,
+      uptime_secs: null,
+      capabilities: null,
+      friendly_name: null,
+      notes: isNexmon ? "Streaming (Nexmon/Pi)" : "Streaming (ESP32)",
+    });
+  }
+  return merged;
 }

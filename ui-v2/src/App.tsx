@@ -30,7 +30,8 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { SensingProvider } from "@/lib/SensingProvider";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { isOnboardingComplete, ONBOARDING_STEPS, useOnboardingStore } from "@/lib/onboarding-store";
-import type { DiscoveredNode, ServerStatusResponse } from "@/types";
+import { fetchServerNodes, mergeRosterIntoNodes, resolveServerBase } from "@/components/onboarding/server-api";
+import type { DiscoveredNode, ServerNode, ServerStatusResponse } from "@/types";
 import { Shield, ShieldAlert, ShieldCheck, Users, AlertCircle, Settings2, Lock, Unlock, Activity, LayoutDashboard, HeartPulse, Box, Settings, Building2, Terminal, Eye, Package } from "lucide-react";
 
 type PageId =
@@ -55,7 +56,8 @@ const ALL_PAGES: ShellPage[] = [
 
 function loadTheme(): "light" | "dark" {
   const stored = localStorage.getItem("wave-v2-theme");
-  return stored === "light" ? "light" : "dark";
+  // Light is the default; only an explicit stored "dark" opts out.
+  return stored === "dark" ? "dark" : "light";
 }
 
 export default function App() {
@@ -96,8 +98,24 @@ export default function App() {
   async function refreshNodes() {
     if (!accessToken) return;
     try {
-      const discovered = await tauriApi.discoverNodes(accessToken, 2500);
-      setNodes(discovered);
+      const discovered = await tauriApi
+        .discoverNodes(accessToken, 2500)
+        .catch(() => [] as DiscoveredNode[]);
+      // Overlay the sensing-server streaming roster so nodes that stream via the
+      // aggregator (and never answer the discovery probe) still count as online.
+      // Without this the header/dashboard show 0 nodes while data is flowing.
+      let base: string | null = null;
+      try {
+        base = resolveServerBase(await tauriApi.serverStatus(accessToken));
+      } catch {
+        // server status unavailable — fall back to discovery-only
+      }
+      let merged = discovered;
+      if (base) {
+        const roster = await fetchServerNodes(base).catch(() => [] as ServerNode[]);
+        merged = mergeRosterIntoNodes(discovered, roster);
+      }
+      setNodes(merged);
     } catch (err) {
       console.error("Failed to refresh nodes:", err);
     }
