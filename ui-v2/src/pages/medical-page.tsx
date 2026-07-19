@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { tauriApi } from "@/lib/tauri-api";
 import { useSensingStore } from "@/lib/sensing-store";
 import { usePlanStore } from "@/lib/plan-store";
 import { hasCloudConsent, langfuseTraceUrl } from "@/lib/integration";
@@ -90,8 +91,15 @@ export function MedicalPage() {
     { label: "High", count: 0 },
     { label: "Critical", count: 0 },
   ]);
+  const [deploymentId, setDeploymentId] = useState<string>("");
 
   useEffect(() => { planStore.load(); }, []);
+
+  useEffect(() => {
+    void tauriApi.getDeploymentInfo().then((info) => {
+      setDeploymentId(info.deployment_id);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const hr = latestUpdate?.vital_signs?.heart_rate_bpm;
@@ -111,29 +119,94 @@ export function MedicalPage() {
   async function runAnalysis() {
     setInsightLoading(true);
     setInsightError(null);
+    const sessionId = `session-${Date.now()}`;
     try {
-      const result = await invoke<InsightResult>("run_insight_pipeline", {
-        request: {
-          session_id: `session-${Date.now()}`,
-          vital_summary: vitals ?? {},
-          pose_anomalies: isFallDetected ? ["lying_down"] : [],
-          duration_seconds: 60,
-          csi_snr_db: 15.0,
-          csi_vision_image_b64: null,
-        },
-      });
-      setInsightResult(result);
-      if (isCloud) {
-        const dist = await invoke<{ low: number; moderate: number; high: number; critical: number }>(
-          "get_risk_distribution"
-        ).catch(() => ({ low: 0, moderate: 0, high: 0, critical: 0 }));
-        setRiskDist([
-          { label: "Low", count: dist.low },
-          { label: "Moderate", count: dist.moderate },
-          { label: "High", count: dist.high },
-          { label: "Critical", count: dist.critical },
-        ]);
-      }
+      // Submit to Frappe (returns immediately, pipeline runs async in RQ worker)
+      await invoke<{ status: string; session_name: string; insight_queued: boolean }>(
+        "run_insight_pipeline",
+        {
+          request: {
+            session_id: sessionId,
+            deployment_id: deploymentId || "default",
+            vital_summary: vitals ?? {},
+            pose_anomalies: isFallDetected ? ["lying_down"] : [],
+            duration_seconds: 60,
+            csi_snr_db: 15.0,
+          },
+        }
+      );
+
+      // Poll for result — Frappe RQ worker typically completes in 2-10s
+      let attempts = 0;
+      const maxAttempts = 20;
+      const poll = async (): Promise<void> => {
+        if (attempts >= maxAttempts) {
+          setInsightError("Analysis timed out — pipeline may still be running in background.");
+          return;
+        }
+        attempts++;
+        const raw = await invoke<Record<string, unknown> | null>(
+          "get_session_insight",
+          { sessionId }
+        ).catch(() => null);
+
+        if (!raw) {
+          // Not ready yet — wait 2s and retry
+          await new Promise<void>((res) => setTimeout(res, 2000));
+          return poll();
+        }
+
+        // Map flat Frappe Insight Report → nested InsightResult
+        const result: InsightResult = {
+          vitals_analysis: {
+            hr_classification: raw.hr_classification as string | undefined,
+            br_classification: raw.br_classification as string | undefined,
+          },
+          anomaly_analysis: {
+            fall_risk_score: typeof raw.fall_risk_score === "number"
+              ? raw.fall_risk_score / 100 : undefined,
+          },
+          clinical_interpretation: {
+            primary_findings: raw.summary as string | undefined,
+            recommended_actions: typeof raw.action_items === "string"
+              ? (raw.action_items as string).split("\n").filter(Boolean)
+              : [],
+            urgency: (raw.risk_level === "critical" ? "emergency"
+              : raw.risk_level === "high" ? "urgent"
+              : raw.risk_level === "moderate" ? "routine"
+              : "routine") as "routine" | "urgent" | "emergency",
+          },
+          risk_assessment: {
+            composite_score: typeof raw.risk_score === "number"
+              ? raw.risk_score * 100 : 0,
+            fall_score: typeof raw.fall_risk_score === "number"
+              ? raw.fall_risk_score : 0,
+          },
+          trend_analysis: {
+            direction: raw.trend_direction as "improving" | "stable" | "deteriorating" | undefined,
+          },
+          synthesis: {
+            summary: raw.summary as string | undefined,
+            action_items: typeof raw.action_items === "string"
+              ? (raw.action_items as string).split("\n").filter(Boolean)
+              : [],
+          },
+        };
+        setInsightResult(result);
+
+        if (isCloud) {
+          const dist = await invoke<{ distribution: { low: number; moderate: number; high: number; critical: number } }>(
+            "get_risk_distribution"
+          ).then((r) => r.distribution).catch(() => ({ low: 0, moderate: 0, high: 0, critical: 0 }));
+          setRiskDist([
+            { label: "Low", count: dist.low },
+            { label: "Moderate", count: dist.moderate },
+            { label: "High", count: dist.high },
+            { label: "Critical", count: dist.critical },
+          ]);
+        }
+      };
+      await poll();
     } catch (e) {
       setInsightError(String(e));
     } finally {

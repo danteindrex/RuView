@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { JsonViewer } from "@/components/layout/json-viewer";
 import { useEnterpriseSettings } from "@/lib/enterprise-store";
 import { useAuthStore } from "@/lib/auth-store";
-import { QrCode, MessageSquare, ShieldCheck, Database, Compass, MapPin } from "lucide-react";
+import { QrCode, MessageSquare, ShieldCheck, Database, Compass, MapPin, Server } from "lucide-react";
 import { isLoopbackHostPort } from "@/lib/utils";
 import { useOnboardingStore, STEP_COUNT } from "@/lib/onboarding-store";
 import type { AppSettings } from "@/types";
@@ -97,11 +97,27 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const [langfuseSaving, setLangfuseSaving] = useState(false);
   const [langfuseMessage, setLangfuseMessage] = useState<string | null>(null);
 
+  // ── Frappe Cloud Backend ───────────────────────────────────────────────────
+  const [frappeUrl, setFrappeUrl] = useState("http://localhost:8080");
+  const [frappeApiKey, setFrappeApiKey] = useState("");
+  const [frappeApiSecret, setFrappeApiSecret] = useState("");
+  const [frappeHint, setFrappeHint] = useState("");
+  const [frappeSaving, setFrappeSaving] = useState(false);
+  const [frappeMessage, setFrappeMessage] = useState<string | null>(null);
+  // ─────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     void tauriApi.getLangfuseConfig().then((cfg) => {
       setLangfuse((prev) => ({ ...prev, enabled: cfg.enabled, host: cfg.host }));
       setLangfuseHint(cfg.public_key_hint);
     }).catch(() => {/* command may not be registered in dev */});
+  }, []);
+
+  useEffect(() => {
+    void tauriApi.getFrappeConfig().then((cfg) => {
+      setFrappeUrl(cfg.url);
+      setFrappeHint(cfg.api_key_hint);
+    }).catch(() => {});
   }, []);
 
   async function handleSaveLangfuse() {
@@ -114,6 +130,21 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
       setLangfuseMessage(err instanceof Error ? err.message : String(err));
     } finally {
       setLangfuseSaving(false);
+    }
+  }
+
+  async function handleSaveFrappe() {
+    setFrappeSaving(true);
+    setFrappeMessage(null);
+    try {
+      await tauriApi.setFrappeConfig({ url: frappeUrl, apiKey: frappeApiKey, apiSecret: frappeApiSecret });
+      setFrappeMessage("Frappe connection saved. App will connect on next request.");
+      setFrappeApiKey("");
+      setFrappeApiSecret("");
+    } catch (err) {
+      setFrappeMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setFrappeSaving(false);
     }
   }
 
@@ -343,7 +374,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
       </PageSection>
 
       <PageSection title="Enterprise Infrastructure" description="Manage multi-tenant settings and communication integrations.">
-        <Accordion type="multiple" defaultValue={["whatsapp", "runtime"]}>
+        <Accordion type="multiple" defaultValue={["whatsapp", "runtime", "cloud-backend"]}>
           <AccordionItem value="protocols" className="border rounded-lg px-4 mb-4 bg-secondary/10">
             <AccordionTrigger className="hover:no-underline">
               <div className="flex items-center gap-3">
@@ -482,6 +513,67 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
               )}
             </AccordionContent>
           </AccordionItem>
+          <AccordionItem value="cloud-backend" className="border rounded-lg px-4 mb-4 bg-secondary/10">
+            <AccordionTrigger className="hover:no-underline">
+              <div className="flex items-center gap-3">
+                <Server className="h-4 w-4 text-primary" />
+                <div className="text-left">
+                  <p className="text-sm font-semibold uppercase tracking-tight">Cloud Backend (Frappe)</p>
+                  <p className="text-xs text-muted-foreground font-normal">
+                    Connect this deployment to a Frappe/ERPNext management server.
+                    {frappeHint ? ` API key: ${frappeHint}` : " Not configured."}
+                  </p>
+                </div>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="pt-4 pb-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="text-[10px] font-bold uppercase tracking-wider">Frappe Server URL</Label>
+                  <Input
+                    value={frappeUrl}
+                    onChange={(e) => setFrappeUrl(e.target.value)}
+                    placeholder="https://ruview.yourhospital.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold uppercase tracking-wider">
+                    API Key{frappeHint ? ` (current: ${frappeHint})` : ""}
+                  </Label>
+                  <Input
+                    type="password"
+                    value={frappeApiKey}
+                    onChange={(e) => setFrappeApiKey(e.target.value)}
+                    placeholder="Leave blank to keep existing"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold uppercase tracking-wider">API Secret</Label>
+                  <Input
+                    type="password"
+                    value={frappeApiSecret}
+                    onChange={(e) => setFrappeApiSecret(e.target.value)}
+                    placeholder="Leave blank to keep existing"
+                  />
+                </div>
+                <div className="md:col-span-2 flex flex-col gap-2">
+                  <Button
+                    disabled={frappeSaving}
+                    onClick={handleSaveFrappe}
+                    className="w-full uppercase font-bold text-xs tracking-widest"
+                  >
+                    {frappeSaving ? "Saving..." : "Save Frappe Connection"}
+                  </Button>
+                  {frappeMessage && (
+                    <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400">
+                      {frappeMessage}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
           <AccordionItem value="runtime">
             <AccordionTrigger>Runtime and Transport</AccordionTrigger>
             <AccordionContent>
