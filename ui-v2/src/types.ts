@@ -290,6 +290,13 @@ export interface ProvisionResult {
   checksum: string | null;
 }
 
+/** Post-provision serial verification: did the ESP32 actually join WiFi? */
+export interface Esp32SerialCheck {
+  joined: boolean;
+  ip: string | null;
+  log_tail: string;
+}
+
 export interface ValidationResult {
   valid: boolean;
   message: string | null;

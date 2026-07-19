@@ -147,6 +147,7 @@ pub fn run() {
             flash::fetch_firmware_release,
             flash::flash_firmware_bundle,
             provision_cmd::provision_esp32_nvs,
+            provision_cmd::esp32_serial_check,
             // Settings
             settings::get_settings,
             settings::save_settings,

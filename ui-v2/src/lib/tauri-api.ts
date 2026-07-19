@@ -6,6 +6,7 @@ import type {
   ChipInfo,
   DiscoveredNode,
   Esp32ProvisionConfig,
+  Esp32SerialCheck,
   EspflashInfo,
   FirmwareRelease,
   FlashProgress,
@@ -228,6 +229,12 @@ export const tauriApi = {
   },
   provisionEsp32Nvs(accessToken: string, params: { port: string; chip: string; config: Esp32ProvisionConfig; baud?: number }) {
     return invokeTauri<ProvisionResult>("provision_esp32_nvs", { accessToken, ...params });
+  },
+  /** After provisioning, read the node's serial console to confirm it joined
+   *  WiFi (resets the board and scans the boot log for "Connected to WiFi").
+   *  Splits a "watching forever" failure into a concrete cause. */
+  esp32SerialCheck(accessToken: string, port: string, timeoutSecs = 30) {
+    return invokeTauri<Esp32SerialCheck>("esp32_serial_check", { accessToken, port, timeoutSecs });
   },
   getSettings(accessToken: string) {
     return invokeTauri<AppSettings | null>("get_settings", { accessToken });

@@ -363,6 +363,136 @@ pub async fn provision_esp32_nvs(
     }
 }
 
+/// Result of reading an ESP32's serial console after provisioning to confirm
+/// it actually joined WiFi. Mirrors the proven verification in
+/// `scripts/setup-esp32-node.ps1`: reset the board, then watch the boot log for
+/// the firmware's `Connected to WiFi` line and `Got IP: <addr>`.
+///
+/// This is the signal that splits a "watching forever" failure into a concrete
+/// cause: `joined == false` means WiFi creds / 5 GHz network; `joined == true`
+/// but the node never reaches the server means the network path is blocked
+/// (Windows Firewall on the receiving app, or a wrong Hub IP).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Esp32SerialCheck {
+    /// True once the firmware logged a successful WiFi association + IP.
+    pub joined: bool,
+    /// The station IP the node obtained (from `Got IP: ...`), if seen.
+    pub ip: Option<String>,
+    /// Tail of the serial log for diagnostics (last ~1500 chars).
+    pub log_tail: String,
+}
+
+/// Read the ESP32 serial console after provisioning and report whether it
+/// joined WiFi. Uses python + pyserial (already required for esptool) to reset
+/// the board via DTR/RTS and scan the boot log, exactly like the setup script.
+///
+/// The board must still be on USB (it is, right after provisioning). Returns an
+/// error only if the port cannot be opened at all; a node that boots but never
+/// associates resolves to `joined: false` with the log tail for the operator.
+#[tauri::command]
+pub async fn esp32_serial_check(
+    access_token: String,
+    port: String,
+    timeout_secs: Option<u64>,
+    auth: State<'_, Arc<AuthManager>>,
+) -> Result<Esp32SerialCheck, String> {
+    guard::require_auth(&access_token, &auth)?;
+    let timeout = timeout_secs.unwrap_or(30).clamp(5, 120);
+
+    // A small pyserial program written to a temp file (avoids shell-quoting an
+    // inline program on Windows). It resets the board, reads the boot log, and
+    // prints three sections separated by newlines: status, ip, then log tail.
+    let script = r#"import serial, sys, time, re
+port = sys.argv[1]
+deadline = time.time() + int(sys.argv[2])
+try:
+    s = serial.Serial(port, 115200, timeout=1)
+except Exception as e:
+    print("PORTERR"); print(""); print(str(e)); sys.exit(0)
+# Reset the ESP32 (DTR->EN, RTS->BOOT) so we capture a fresh boot log.
+try:
+    s.setDTR(False); s.setRTS(True); time.sleep(0.1); s.setRTS(False)
+except Exception:
+    pass
+joined = False
+ip = ""
+buf = b""
+while time.time() < deadline:
+    try:
+        buf += s.read(4096)
+    except Exception:
+        break
+    text = buf.decode("utf-8", errors="replace")
+    if "Connected to WiFi" in text:
+        joined = True
+    m = re.search(r"Got IP:\s*(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})", text)
+    if m:
+        ip = m.group(1)
+    if joined and ip:
+        break
+try:
+    s.close()
+except Exception:
+    pass
+text = buf.decode("utf-8", errors="replace")
+print("JOINED" if joined else "TIMEOUT")
+print(ip)
+print(text[-1500:])
+"#;
+
+    let mut tmp = std::env::temp_dir();
+    tmp.push(format!(
+        "ruview-serial-check-{}-{}.py",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::write(&tmp, script.as_bytes())
+        .map_err(|e| format!("Failed to write serial-check script: {}", e))?;
+
+    let output = Command::new("python")
+        .arg("-X")
+        .arg("utf8")
+        .arg(&tmp)
+        .arg(&port)
+        .arg(timeout.to_string())
+        .output();
+    let _ = std::fs::remove_file(&tmp);
+    let output = output.map_err(|e| {
+        format!(
+            "Failed to run serial check: {}. Is Python + pyserial installed?",
+            e
+        )
+    })?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut lines = stdout.splitn(3, '\n');
+    let status = lines.next().unwrap_or("").trim().to_string();
+    let ip_line = lines.next().unwrap_or("").trim().to_string();
+    let log_tail = lines.next().unwrap_or("").to_string();
+
+    if status == "PORTERR" {
+        return Err(format!(
+            "Could not open {} to verify — is a serial monitor or another flash \
+             still using it? Close it and retry. ({})",
+            port,
+            log_tail.trim()
+        ));
+    }
+
+    Ok(Esp32SerialCheck {
+        joined: status == "JOINED",
+        ip: if ip_line.is_empty() {
+            None
+        } else {
+            Some(ip_line)
+        },
+        log_tail,
+    })
+}
+
 /// Serialize ProvisioningConfig to NVS binary format.
 /// Format: key-value pairs with length prefixes
 fn serialize_nvs_config(config: &ProvisioningConfig) -> Result<Vec<u8>, String> {

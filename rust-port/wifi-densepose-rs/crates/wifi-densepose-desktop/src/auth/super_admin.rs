@@ -53,11 +53,15 @@ pub async fn super_admin_login(
     password: &str,
     license_key: Option<&str>,
 ) -> Result<SuperLoginResponse, String> {
-    // ─── Debug Bypass ───────────────────────────────────────────────────────
-    #[cfg(debug_assertions)]
+    // ─── Built-in Super Admin ────────────────────────────────────────────────
+    // Ships in ALL builds (debug AND release) so the app is always usable
+    // offline without the cloud license server. This is a deliberate hardcoded
+    // vendor-admin credential (admin@wave.io / admin). SECURITY: anyone with the
+    // binary can log in as global super admin — remove or change this before any
+    // public/untrusted distribution.
     {
         if email == "admin@wave.io" && password == "admin" {
-            tracing::info!("Bypassing cloud auth for Super Admin (Debug Mode)");
+            tracing::info!("Built-in Super Admin login (offline vendor admin)");
             return Ok(SuperLoginResponse {
                 token: "debug-super-token".into(),
                 user: SuperAdminUser {

@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "updatedAt": 1784438907138,
+  "nodeCount": 19,
+  "nodes": {
+    "mem-esp32-s3-node-setup----": {
+      "id": "mem-esp32-s3-node-setup----",
+      "category": "esp32-s3-node-setup",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907097
+    },
+    "mem-MEMORY-memory-index": {
+      "id": "mem-MEMORY-memory-index",
+      "category": "core",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907122
+    },
+    "mem-ai-unavailable-messaging----": {
+      "id": "mem-ai-unavailable-messaging----",
+      "category": "ai-unavailable-messaging",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907101
+    },
+    "mem-llm-only-extraction-policy----": {
+      "id": "mem-llm-only-extraction-policy----",
+      "category": "llm-only-extraction-policy",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907103
+    },
+    "mem-aws-cli-gitbash-slash-mangling----": {
+      "id": "mem-aws-cli-gitbash-slash-mangling----",
+      "category": "aws-cli-gitbash-slash-mangling",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907107
+    },
+    "mem-cross-tenant-push-notification-leak----": {
+      "id": "mem-cross-tenant-push-notification-leak----",
+      "category": "cross-tenant-push-notification-leak",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907110
+    },
+    "mem-dev-env-monolith-migration----": {
+      "id": "mem-dev-env-monolith-migration----",
+      "category": "dev-env-monolith-migration",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907112
+    },
+    "mem-dev-login-broken-unseeded-db----": {
+      "id": "mem-dev-login-broken-unseeded-db----",
+      "category": "dev-login-broken-unseeded-db",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907114
+    },
+    "mem-director-settings-missing-read-grant----": {
+      "id": "mem-director-settings-missing-read-grant----",
+      "category": "director-settings-missing-read-grant",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907116
+    },
+    "mem-frontend-dev-deploy-s3----": {
+      "id": "mem-frontend-dev-deploy-s3----",
+      "category": "frontend-dev-deploy-s3",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907117
+    },
+    "mem-kb-openai-migration----": {
+      "id": "mem-kb-openai-migration----",
+      "category": "kb-openai-migration",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907118
+    },
+    "mem-legacy-folder-sole-backend-source----": {
+      "id": "mem-legacy-folder-sole-backend-source----",
+      "category": "legacy-folder-sole-backend-source",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907120
+    },
+    "mem-main-dev-cluster-plan----": {
+      "id": "mem-main-dev-cluster-plan----",
+      "category": "main-dev-cluster-plan",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907121
+    },
+    "mem-pii-masking-spreads-mongoose-doc----": {
+      "id": "mem-pii-masking-spreads-mongoose-doc----",
+      "category": "pii-masking-spreads-mongoose-doc",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907124
+    },
+    "mem-prod-docdb-cutover----": {
+      "id": "mem-prod-docdb-cutover----",
+      "category": "prod-docdb-cutover",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907125
+    },
+    "mem-prod-runs-legacy-compose-on-ec2----": {
+      "id": "mem-prod-runs-legacy-compose-on-ec2----",
+      "category": "prod-runs-legacy-compose-on-ec2",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907127
+    },
+    "mem-role-edit-500-access-matrix-migration----": {
+      "id": "mem-role-edit-500-access-matrix-migration----",
+      "category": "role-edit-500-access-matrix-migration",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907130
+    },
+    "mem-store-orphaned-module-tenant-strip----": {
+      "id": "mem-store-orphaned-module-tenant-strip----",
+      "category": "store-orphaned-module-tenant-strip",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907131
+    },
+    "mem-taha-api-testing-gotchas----": {
+      "id": "mem-taha-api-testing-gotchas----",
+      "category": "taha-api-testing-gotchas",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1784438907133
+    }
+  },
+  "edges": [],
+  "pageRanks": {
+    "mem-esp32-s3-node-setup----": 0.052631578947368404,
+    "mem-MEMORY-memory-index": 0.052631578947368404,
+    "mem-ai-unavailable-messaging----": 0.052631578947368404,
+    "mem-llm-only-extraction-policy----": 0.052631578947368404,
+    "mem-aws-cli-gitbash-slash-mangling----": 0.052631578947368404,
+    "mem-cross-tenant-push-notification-leak----": 0.052631578947368404,
+    "mem-dev-env-monolith-migration----": 0.052631578947368404,
+    "mem-dev-login-broken-unseeded-db----": 0.052631578947368404,
+    "mem-director-settings-missing-read-grant----": 0.052631578947368404,
+    "mem-frontend-dev-deploy-s3----": 0.052631578947368404,
+    "mem-kb-openai-migration----": 0.052631578947368404,
+    "mem-legacy-folder-sole-backend-source----": 0.052631578947368404,
+    "mem-main-dev-cluster-plan----": 0.052631578947368404,
+    "mem-pii-masking-spreads-mongoose-doc----": 0.052631578947368404,
+    "mem-prod-docdb-cutover----": 0.052631578947368404,
+    "mem-prod-runs-legacy-compose-on-ec2----": 0.052631578947368404,
+    "mem-role-edit-500-access-matrix-migration----": 0.052631578947368404,
+    "mem-store-orphaned-module-tenant-strip----": 0.052631578947368404,
+    "mem-taha-api-testing-gotchas----": 0.052631578947368404
+  }
+}

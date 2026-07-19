@@ -49,6 +49,8 @@ export function Esp32Setup({ accessToken, serverStatus }: Esp32SetupProps) {
   const [progress, setProgress] = useState<FlashProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Result of the post-provision serial check: did the node actually join WiFi?
+  const [joinInfo, setJoinInfo] = useState<{ joined: boolean; ip: string | null } | null>(null);
 
   const base = useMemo(() => resolveServerBase(serverStatus), [serverStatus]);
   const watch = useNodeWatch({ base, targetId: nodeId, enabled: phase === "watching", timeoutMs: 120000 });
@@ -73,7 +75,12 @@ export function Esp32Setup({ accessToken, serverStatus }: Esp32SetupProps) {
     };
   }, [accessToken]);
 
-  // Prefill WiFi SSID + hub LAN IP from the host PC's current network.
+  // Prefill WiFi SSID + hub LAN IP from the host PC's current network, and
+  // auto-fill the saved WiFi password for that network from the Windows profile.
+  // Without the password prefill the user can click Provision with a blank
+  // password — the firmware then tries to join WPA2 with no key, the join fails,
+  // and the node silently never streams (the #1 "watching forever" failure).
+  // This mirrors what the setup-esp32-node.ps1 script does to make node 1 work.
   useEffect(() => {
     if (!accessToken) return;
     let cancelled = false;
@@ -83,6 +90,14 @@ export function Esp32Setup({ accessToken, serverStatus }: Esp32SetupProps) {
         if (cancelled) return;
         if (info.ssid) setSsid((prev) => prev || info.ssid || "");
         if (info.lan_ip) setTargetIp((prev) => prev || info.lan_ip || "");
+        if (info.ssid) {
+          try {
+            const pw = await tauriApi.wifiSavedPassword(accessToken, info.ssid);
+            if (!cancelled && pw) setPassword((prev) => prev || pw);
+          } catch {
+            // no saved key for this network — the user types it
+          }
+        }
       } catch {
         // command unavailable — leave the fields manual
       }
@@ -184,6 +199,25 @@ export function Esp32Setup({ accessToken, serverStatus }: Esp32SetupProps) {
       setError("Select or enter the serial port your ESP32 is on.");
       return;
     }
+    if (!ssid) {
+      setError("Enter or pick the 2.4GHz WiFi network the node should join.");
+      return;
+    }
+    // A blank password on a secured network provisions a node that can never
+    // join WiFi and then silently never streams. Allow blank ONLY when the
+    // chosen SSID is a known OPEN network from the scan.
+    const scanned = wifiList.find((n) => n.ssid === ssid);
+    if (!password && !scanned?.open) {
+      setError(
+        "Enter the WiFi password — or pick your network from “Scan nearby WiFi” to auto-fill it. " +
+          "A blank password can't join a secured network, so the node would never come online.",
+      );
+      return;
+    }
+    if (targetIp && isLoopbackHostPort(targetIp)) {
+      setError("Hub IP is a loopback address — set it to this PC's LAN IP so the node can reach it.");
+      return;
+    }
 
     try {
       // 1. Flash (optional)
@@ -226,6 +260,31 @@ export function Esp32Setup({ accessToken, serverStatus }: Esp32SetupProps) {
         },
         baud: 115200,
       });
+
+      // 2b. Verify the node actually joined WiFi by reading its serial console
+      //     (mirrors setup-esp32-node.ps1). This turns a later "watching
+      //     forever" into a concrete cause: not joined ⇒ wrong password / 5GHz
+      //     network; joined ⇒ the network path (firewall / wrong hub IP) is the
+      //     problem, not the node. Best-effort — a missing command/port does not
+      //     block the flow, it just falls through to the server watch.
+      setJoinInfo(null);
+      const check = await tauriApi.esp32SerialCheck(accessToken, port, 30).catch(() => null);
+      if (check) {
+        setJoinInfo({ joined: check.joined, ip: check.ip });
+        if (!check.joined) {
+          setError(
+            `Node provisioned, but it did not join "${ssid}" within 30s. ` +
+              "Almost always the WiFi password is wrong, or the network is 5GHz-only " +
+              "(the ESP32 needs 2.4GHz). Fix the password/network and provision again." +
+              (check.log_tail ? `\n\nLast serial output:\n${check.log_tail.slice(-400)}` : ""),
+          );
+          setPhase("form");
+          return;
+        }
+        setNotice(
+          `Node joined WiFi${check.ip ? ` (got IP ${check.ip})` : ""}. Waiting for its data to reach this PC…`,
+        );
+      }
 
       // 3. Watch for the node to stream in
       if (!base) {
@@ -404,8 +463,19 @@ export function Esp32Setup({ accessToken, serverStatus }: Esp32SetupProps) {
 
       {phase === "watching" && watch.state === "timeout" ? (
         <StatusLine tone="warn">
-          Node {nodeId} hasn't appeared yet. Check the node's power and WiFi, then confirm the SSID/password. It will show up on
-          the dashboard once it connects.
+          {joinInfo?.joined ? (
+            <>
+              Node {nodeId} joined WiFi{joinInfo.ip ? ` (IP ${joinInfo.ip})` : ""} but its data isn't reaching this PC. This is
+              almost always <strong>Windows Firewall</strong> blocking UDP {targetPort} for this app (allow it on Private
+              networks), or the <strong>Hub IP</strong> ({targetIp || "unset"}) isn't this PC's current LAN address. Fix that and
+              provision again — the node itself is fine.
+            </>
+          ) : (
+            <>
+              Node {nodeId} hasn't appeared yet. Check the node's power and WiFi, then confirm the SSID/password. It will show up
+              on the dashboard once it connects.
+            </>
+          )}
         </StatusLine>
       ) : null}
 
