@@ -7,7 +7,7 @@ pub mod plan;
 pub mod provision;
 pub mod state;
 
-use commands::{discovery, flash, license, ota, pi_node, server, settings, telemetry as telemetry_cmd, wasm};
+use commands::{analytics, discovery, flash, license, ota, pi_node, server, settings, telemetry as telemetry_cmd, wasm};
 use commands::provision as provision_cmd;
 use commands::auth as auth_cmd;
 use commands::plan as plan_cmd;
@@ -178,6 +178,11 @@ pub fn run() {
             enterprise::whapi_get_qr,
             enterprise::whapi_send_test,
             enterprise::whapi_send_alert,
+            // Analytics (LangGraph multi-agent insight pipeline)
+            analytics::run_insight_pipeline,
+            analytics::get_session_insight,
+            analytics::get_analytics_trends,
+            analytics::get_risk_distribution,
             // SSH key management
             commands::security_keys::set_ssh_key,
             commands::security_keys::has_ssh_key,
