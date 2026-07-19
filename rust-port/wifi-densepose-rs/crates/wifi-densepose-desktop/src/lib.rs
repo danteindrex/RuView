@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod cloud;
 pub mod commands;
+pub mod deployment;
 pub mod domain;
 pub mod encryption;
 pub mod plan;
@@ -15,6 +16,7 @@ use commands::users;
 use commands::roles;
 use commands::enterprise;
 use commands::cloud as cloud_cmd;
+use commands::deployment as deployment_cmd;
 use std::sync::Arc;
 use tauri::Manager;
 
@@ -81,6 +83,29 @@ pub fn run() {
                     Ok(r) => tracing::info!("Sensing server auto-started (pid {})", r.pid),
                     Err(e) => tracing::warn!("Sensing server auto-start failed: {e}"),
                 }
+            });
+            // Register this deployment with cloud on startup (best-effort, non-blocking)
+            let deploy_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let dir = match deploy_handle.path().app_data_dir() {
+                    Ok(d) => d,
+                    Err(_) => return,
+                };
+                let info = crate::deployment::load_or_create(&dir);
+                let endpoint = std::env::var("RUVIEW_CLOUD_ENDPOINT")
+                    .unwrap_or_else(|_| "http://localhost:8001".to_string());
+                let body = serde_json::json!({
+                    "deployment_id": info.deployment_id,
+                    "deployment_name": info.deployment_name,
+                    "location_name": info.location_name,
+                    "latitude": info.latitude,
+                    "longitude": info.longitude,
+                });
+                let _ = reqwest::Client::new()
+                    .post(format!("{}/deployments/register", endpoint))
+                    .json(&body)
+                    .send()
+                    .await;
             });
             Ok(())
         })
@@ -190,6 +215,12 @@ pub fn run() {
             cloud_cmd::set_consent,
             cloud_cmd::get_cloud_config,
             cloud_cmd::upload_sensing_session,
+            // Deployment management
+            deployment_cmd::get_deployment_info,
+            deployment_cmd::set_deployment_info,
+            deployment_cmd::register_deployment,
+            deployment_cmd::list_deployments,
+            deployment_cmd::get_deployments_aggregate,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

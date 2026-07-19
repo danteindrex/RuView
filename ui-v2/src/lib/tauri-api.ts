@@ -254,4 +254,35 @@ export const tauriApi = {
   getLangfuseConfig() {
     return invokeTauri<{ enabled: boolean; host: string; public_key_hint: string }>("get_langfuse_config");
   },
+  getDeploymentInfo() {
+    return invokeTauri<{ deployment_id: string; deployment_name: string; location_name: string; latitude: number | null; longitude: number | null; tenant_id: string | null }>("get_deployment_info");
+  },
+  setDeploymentInfo(info: { deploymentName: string; locationName: string; latitude?: number; longitude?: number; tenantId?: string }) {
+    return invokeTauri<void>("set_deployment_info", {
+      deploymentName: info.deploymentName,
+      locationName: info.locationName,
+      latitude: info.latitude ?? null,
+      longitude: info.longitude ?? null,
+      tenantId: info.tenantId ?? null,
+    });
+  },
+  registerDeployment() {
+    return invokeTauri<string>("register_deployment");
+  },
+  listDeployments(tenantId: string) {
+    return invokeTauri<Array<{
+      deployment_id: string;
+      deployment_name: string;
+      location_name: string;
+      latitude: number | null;
+      longitude: number | null;
+      last_seen: string | null;
+      node_count: number | null;
+      active_risk_level: string | null;
+      online: boolean | null;
+    }>>("list_deployments", { tenantId });
+  },
+  getDeploymentsAggregate(tenantId: string) {
+    return invokeTauri<{ total: number; online: number; high_risk: number; avg_risk_score: number }>("get_deployments_aggregate", { tenantId });
+  },
 };
