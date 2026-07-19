@@ -54,6 +54,11 @@ rcgen = "0.13"
 rustls-pemfile = "2"
 jsonwebtoken = "9"
 anyhow = "1.0"
+opentelemetry = "0.23"
+opentelemetry_sdk = { version = "0.23", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.16", features = ["http-proto", "reqwest-client"] }
+tracing-opentelemetry = "0.24"
+base64 = "0.22"
 
 [dev-dependencies]
 tempfile = "3.10"

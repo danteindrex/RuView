@@ -12,5 +12,6 @@ pub mod roles;
 pub mod security_keys;
 pub mod server;
 pub mod settings;
+pub mod telemetry;
 pub mod users;
 pub mod wasm;

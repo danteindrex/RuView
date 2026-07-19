@@ -248,4 +248,10 @@ export const tauriApi = {
   hasSshKey() {
     return invokeTauri<boolean>("has_ssh_key");
   },
+  setLangfuseConfig(config: { enabled: boolean; host: string; public_key: string; secret_key: string }) {
+    return invokeTauri<void>("set_langfuse_config", { config });
+  },
+  getLangfuseConfig() {
+    return invokeTauri<{ enabled: boolean; host: string; public_key_hint: string }>("get_langfuse_config");
+  },
 };

@@ -22,6 +22,7 @@ mod pose_inference;
 mod rvf_container;
 mod rvf_pipeline;
 pub mod tls;
+mod telemetry;
 mod tracker_bridge;
 pub mod types;
 mod vital_signs;
@@ -5008,6 +5009,9 @@ async fn main() {
                 .unwrap_or_else(|_| "info,tower_http=debug".into()),
         )
         .init();
+
+    // Langfuse OTLP tracing — graceful no-op if env vars not set
+    telemetry::init_langfuse_tracing();
 
     let args = Args::parse();
 
