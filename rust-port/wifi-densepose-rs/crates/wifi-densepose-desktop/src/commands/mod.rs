@@ -7,6 +7,7 @@ pub mod ota;
 pub mod pi_node;
 pub mod provision;
 pub mod roles;
+pub mod security_keys;
 pub mod server;
 pub mod settings;
 pub mod users;

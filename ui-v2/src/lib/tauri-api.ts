@@ -242,4 +242,10 @@ export const tauriApi = {
   saveSettings(accessToken: string, settings: AppSettings) {
     return invokeTauri<void>("save_settings", { accessToken, settings });
   },
+  setSshKey(keyPem: string, passphrase: string) {
+    return invokeTauri<void>("set_ssh_key", { keyPem, passphrase });
+  },
+  hasSshKey() {
+    return invokeTauri<boolean>("has_ssh_key");
+  },
 };

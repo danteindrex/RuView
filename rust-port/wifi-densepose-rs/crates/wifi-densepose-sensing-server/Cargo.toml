@@ -47,5 +47,13 @@ wifi-densepose-wifiscan = { version = "0.3.0", path = "../wifi-densepose-wifisca
 # Signal processing with RuvSense pose tracker (accuracy sprint)
 wifi-densepose-signal = { version = "0.3.0", path = "../wifi-densepose-signal", default-features = false }
 
+# axum-server is not wired at runtime yet; add "0.7+" once axum-server publishes
+# a release compatible with axum 0.7 / hyper 1.x.
+# axum-server = { version = "0.6", features = ["tls-rustls"] }
+rcgen = "0.13"
+rustls-pemfile = "2"
+jsonwebtoken = "9"
+anyhow = "1.0"
+
 [dev-dependencies]
 tempfile = "3.10"

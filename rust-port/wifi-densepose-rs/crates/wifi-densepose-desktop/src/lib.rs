@@ -157,6 +157,9 @@ pub fn run() {
             enterprise::whapi_get_qr,
             enterprise::whapi_send_test,
             enterprise::whapi_send_alert,
+            // SSH key management
+            commands::security_keys::set_ssh_key,
+            commands::security_keys::has_ssh_key,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

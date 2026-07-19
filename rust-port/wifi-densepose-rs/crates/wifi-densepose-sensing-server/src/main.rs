@@ -15,14 +15,25 @@ pub mod csi;
 pub mod protocol;
 mod field_bridge;
 mod ftm_orchestrator;
+pub mod middleware;
 mod multistatic_bridge;
 pub mod pose;
 mod pose_inference;
 mod rvf_container;
 mod rvf_pipeline;
+pub mod tls;
 mod tracker_bridge;
 pub mod types;
 mod vital_signs;
+// TODO(security): wire Bearer auth layer onto the Router once a JWT secret
+// source is established for the sensing-server (e.g. env var SENSING_JWT_SECRET).
+// Example (after building the router `app`):
+//   let jwt_secret = std::env::var("SENSING_JWT_SECRET")
+//       .unwrap_or_else(|_| "changeme".to_string());
+//   let app = app.layer(axum::middleware::from_fn_with_state(
+//       middleware::auth::AuthState { jwt_secret: std::sync::Arc::new(jwt_secret) },
+//       middleware::auth::require_bearer,
+//   ));
 
 // Training pipeline modules (exposed via lib.rs)
 use wifi_densepose_sensing_server::{graph_transformer, trainer, dataset, embedding};
