@@ -1,14 +1,15 @@
 pub mod auth;
 pub mod discovery;
+pub mod enterprise;
 pub mod flash;
 pub mod guard;
 pub mod license;
 pub mod ota;
 pub mod pi_node;
+pub mod plan;
 pub mod provision;
 pub mod roles;
 pub mod server;
 pub mod settings;
 pub mod users;
 pub mod wasm;
-pub mod enterprise;

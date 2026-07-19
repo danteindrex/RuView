@@ -129,6 +129,7 @@ pub struct AppState {
     pub flash: Mutex<FlashState>,
     pub ota: Mutex<OtaState>,
     pub settings: Mutex<SettingsState>,
+    pub plan: crate::plan::PlanTier,
 }
 
 impl Default for AppState {
@@ -139,6 +140,8 @@ impl Default for AppState {
             flash: Mutex::new(FlashState::default()),
             ota: Mutex::new(OtaState::default()),
             settings: Mutex::new(SettingsState::default()),
+            // TODO: read license_type from licenses table after DB init and call PlanTier::from_license_type()
+            plan: crate::plan::PlanTier::Local,
         }
     }
 }

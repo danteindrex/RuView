@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { usePlanStore } from "@/lib/plan-store";
+import { UpgradePrompt } from "@/components/upgrade-prompt";
 
 function Sparkline({ data, color = "currentColor" }: { data: number[], color?: string }) {
   const max = Math.max(...data, 1);
@@ -32,6 +34,7 @@ export function MedicalPage() {
   const { latestUpdate, edgeVitals } = useSensingStore();
   const [hrHistory, setHrHistory] = useState<number[]>(new Array(20).fill(0));
   const [brHistory, setBrHistory] = useState<number[]>(new Array(20).fill(0));
+  const { isCloud } = usePlanStore();
 
   // Update history
   React.useEffect(() => {
@@ -200,6 +203,23 @@ export function MedicalPage() {
                 </div>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* AI Insights — Cloud plan required */}
+        <Card>
+          <CardHeader>
+            <CardTitle>AI Insights</CardTitle>
+            <CardDescription>Machine-learning analysis of longitudinal vitals trends and anomaly detection.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isCloud() ? (
+              <div className="text-sm text-muted-foreground">
+                AI-powered vitals trend analysis and anomaly alerts will appear here.
+              </div>
+            ) : (
+              <UpgradePrompt feature="AI Insights" requiredPlan="cloud" />
+            )}
           </CardContent>
         </Card>
       </div>
