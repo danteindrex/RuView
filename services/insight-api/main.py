@@ -9,6 +9,7 @@ from typing import Optional
 
 load_dotenv()
 _report_cache: dict = {}
+from deployments.router import router as deployments_router
 
 @asynccontextmanager
 async def lifespan(app):
@@ -26,6 +27,7 @@ async def lifespan(app):
 
 app = FastAPI(title="RuView Insight API", version="0.3.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.include_router(deployments_router)
 
 INGEST_SIGNING_KEY = os.getenv("INGEST_SIGNING_KEY", "")
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { tauriApi } from "@/lib/tauri-api";
 import { PageSection } from "@/components/layout/page-section";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -9,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { JsonViewer } from "@/components/layout/json-viewer";
 import { useEnterpriseSettings } from "@/lib/enterprise-store";
 import { useAuthStore } from "@/lib/auth-store";
-import { QrCode, MessageSquare, ShieldCheck, Database, Compass } from "lucide-react";
+import { QrCode, MessageSquare, ShieldCheck, Database, Compass, MapPin } from "lucide-react";
 import { isLoopbackHostPort } from "@/lib/utils";
 import { useOnboardingStore, STEP_COUNT } from "@/lib/onboarding-store";
 import type { AppSettings } from "@/types";
@@ -144,6 +145,58 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
     }
   };
 
+  // ── Deployment Identity ───────────────────────────────────────────────────
+  const [depName, setDepName] = useState("");
+  const [depLocation, setDepLocation] = useState("");
+  const [depLat, setDepLat] = useState("");
+  const [depLng, setDepLng] = useState("");
+  const [depSaving, setDepSaving] = useState(false);
+  const [depRegistering, setDepRegistering] = useState(false);
+  const [depMessage, setDepMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    void invoke<{ deployment_name: string; location_name: string; latitude?: number | null; longitude?: number | null }>(
+      "get_deployment_info"
+    ).then((info) => {
+      setDepName(info.deployment_name ?? "");
+      setDepLocation(info.location_name ?? "");
+      setDepLat(info.latitude != null ? String(info.latitude) : "");
+      setDepLng(info.longitude != null ? String(info.longitude) : "");
+    }).catch(() => {/* command not yet registered in this branch */});
+  }, []);
+
+  async function handleSaveDeployment() {
+    setDepSaving(true);
+    setDepMessage(null);
+    try {
+      await invoke("set_deployment_info", {
+        deploymentName: depName,
+        locationName: depLocation,
+        latitude: depLat !== "" ? parseFloat(depLat) : null,
+        longitude: depLng !== "" ? parseFloat(depLng) : null,
+      });
+      setDepMessage("Deployment identity saved.");
+    } catch (err) {
+      setDepMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDepSaving(false);
+    }
+  }
+
+  async function handleRegisterDeployment() {
+    setDepRegistering(true);
+    setDepMessage(null);
+    try {
+      await invoke("register_deployment");
+      setDepMessage("Registered with cloud successfully.");
+    } catch (err) {
+      setDepMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDepRegistering(false);
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   const [settings, setSettings] = useState<AppSettings>({ ...DEFAULT_SETTINGS, theme });
   const [loaded, setLoaded] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(false);
@@ -204,6 +257,89 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
             </Button>
           ))}
         </div>
+      </PageSection>
+
+      <PageSection
+        title="Deployment Identity"
+        description="Configure which hospital site or facility this instance represents. Saved here and registered with the cloud so enterprise dashboards can list all active sites."
+      >
+        <Accordion type="multiple" defaultValue={["deployment-id"]}>
+          <AccordionItem value="deployment-id" className="border rounded-lg px-4 mb-4 bg-secondary/10">
+            <AccordionTrigger className="hover:no-underline">
+              <div className="flex items-center gap-3">
+                <MapPin className="h-4 w-4 text-primary" />
+                <div className="text-left">
+                  <p className="text-sm font-semibold uppercase tracking-tight">Site Identity</p>
+                  <p className="text-xs text-muted-foreground font-normal">Name, location, and coordinates for this deployment.</p>
+                </div>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="pt-4 pb-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="dep-settings-name" className="text-[10px] font-bold uppercase tracking-wider">Deployment Name</Label>
+                  <Input
+                    id="dep-settings-name"
+                    value={depName}
+                    onChange={(e) => setDepName(e.target.value)}
+                    placeholder="St. Mary's Hospital — ICU"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="dep-settings-location" className="text-[10px] font-bold uppercase tracking-wider">Location</Label>
+                  <Input
+                    id="dep-settings-location"
+                    value={depLocation}
+                    onChange={(e) => setDepLocation(e.target.value)}
+                    placeholder="Chicago, IL"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="dep-settings-lat" className="text-[10px] font-bold uppercase tracking-wider">Latitude (optional)</Label>
+                  <Input
+                    id="dep-settings-lat"
+                    type="number"
+                    value={depLat}
+                    onChange={(e) => setDepLat(e.target.value)}
+                    placeholder="41.8781"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="dep-settings-lng" className="text-[10px] font-bold uppercase tracking-wider">Longitude (optional)</Label>
+                  <Input
+                    id="dep-settings-lng"
+                    type="number"
+                    value={depLng}
+                    onChange={(e) => setDepLng(e.target.value)}
+                    placeholder="-87.6298"
+                  />
+                </div>
+                <div className="flex gap-2 sm:col-span-2">
+                  <Button
+                    disabled={depSaving}
+                    onClick={handleSaveDeployment}
+                    className="flex-1 text-xs uppercase font-bold tracking-widest"
+                  >
+                    {depSaving ? "Saving…" : "Save Identity"}
+                  </Button>
+                  <Button
+                    disabled={depRegistering}
+                    variant="outline"
+                    onClick={handleRegisterDeployment}
+                    className="flex-1 text-xs uppercase font-bold tracking-widest"
+                  >
+                    {depRegistering ? "Registering…" : "Register with Cloud"}
+                  </Button>
+                </div>
+                {depMessage && (
+                  <p className="sm:col-span-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400">
+                    {depMessage}
+                  </p>
+                )}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </PageSection>
 
       <PageSection title="Enterprise Infrastructure" description="Manage multi-tenant settings and communication integrations.">

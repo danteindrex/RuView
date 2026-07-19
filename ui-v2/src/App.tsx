@@ -22,6 +22,7 @@ import { SecurityPage } from "@/pages/security-page";
 import { SysAdminPage } from "@/pages/sysadmin-page";
 import CsiVisionPage from "@/pages/csi-vision-page";
 import { ModelsPage } from "@/pages/models-page";
+import { DeploymentsPage } from "@/pages/deployments-page";
 import { Badge } from "@/components/ui/badge";
 import { tauriApi } from "@/lib/tauri-api";
 import { useAuthStore } from "@/lib/auth-store";
@@ -32,12 +33,12 @@ import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { isOnboardingComplete, ONBOARDING_STEPS, useOnboardingStore } from "@/lib/onboarding-store";
 import { fetchServerNodes, mergeRosterIntoNodes, resolveServerBase } from "@/components/onboarding/server-api";
 import type { DiscoveredNode, ServerNode, ServerStatusResponse } from "@/types";
-import { Shield, ShieldAlert, ShieldCheck, Users, AlertCircle, Settings2, Lock, Unlock, Activity, LayoutDashboard, HeartPulse, Box, Settings, Building2, Terminal, Eye, Package } from "lucide-react";
+import { Shield, ShieldAlert, ShieldCheck, Users, AlertCircle, Settings2, Lock, Unlock, Activity, LayoutDashboard, HeartPulse, Box, Settings, Building2, Terminal, Eye, Package, MapPin } from "lucide-react";
 
 type PageId =
   | "dashboard" | "medical" | "security" | "pose3d"
   | "settings" | "users" | "roles" | "tenants" | "sysadmin"
-  | "csi-vision" | "models";
+  | "csi-vision" | "models" | "deployments";
 
 /** All pages — filtered at runtime by permission hook */
 const ALL_PAGES: ShellPage[] = [
@@ -52,6 +53,7 @@ const ALL_PAGES: ShellPage[] = [
   { id: "roles", label: "Access Matrix", icon: ShieldCheck },
   { id: "tenants", label: "Tenancy Oversight", icon: Building2 },
   { id: "sysadmin", label: "System Admin", icon: Terminal },
+  { id: "deployments", label: "Deployments", icon: MapPin },
 ];
 
 function loadTheme(): "light" | "dark" {
@@ -280,6 +282,7 @@ export default function App() {
       ) : null}
       {activePage === "users" ? <UsersPage tenantId={navigationTenantId} /> : null}
       {activePage === "roles" ? <RolesPage /> : null}
+      {activePage === "deployments" ? <DeploymentsPage /> : null}
       {activePage === "tenants" ? (
         <TenantsPage
           onNavigateToUsers={(tid) => {
