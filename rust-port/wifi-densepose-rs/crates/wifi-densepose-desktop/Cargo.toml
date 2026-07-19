@@ -23,6 +23,14 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-stronghold = "2"
+
+# Encryption-at-rest (AES-256-GCM, FIPS 140-3)
+aws-lc-rs = { version = "1", features = ["fips"] }
+# BUILD NOTE: aws-lc-rs fips (and non-fips on windows-msvc) requires NASM + Go + CMake.
+# On Windows: install NASM (https://www.nasm.us/), Go (https://go.dev/), CMake, then retry.
+# The aws-lc-sys build script will panic with "NASM command not found" until these are present.
+zeroize = { version = "1.7", features = ["derive"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }

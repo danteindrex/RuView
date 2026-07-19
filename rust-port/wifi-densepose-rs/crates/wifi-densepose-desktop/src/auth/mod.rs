@@ -17,3 +17,4 @@ pub mod rate_limiter;
 pub mod rls;
 pub mod seed;
 pub mod super_admin;
+pub mod vault;

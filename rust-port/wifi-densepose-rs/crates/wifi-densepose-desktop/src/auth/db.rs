@@ -3,6 +3,15 @@
 //! Creates a `wave.db` file in the Tauri app data directory.
 //! Runs embedded SQL migrations on first launch and on schema upgrades.
 
+// SQLCIPHER ENCRYPTION TODO:
+// To encrypt wave.db at rest:
+//   1. Add `features = ["sqlcipher"]` to sqlx in Cargo.toml
+//      (requires libsqlcipher or bundled-sqlcipher feature + openssl-sys)
+//   2. Derive encryption key: HKDF-SHA256(vault_master_key, info="sqlcipher-key") → 32 bytes
+//   3. Connection URL: "sqlite:{path}?_pragma=key%3D{64-hex-char-key}"
+//   4. Existing DB migration: use SQLCipher's sqlcipher_export() to re-encrypt in-place
+// This is gated behind VaultManager being fully wired (feature/encryption-at-rest).
+
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::path::PathBuf;
 use std::str::FromStr;
