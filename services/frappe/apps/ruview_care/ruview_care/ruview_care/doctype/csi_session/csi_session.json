@@ -1,0 +1,31 @@
+{
+  "name": "CSI Session",
+  "module": "RuView Care",
+  "doctype": "DocType",
+  "track_changes": 1,
+  "fields": [
+    {"fieldname": "session_id", "label": "Session ID", "fieldtype": "Data", "reqd": 1, "unique": 1, "in_list_view": 1},
+    {"fieldname": "deployment", "label": "Deployment", "fieldtype": "Link", "options": "RuView Deployment", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "session_time", "label": "Session Time", "fieldtype": "Datetime", "in_list_view": 1},
+    {"fieldname": "duration_seconds", "label": "Duration (s)", "fieldtype": "Int"},
+    {"fieldname": "section_break_vitals", "fieldtype": "Section Break", "label": "Vitals Summary"},
+    {"fieldname": "hr_mean", "label": "HR Mean (bpm)", "fieldtype": "Float", "precision": 1},
+    {"fieldname": "br_mean", "label": "BR Mean (rpm)", "fieldtype": "Float", "precision": 1},
+    {"fieldname": "column_break_2", "fieldtype": "Column Break"},
+    {"fieldname": "presence_ratio", "label": "Presence Ratio", "fieldtype": "Percent"},
+    {"fieldname": "csi_snr_db", "label": "CSI SNR (dB)", "fieldtype": "Float", "precision": 1},
+    {"fieldname": "section_break_anomalies", "fieldtype": "Section Break", "label": "Anomalies"},
+    {"fieldname": "pose_anomalies", "label": "Pose Anomalies", "fieldtype": "Small Text"},
+    {"fieldname": "anomaly_count", "label": "Anomaly Count", "fieldtype": "Int"}
+  ],
+  "permissions": [
+    {"role": "RuView Enterprise Admin", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1},
+    {"role": "RuView Clinical Staff",   "read": 1, "export": 1},
+    {"role": "RuView Operator",         "read": 1, "write": 1, "create": 1},
+    {"role": "RuView Viewer",           "read": 1}
+  ],
+  "sort_field": "session_time",
+  "sort_order": "DESC",
+  "title_field": "session_id"
+}
