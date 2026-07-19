@@ -250,9 +250,34 @@ v1/src/sensing/mac_wifi
 
 # Local build scripts
 firmware/esp32-csi-node/build_firmware.batdata/
-models/
 demo_pointcloud.ply
 demo_splats.json
 
 # Runtime room geometry written by the node-placement UI
 rust-port/wifi-densepose-rs/data/node_positions.json
+
+# ML model weights, checkpoints, ONNX exports (large binary files — do not commit)
+models/
+v1/models/
+*.onnx
+*.pt
+*.pth
+*.safetensors
+*.bin.index.json
+# Allow LatentCSI Python source (training scripts live in src/models/, not models/)
+!v1/src/models/
+!v1/src/models/**
+
+# AI services runtime / docker volumes
+services/**/pgdata/
+services/**/__pycache__/
+services/**/*.pyc
+
+# HuggingFace cache (downloaded to system cache dir, not repo)
+.cache/huggingface/
+**/.cache/huggingface/
+
+# TLS certs generated at runtime (self-signed, machine-specific)
+**/server.crt
+**/server.key
+**/stronghold.salt
