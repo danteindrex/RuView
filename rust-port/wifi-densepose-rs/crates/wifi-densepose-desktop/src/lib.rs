@@ -17,6 +17,7 @@ use commands::roles;
 use commands::enterprise;
 use commands::cloud as cloud_cmd;
 use commands::deployment as deployment_cmd;
+use commands::frappe_config as frappe_config_cmd;
 use std::sync::Arc;
 use tauri::Manager;
 
@@ -36,6 +37,9 @@ pub fn run() {
             app.handle().plugin(
                 tauri_plugin_stronghold::Builder::with_argon2(&stronghold_salt_path).build()
             )?;
+
+            // Load persisted Frappe credentials into env vars on startup
+            crate::commands::frappe_config::load_frappe_config_into_env();
 
             let app_handle = app.handle().clone();
             // Initialize auth system in background
@@ -84,7 +88,7 @@ pub fn run() {
                     Err(e) => tracing::warn!("Sensing server auto-start failed: {e}"),
                 }
             });
-            // Register this deployment with cloud on startup (best-effort, non-blocking)
+            // Register this deployment with Frappe on startup (best-effort, non-blocking)
             let deploy_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let dir = match deploy_handle.path().app_data_dir() {
@@ -92,17 +96,27 @@ pub fn run() {
                     Err(_) => return,
                 };
                 let info = crate::deployment::load_or_create(&dir);
-                let endpoint = std::env::var("RUVIEW_CLOUD_ENDPOINT")
-                    .unwrap_or_else(|_| "http://localhost:8001".to_string());
+                let frappe_url = std::env::var("RUVIEW_FRAPPE_URL")
+                    .unwrap_or_else(|_| "http://localhost:8080".to_string());
+                let api_key = std::env::var("RUVIEW_FRAPPE_API_KEY").unwrap_or_default();
+                let api_secret = std::env::var("RUVIEW_FRAPPE_API_SECRET").unwrap_or_default();
+                if api_key.is_empty() {
+                    return; // Not configured yet — skip heartbeat
+                }
                 let body = serde_json::json!({
                     "deployment_id": info.deployment_id,
                     "deployment_name": info.deployment_name,
                     "location_name": info.location_name,
                     "latitude": info.latitude,
                     "longitude": info.longitude,
+                    "tenant_id": info.tenant_id,
                 });
                 let _ = reqwest::Client::new()
-                    .post(format!("{}/deployments/register", endpoint))
+                    .post(format!(
+                        "{}/api/method/ruview_care.ruview_care.api.register_deployment",
+                        frappe_url
+                    ))
+                    .header("Authorization", format!("token {}:{}", api_key, api_secret))
                     .json(&body)
                     .send()
                     .await;
@@ -221,6 +235,9 @@ pub fn run() {
             deployment_cmd::register_deployment,
             deployment_cmd::list_deployments,
             deployment_cmd::get_deployments_aggregate,
+            // Frappe connection config
+            frappe_config_cmd::get_frappe_config,
+            frappe_config_cmd::set_frappe_config,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

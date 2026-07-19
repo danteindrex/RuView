@@ -316,4 +316,14 @@ export const tauriApi = {
   getRiskDistribution() {
     return invokeTauri<{ distribution: { low: number; moderate: number; high: number; critical: number }; total: number }>("get_risk_distribution");
   },
+  getFrappeConfig() {
+    return invokeTauri<{ url: string; api_key_hint: string; configured: boolean }>("get_frappe_config");
+  },
+  setFrappeConfig(config: { url: string; apiKey: string; apiSecret: string }) {
+    return invokeTauri<void>("set_frappe_config", {
+      url: config.url,
+      apiKey: config.apiKey,
+      apiSecret: config.apiSecret,
+    });
+  },
 };

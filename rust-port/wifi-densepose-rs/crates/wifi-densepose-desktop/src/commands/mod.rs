@@ -1,5 +1,6 @@
 pub mod analytics;
 pub mod frappe_client;
+pub mod frappe_config;
 pub mod auth;
 pub mod discovery;
 pub mod enterprise;
