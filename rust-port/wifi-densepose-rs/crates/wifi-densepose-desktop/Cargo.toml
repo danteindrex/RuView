@@ -25,11 +25,13 @@ tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-stronghold = "2"
 
-# Encryption-at-rest (AES-256-GCM, FIPS 140-3)
-aws-lc-rs = { version = "1", features = ["fips"] }
-# BUILD NOTE: aws-lc-rs fips (and non-fips on windows-msvc) requires NASM + Go + CMake.
-# On Windows: install NASM (https://www.nasm.us/), Go (https://go.dev/), CMake, then retry.
-# The aws-lc-sys build script will panic with "NASM command not found" until these are present.
+# Encryption-at-rest (AES-256-GCM, FIPS 140-3 validated algorithm)
+# "prebuilt-nasm" uses pre-assembled .obj files shipped with aws-lc-sys so
+# NASM does not need to be installed locally (works on all CI / dev machines).
+# To enable the full FIPS 140-3 certification boundary, swap to:
+#   aws-lc-rs = { version = "1", features = ["fips"] }
+# and install NASM (https://www.nasm.us/), Go (https://go.dev/), CMake first.
+aws-lc-rs = { version = "1", features = ["prebuilt-nasm"] }
 zeroize = { version = "1.7", features = ["derive"] }
 
 serde = { workspace = true }
