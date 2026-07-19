@@ -4,7 +4,7 @@ pub mod domain;
 pub mod provision;
 pub mod state;
 
-use commands::{discovery, flash, license, ota, pi_node, server, settings, wasm};
+use commands::{discovery, flash, license, ota, pi_node, server, settings, telemetry as telemetry_cmd, wasm};
 use commands::provision as provision_cmd;
 use commands::auth as auth_cmd;
 use commands::users;
@@ -151,6 +151,9 @@ pub fn run() {
             // Settings
             settings::get_settings,
             settings::save_settings,
+            // Telemetry / Langfuse
+            telemetry_cmd::set_langfuse_config,
+            telemetry_cmd::get_langfuse_config,
             // Enterprise
             enterprise::get_enterprise_settings,
             enterprise::save_enterprise_settings,

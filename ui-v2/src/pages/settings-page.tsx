@@ -72,12 +72,49 @@ function toNumber(value: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+interface LangfuseState {
+  enabled: boolean;
+  host: string;
+  public_key: string;
+  secret_key: string;
+}
+
 export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
   const { accessToken } = useAuthStore();
   const openOnboarding = useOnboardingStore((s) => s.openAt);
   const { settings: entSettings, saveSettings: saveEnt, getWhapiQR, sendTestMessage, loading: entLoading, error: entError } = useEnterpriseSettings();
   const [localEnt, setLocalEnt] = useState(entSettings);
   const [qrCode, setQrCode] = useState<string | null>(null);
+
+  const [langfuse, setLangfuse] = useState<LangfuseState>({
+    enabled: false,
+    host: "https://cloud.langfuse.com",
+    public_key: "",
+    secret_key: "",
+  });
+  const [langfuseHint, setLangfuseHint] = useState<string>("");
+  const [langfuseSaving, setLangfuseSaving] = useState(false);
+  const [langfuseMessage, setLangfuseMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    void tauriApi.getLangfuseConfig().then((cfg) => {
+      setLangfuse((prev) => ({ ...prev, enabled: cfg.enabled, host: cfg.host }));
+      setLangfuseHint(cfg.public_key_hint);
+    }).catch(() => {/* command may not be registered in dev */});
+  }, []);
+
+  async function handleSaveLangfuse() {
+    setLangfuseSaving(true);
+    setLangfuseMessage(null);
+    try {
+      await tauriApi.setLangfuseConfig(langfuse);
+      setLangfuseMessage(langfuse.enabled ? "Langfuse tracing enabled." : "Langfuse tracing disabled.");
+    } catch (err) {
+      setLangfuseMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLangfuseSaving(false);
+    }
+  }
 
   useEffect(() => {
     if (entSettings) setLocalEnt(entSettings);
@@ -535,6 +572,59 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 <div className="flex items-center gap-3 rounded-md border border-border/60 p-3">
                   <Switch checked={settings.pi_agent_enable_wasm} onCheckedChange={(checked) => setSettings((prev) => ({ ...prev, pi_agent_enable_wasm: checked }))} id="set-pi-enable-wasm" />
                   <Label htmlFor="set-pi-enable-wasm">Enable WASM</Label>
+                </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+          <AccordionItem value="telemetry">
+            <AccordionTrigger>Telemetry and Tracing</AccordionTrigger>
+            <AccordionContent>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex items-center gap-3 rounded-md border border-border/60 p-3 md:col-span-2">
+                  <Switch
+                    id="set-langfuse-enabled"
+                    checked={langfuse.enabled}
+                    onCheckedChange={(checked) => setLangfuse((prev) => ({ ...prev, enabled: checked }))}
+                  />
+                  <Label htmlFor="set-langfuse-enabled">Enable Langfuse Tracing</Label>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="set-langfuse-host">Langfuse Host</Label>
+                  <Input
+                    id="set-langfuse-host"
+                    value={langfuse.host}
+                    onChange={(e) => setLangfuse((prev) => ({ ...prev, host: e.target.value }))}
+                    placeholder="https://cloud.langfuse.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="set-langfuse-pk">Public Key{langfuseHint ? ` (current: ${langfuseHint})` : ""}</Label>
+                  <Input
+                    id="set-langfuse-pk"
+                    value={langfuse.public_key}
+                    onChange={(e) => setLangfuse((prev) => ({ ...prev, public_key: e.target.value }))}
+                    placeholder="pk-lf-..."
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="set-langfuse-sk">Secret Key</Label>
+                  <Input
+                    id="set-langfuse-sk"
+                    type="password"
+                    value={langfuse.secret_key}
+                    onChange={(e) => setLangfuse((prev) => ({ ...prev, secret_key: e.target.value }))}
+                    placeholder="sk-lf-..."
+                  />
+                </div>
+                <div className="md:col-span-2 flex flex-col gap-2">
+                  <Button disabled={langfuseSaving} onClick={handleSaveLangfuse} className="w-full uppercase font-bold text-xs tracking-widest">
+                    {langfuseSaving ? "Saving..." : "Save Langfuse Config"}
+                  </Button>
+                  {langfuseMessage && (
+                    <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400">
+                      {langfuseMessage}
+                    </p>
+                  )}
                 </div>
               </div>
             </AccordionContent>
