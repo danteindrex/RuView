@@ -21,6 +21,7 @@ import { MedicalPage } from "@/pages/medical-page";
 import { SecurityPage } from "@/pages/security-page";
 import { SysAdminPage } from "@/pages/sysadmin-page";
 import CsiVisionPage from "@/pages/csi-vision-page";
+import { ModelsPage } from "@/pages/models-page";
 import { Badge } from "@/components/ui/badge";
 import { tauriApi } from "@/lib/tauri-api";
 import { useAuthStore } from "@/lib/auth-store";
@@ -30,12 +31,12 @@ import { SensingProvider } from "@/lib/SensingProvider";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { isOnboardingComplete, ONBOARDING_STEPS, useOnboardingStore } from "@/lib/onboarding-store";
 import type { DiscoveredNode, ServerStatusResponse } from "@/types";
-import { Shield, ShieldAlert, ShieldCheck, Users, AlertCircle, Settings2, Lock, Unlock, Activity, LayoutDashboard, HeartPulse, Box, Settings, Building2, Terminal, Eye } from "lucide-react";
+import { Shield, ShieldAlert, ShieldCheck, Users, AlertCircle, Settings2, Lock, Unlock, Activity, LayoutDashboard, HeartPulse, Box, Settings, Building2, Terminal, Eye, Package } from "lucide-react";
 
 type PageId =
   | "dashboard" | "medical" | "security" | "pose3d"
   | "settings" | "users" | "roles" | "tenants" | "sysadmin"
-  | "csi-vision";
+  | "csi-vision" | "models";
 
 /** All pages — filtered at runtime by permission hook */
 const ALL_PAGES: ShellPage[] = [
@@ -44,6 +45,7 @@ const ALL_PAGES: ShellPage[] = [
   { id: "csi-vision", label: "CSI Vision", icon: Eye },
   { id: "medical", label: "Medical Hub", icon: HeartPulse },
   { id: "security", label: "Security Center", icon: ShieldAlert },
+  { id: "models", label: "Model Hub", icon: Package },
   { id: "settings", label: "Enterprise Settings", icon: Settings },
   { id: "users", label: "User Management", icon: Users },
   { id: "roles", label: "Access Matrix", icon: ShieldCheck },
@@ -68,15 +70,10 @@ export default function App() {
   const [nodes, setNodes] = useState<DiscoveredNode[]>([]);
   const [serverStatus, setServerStatus] = useState<ServerStatusResponse | null>(null);
 
-  // Initialize auth system — but only once the Tauri IPC bridge is ready.
-  // The bridge (window.__TAURI_INTERNALS__) is injected asynchronously by the
-  // Rust webview; calling invoke() before it exists throws the "Cannot read
-  // properties of undefined" error we are guarding against here.
   useEffect(() => {
     let cancelled = false;
-    
+
     async function safeInit() {
-      // Small delay to ensure bridge injection, but not blocking
       await new Promise(r => setTimeout(r, 200));
       if (!cancelled) {
         try {
@@ -92,7 +89,6 @@ export default function App() {
     return () => { cancelled = true; };
   }, [initialize]);
 
-  // Filter pages based on permissions
   const visiblePages = useMemo(() => {
     return ALL_PAGES.filter((page) => isSectionVisible(page.id));
   }, [isSectionVisible]);
@@ -128,7 +124,6 @@ export default function App() {
     void usePlanStore.getState().load();
   }, [stage]);
 
-  // Only poll when in dashboard stage
   useEffect(() => {
     if (stage !== "dashboard") return;
     void refreshNodes().catch(() => undefined);
@@ -140,9 +135,6 @@ export default function App() {
     return () => clearInterval(interval);
   }, [stage]);
 
-  // First-run onboarding: open the wizard the first time the operator reaches
-  // the dashboard, unless it was already completed (settings flag or the
-  // localStorage mirror). Runs once per dashboard entry.
   const onboardingCheckedRef = useRef(false);
   useEffect(() => {
     if (stage !== "dashboard" || !accessToken || onboardingCheckedRef.current) return;
@@ -154,13 +146,11 @@ export default function App() {
           openOnboarding(0);
         }
       } catch {
-        // Settings unavailable — fall back to the localStorage mirror only.
         if (!isOnboardingComplete(null)) openOnboarding(0);
       }
     })();
   }, [stage, accessToken, openOnboarding]);
 
-  // The tour step navigates the app to specific pages via the onboarding store.
   useEffect(() => {
     if (!tourPage) return;
     const allowed: PageId[] = ["dashboard", "medical", "pose3d"];
@@ -169,8 +159,6 @@ export default function App() {
     }
   }, [tourPage]);
 
-  // Snapshot the page the operator was on when the wizard opens, and restore it
-  // when it closes (so launching setup from any page returns you there).
   const preOnboardingPageRef = useRef<PageId | null>(null);
   useEffect(() => {
     if (onboardingOpen && preOnboardingPageRef.current === null) {
@@ -181,10 +169,6 @@ export default function App() {
     }
   }, [onboardingOpen, activePage]);
 
-  // The observatory HUD binds its toolbar handlers via document-global
-  // getElementById, so two live observatories cross-wire (the wizard's Place
-  // step embeds its own). While that step is active, keep the background page
-  // off pose3d so exactly one observatory exists and placement arms correctly.
   useEffect(() => {
     if (onboardingOpen && ONBOARDING_STEPS[onboardingStep] === "place" && activePage === "pose3d") {
       setActivePage("dashboard");
@@ -202,9 +186,6 @@ export default function App() {
     ? "Generate high-resolution environment images from WiFi CSI using LatentCSI (arXiv:2506.10605)."
     : "Production command center for Wave sensing, firmware, mesh, and observability controls.";
 
-  // ─── 3-Stage Rendering ──────────────────────────────────────────────────
-
-  // Stage 0: Loading
   if (stage === "loading") {
     return (
       <div className="flex h-full w-full items-center justify-center bg-background">
@@ -218,17 +199,14 @@ export default function App() {
     );
   }
 
-  // Stage 1: License activation
   if (stage === "license") {
     return <LicenseActivationPage />;
   }
 
-  // Stage 2: Login
   if (stage === "login") {
     return <LoginPage />;
   }
 
-  // Stage 3: Dashboard (with permission-filtered sidebar)
   return (
     <SensingProvider>
       {onboardingOpen ? (
@@ -239,7 +217,7 @@ export default function App() {
       activePage={activePage}
       onPageChange={(id) => {
         setActivePage(id as PageId);
-        if (id !== "users") setNavigationTenantId(undefined); // Reset filter when leaving users page
+        if (id !== "users") setNavigationTenantId(undefined);
       }}
       title={title}
       subtitle={subtitle}
@@ -257,11 +235,11 @@ export default function App() {
     >
       <LicenseActivationDialog open={isLicenseModalOpen} onOpenChange={setIsLicenseModalOpen} />
       {activePage === "dashboard" ? (
-        <DashboardPage 
-          nodes={nodes} 
-          serverStatus={serverStatus} 
-          onRefreshNodes={refreshNodes} 
-          onRefreshServer={refreshServer} 
+        <DashboardPage
+          nodes={nodes}
+          serverStatus={serverStatus}
+          onRefreshNodes={refreshNodes}
+          onRefreshServer={refreshServer}
           license={license}
           isLicenseModalOpen={isLicenseModalOpen}
           onLicenseModalChange={setIsLicenseModalOpen}
@@ -272,8 +250,9 @@ export default function App() {
       {activePage === "security" ? <SecurityPage /> : null}
       {activePage === "pose3d" ? <Pose3DPage status={serverStatus} onStatusRefresh={refreshServer} theme={theme} /> : null}
       {activePage === "settings" ? <SettingsPage theme={theme} onThemeChange={setTheme} /> : null}
+      {activePage === "models" ? <ModelsPage /> : null}
       {activePage === "sysadmin" ? (
-        <SysAdminPage 
+        <SysAdminPage
           nodes={nodes}
           onNodesUpdate={setNodes}
           serverStatus={serverStatus}
@@ -284,11 +263,11 @@ export default function App() {
       {activePage === "users" ? <UsersPage tenantId={navigationTenantId} /> : null}
       {activePage === "roles" ? <RolesPage /> : null}
       {activePage === "tenants" ? (
-        <TenantsPage 
+        <TenantsPage
           onNavigateToUsers={(tid) => {
             setNavigationTenantId(tid);
             setActivePage("users");
-          }} 
+          }}
         />
       ) : null}
     </AppShell>
