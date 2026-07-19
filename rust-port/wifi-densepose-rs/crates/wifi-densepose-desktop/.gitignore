@@ -1,0 +1,3 @@
+# Sensing-server sidecar binaries staged for `cargo tauri build` (externalBin).
+# Built per-platform at package time (locally or in CI) — not source.
+/binaries/
