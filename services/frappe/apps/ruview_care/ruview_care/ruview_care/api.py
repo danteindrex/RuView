@@ -173,7 +173,7 @@ def ingest_csi_session(session_id: str, deployment_id: str, vital_summary=None,
 def run_insight(session_name: str):
     """
     Manually trigger (or re-trigger) the LangGraph pipeline for a CSI Session.
-    Returns job info. Tauri polls GET /api/resource/Insight Report?filters=...
+    Returns job info. Tauri polls get_insight_by_session_id for the result.
     """
     job = frappe.enqueue(
         "ruview_care.ruview_care.insight_pipeline.run_pipeline",
@@ -182,3 +182,72 @@ def run_insight(session_name: str):
         timeout=300,
     )
     return {"job_id": job.id, "session_name": session_name}
+
+
+@frappe.whitelist(allow_guest=False)
+def get_insight_by_session_id(session_id: str):
+    """Look up the latest Insight Report for a given session_id (from Tauri)."""
+    session_name = frappe.db.get_value("CSI Session", {"session_id": session_id}, "name")
+    if not session_name:
+        return None
+    reports = frappe.get_all(
+        "Insight Report",
+        filters={"session": session_name},
+        fields=["name", "risk_score", "risk_level", "hr_classification", "br_classification",
+                "fall_risk_score", "trend_direction", "summary", "action_items", "confidence",
+                "creation"],
+        order_by="creation desc",
+        limit=1,
+    )
+    return reports[0] if reports else None
+
+
+@frappe.whitelist(allow_guest=False)
+def get_analytics_trends(deployment_id=None, limit=20):
+    """HR/BR trend data for the last N sessions. Optionally filtered by deployment."""
+    filters = {}
+    if deployment_id:
+        dep_name = frappe.db.get_value("RuView Deployment", {"deployment_id": deployment_id})
+        if dep_name:
+            filters["deployment"] = dep_name
+    sessions = frappe.get_all(
+        "CSI Session",
+        filters=filters,
+        fields=["session_id", "session_time", "hr_mean", "br_mean", "presence_ratio"],
+        order_by="session_time desc",
+        limit=int(limit),
+    )
+    # Pair with risk level from latest Insight Report per session
+    trends = []
+    for s in reversed(sessions):
+        session_name = frappe.db.get_value("CSI Session", {"session_id": s.session_id})
+        report = frappe.db.get_value(
+            "Insight Report", {"session": session_name},
+            ["risk_level", "risk_score"], as_dict=True
+        ) if session_name else {}
+        trends.append({
+            "timestamp": str(s.session_time),
+            "hr_mean": float(s.hr_mean or 0),
+            "br_mean": float(s.br_mean or 0),
+            "presence_ratio": float(s.presence_ratio or 0),
+            "risk_level": (report or {}).get("risk_level", "low"),
+            "risk_score": float((report or {}).get("risk_score", 0)),
+        })
+    return {"trends": trends}
+
+
+@frappe.whitelist(allow_guest=False)
+def get_risk_distribution(deployment_id=None):
+    """Count of Insight Reports by risk level (for bar chart)."""
+    filters = {}
+    if deployment_id:
+        dep_name = frappe.db.get_value("RuView Deployment", {"deployment_id": deployment_id})
+        if dep_name:
+            filters["deployment"] = dep_name
+    reports = frappe.get_all("Insight Report", filters=filters, fields=["risk_level"])
+    distribution = {"low": 0, "moderate": 0, "high": 0, "critical": 0}
+    for r in reports:
+        level = r.risk_level or "low"
+        distribution[level] = distribution.get(level, 0) + 1
+    total = sum(distribution.values())
+    return {"distribution": distribution, "total": total}

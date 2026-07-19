@@ -285,4 +285,35 @@ export const tauriApi = {
   getDeploymentsAggregate(tenantId: string) {
     return invokeTauri<{ total: number; online: number; high_risk: number; avg_risk_score: number }>("get_deployments_aggregate", { tenantId });
   },
+  runInsightPipeline(request: {
+    sessionId: string;
+    deploymentId: string;
+    vitalSummary: Record<string, number>;
+    poseAnomalies: string[];
+    durationSeconds: number;
+    csiSnrDb: number;
+  }) {
+    return invokeTauri<{ status: string; session_name: string; insight_queued: boolean }>(
+      "run_insight_pipeline",
+      {
+        request: {
+          session_id: request.sessionId,
+          deployment_id: request.deploymentId,
+          vital_summary: request.vitalSummary,
+          pose_anomalies: request.poseAnomalies,
+          duration_seconds: request.durationSeconds,
+          csi_snr_db: request.csiSnrDb,
+        },
+      }
+    );
+  },
+  getSessionInsight(sessionId: string) {
+    return invokeTauri<Record<string, unknown> | null>("get_session_insight", { sessionId });
+  },
+  getAnalyticsTrends() {
+    return invokeTauri<{ trends: Array<{ timestamp: string; hr_mean: number; br_mean: number; risk_level: string; risk_score: number }> }>("get_analytics_trends");
+  },
+  getRiskDistribution() {
+    return invokeTauri<{ distribution: { low: number; moderate: number; high: number; critical: number }; total: number }>("get_risk_distribution");
+  },
 };
