@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod commands;
 pub mod domain;
+pub mod encryption;
 pub mod provision;
 pub mod state;
 
@@ -19,6 +20,17 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(state::AppState::default())
         .setup(|app| {
+            // Register Stronghold plugin for encrypted secret storage.
+            // Must happen before any vault access; salt file is stored alongside wave.db.
+            let stronghold_salt_path = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| format!("Cannot resolve app data dir for Stronghold: {e}"))?
+                .join("stronghold.salt");
+            app.handle().plugin(
+                tauri_plugin_stronghold::Builder::with_argon2(&stronghold_salt_path).build()
+            )?;
+
             let app_handle = app.handle().clone();
             // Initialize auth system in background
             tauri::async_runtime::spawn(async move {
