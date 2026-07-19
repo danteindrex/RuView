@@ -69,3 +69,29 @@ pub const NUM_UV_COORDINATES: usize = 2;
 
 /// Default hidden channel sizes for networks
 pub const DEFAULT_HIDDEN_CHANNELS: &[usize] = &[256, 128, 64];
+
+/// LatentCSI image encoder (arXiv:2506.10605).
+/// Maps CSI amplitude → Stable Diffusion v1.5 latent space [4×64×64].
+pub struct CsiImageEncoder {
+    model_path: std::path::PathBuf,
+}
+
+impl CsiImageEncoder {
+    /// Create a new `CsiImageEncoder` from an ONNX model path.
+    pub fn new(model_path: &std::path::Path) -> Result<Self, String> {
+        if !model_path.exists() {
+            return Err(format!(
+                "LatentCSI ONNX not found: {}. Export with export_onnx.py.",
+                model_path.display()
+            ));
+        }
+        Ok(Self { model_path: model_path.to_path_buf() })
+    }
+
+    /// Returns flat latent [4*64*64 = 16384] floats.
+    /// TODO: implement ORT inference when ort crate is wired in this crate.
+    /// Production inference runs via the vision FastAPI service.
+    pub fn encode(&self, _csi_amplitude: &[f32]) -> Result<Vec<f32>, String> {
+        Ok(vec![0.0f32; 4 * 64 * 64])
+    }
+}

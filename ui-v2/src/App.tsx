@@ -20,6 +20,7 @@ import { TenantsPage } from "@/pages/tenants-page";
 import { MedicalPage } from "@/pages/medical-page";
 import { SecurityPage } from "@/pages/security-page";
 import { SysAdminPage } from "@/pages/sysadmin-page";
+import CsiVisionPage from "@/pages/csi-vision-page";
 import { Badge } from "@/components/ui/badge";
 import { tauriApi } from "@/lib/tauri-api";
 import { useAuthStore } from "@/lib/auth-store";
@@ -29,16 +30,18 @@ import { SensingProvider } from "@/lib/SensingProvider";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { isOnboardingComplete, ONBOARDING_STEPS, useOnboardingStore } from "@/lib/onboarding-store";
 import type { DiscoveredNode, ServerStatusResponse } from "@/types";
-import { Shield, ShieldAlert, ShieldCheck, Users, AlertCircle, Settings2, Lock, Unlock, Activity, LayoutDashboard, HeartPulse, Box, Settings, Building2, Terminal } from "lucide-react";
+import { Shield, ShieldAlert, ShieldCheck, Users, AlertCircle, Settings2, Lock, Unlock, Activity, LayoutDashboard, HeartPulse, Box, Settings, Building2, Terminal, Eye } from "lucide-react";
 
 type PageId =
   | "dashboard" | "medical" | "security" | "pose3d"
-  | "settings" | "users" | "roles" | "tenants" | "sysadmin";
+  | "settings" | "users" | "roles" | "tenants" | "sysadmin"
+  | "csi-vision";
 
 /** All pages — filtered at runtime by permission hook */
 const ALL_PAGES: ShellPage[] = [
   { id: "pose3d", label: "3D Pose", icon: Box },
   { id: "dashboard", label: "Overview", icon: LayoutDashboard },
+  { id: "csi-vision", label: "CSI Vision", icon: Eye },
   { id: "medical", label: "Medical Hub", icon: HeartPulse },
   { id: "security", label: "Security Center", icon: ShieldAlert },
   { id: "settings", label: "Enterprise Settings", icon: Settings },
@@ -195,6 +198,8 @@ export default function App() {
 
   const subtitle = activePage === "pose3d"
     ? "Primary live observatory for WiFi sensing, pose estimation, and real-time room intelligence."
+    : activePage === "csi-vision"
+    ? "Generate high-resolution environment images from WiFi CSI using LatentCSI (arXiv:2506.10605)."
     : "Production command center for Wave sensing, firmware, mesh, and observability controls.";
 
   // ─── 3-Stage Rendering ──────────────────────────────────────────────────
@@ -262,6 +267,7 @@ export default function App() {
           onLicenseModalChange={setIsLicenseModalOpen}
         />
       ) : null}
+      {activePage === "csi-vision" ? <CsiVisionPage /> : null}
       {activePage === "medical" ? <MedicalPage /> : null}
       {activePage === "security" ? <SecurityPage /> : null}
       {activePage === "pose3d" ? <Pose3DPage status={serverStatus} onStatusRefresh={refreshServer} theme={theme} /> : null}
