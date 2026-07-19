@@ -17,3 +17,4 @@ pub mod telemetry;
 pub mod users;
 pub mod wasm;
 pub mod cloud;
+pub mod deployment;
