@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { Shield, ShieldAlert, ShieldCheck, Users, AlertCircle, Lock, Unlock, Activity } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Shield, ShieldAlert, ShieldCheck, Users, AlertCircle, Lock, Unlock, Activity, Key } from "lucide-react";
+import { tauriApi } from "@/lib/tauri-api";
 import { useSensingStore } from "@/lib/sensing-store";
 import { useEnterpriseSettings } from "@/lib/enterprise-store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -11,6 +12,32 @@ import { Button } from "@/components/ui/button";
 export function SecurityPage() {
   const { latestUpdate } = useSensingStore();
   const { settings, saveSettings } = useEnterpriseSettings();
+
+  // SSH key management state
+  const [sshKeyPem, setSshKeyPem] = useState("");
+  const [sshPassphrase, setSshPassphrase] = useState("");
+  const [sshKeyConfigured, setSshKeyConfigured] = useState<boolean | null>(null);
+  const [sshSaveStatus, setSshSaveStatus] = useState<"idle" | "saving" | "ok" | "error">("idle");
+  const [sshSaveError, setSshSaveError] = useState("");
+
+  useEffect(() => {
+    tauriApi.hasSshKey().then(setSshKeyConfigured).catch(() => setSshKeyConfigured(false));
+  }, []);
+
+  const handleSaveSshKey = async () => {
+    setSshSaveStatus("saving");
+    setSshSaveError("");
+    try {
+      await tauriApi.setSshKey(sshKeyPem, sshPassphrase);
+      setSshSaveStatus("ok");
+      setSshKeyConfigured(true);
+      setSshKeyPem("");
+      setSshPassphrase("");
+    } catch (err: unknown) {
+      setSshSaveStatus("error");
+      setSshSaveError(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   const handleToggleArmed = async () => {
     if (settings) {
@@ -98,6 +125,60 @@ export function SecurityPage() {
           )}
         </div>
       )}
+
+      {/* SSH Key Management */}
+      <Card>
+        <CardHeader className="flex flex-row items-center gap-2 pb-2">
+          <Key className="w-4 h-4 text-muted-foreground" />
+          <CardTitle className="text-sm font-medium uppercase tracking-tight">SSH Key Management</CardTitle>
+          <div className="ml-auto">
+            {sshKeyConfigured === null ? null : sshKeyConfigured ? (
+              <Badge variant="default" className="bg-green-600 text-white text-[10px]">Key Configured</Badge>
+            ) : (
+              <Badge variant="secondary" className="text-[10px]">No Key Set</Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <Label htmlFor="ssh-pem" className="text-[10px] uppercase text-muted-foreground mb-1 block">SSH Private Key (PEM)</Label>
+            <textarea
+              id="ssh-pem"
+              rows={6}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs font-mono resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Paste SSH private key PEM..."
+              value={sshKeyPem}
+              onChange={(e) => setSshKeyPem(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label htmlFor="ssh-passphrase" className="text-[10px] uppercase text-muted-foreground mb-1 block">Passphrase (optional)</Label>
+            <input
+              id="ssh-passphrase"
+              type="password"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Key passphrase..."
+              value={sshPassphrase}
+              onChange={(e) => setSshPassphrase(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={handleSaveSshKey}
+              disabled={!sshKeyPem.trim() || sshSaveStatus === "saving"}
+              size="sm"
+            >
+              {sshSaveStatus === "saving" ? "Saving..." : "Save Key"}
+            </Button>
+            {sshSaveStatus === "ok" && (
+              <span className="text-green-600 text-xs font-medium">Key stored successfully.</span>
+            )}
+            {sshSaveStatus === "error" && (
+              <span className="text-destructive text-xs font-medium">{sshSaveError}</span>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Occupancy Card */}

@@ -223,9 +223,8 @@ void app_main(void)
     }
 
     /* Initialize OTA update HTTP server (requires network). */
-    httpd_handle_t ota_server = NULL;
 #ifndef CONFIG_CSI_MOCK_SKIP_WIFI_CONNECT
-    esp_err_t ota_ret = ota_update_init_ex(&ota_server);
+    esp_err_t ota_ret = ota_update_init();
     if (ota_ret != ESP_OK) {
         ESP_LOGW(TAG, "OTA server init failed: %s", esp_err_to_name(ota_ret));
     }

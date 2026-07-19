@@ -21,9 +21,8 @@ CONFIG_ESP_WIFI_CSI_ENABLED=y
 # ADR-091: 802.11 FTM ranging (initiator + responder)
 CONFIG_ESP_WIFI_FTM_ENABLE=y
 
-# NVS encryption disabled by default (requires eFuse provisioning).
-# Enable only after burning HMAC key to eFuse block.
-# CONFIG_NVS_ENCRYPTION is not set
+# NVS encryption enabled (requires HMAC key burned to eFuse block before use).
+CONFIG_NVS_ENCRYPTION=y
 
 # Disable unused features to reduce binary size
 CONFIG_BOOTLOADER_LOG_LEVEL_WARN=y
