@@ -7,6 +7,7 @@ pub mod enterprise;
 pub mod flash;
 pub mod guard;
 pub mod license;
+pub mod models;
 pub mod ota;
 pub mod pi_node;
 pub mod plan;

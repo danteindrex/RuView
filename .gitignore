@@ -281,3 +281,9 @@ services/**/*.pyc
 **/server.crt
 **/server.key
 **/stronghold.salt
+
+# Bundled pretrained models shipped inside the desktop app (~165KB total).
+# These are intentionally committed despite the broad models/ + *.safetensors
+# rules above — they ride along in the installer as Tauri resources.
+!rust-port/wifi-densepose-rs/crates/wifi-densepose-desktop/resources/models/
+!rust-port/wifi-densepose-rs/crates/wifi-densepose-desktop/resources/models/**

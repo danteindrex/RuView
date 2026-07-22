@@ -205,6 +205,8 @@ pub fn run() {
             flash::flash_firmware_bundle,
             provision_cmd::provision_esp32_nvs,
             provision_cmd::esp32_serial_check,
+            // Bundled pretrained models (shipped in the installer)
+            commands::models::list_bundled_models,
             // Settings
             settings::get_settings,
             settings::save_settings,
