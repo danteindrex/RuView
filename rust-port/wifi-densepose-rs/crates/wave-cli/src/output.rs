@@ -92,3 +92,85 @@ pub fn render<T: serde::Serialize>(
 pub fn note(msg: &str) {
     eprintln!("{msg}");
 }
+
+/// Render an arbitrary JSON value in the resolved format, auto-shaping tables:
+/// an object → 2-col key/value; an array of objects (or `{items|nodes|models|
+/// recordings:[...]}`) → columns from the union of keys; anything else → text.
+/// Lets thin REST commands be one-liners.
+pub fn auto(fmt: Format, value: &serde_json::Value) -> anyhow::Result<String> {
+    Ok(match fmt.resolved() {
+        Format::Json => serde_json::to_string_pretty(value)?,
+        Format::Yaml => serde_yaml::to_string(value)?,
+        Format::Table => value_to_table(value),
+        Format::Auto => unreachable!("resolved() removes Auto"),
+    })
+}
+
+fn value_to_table(v: &serde_json::Value) -> String {
+    // Unwrap a common single-array wrapper key.
+    let arr = v.as_array().cloned().or_else(|| {
+        for k in ["items", "nodes", "models", "recordings", "profiles", "results", "data"] {
+            if let Some(a) = v.get(k).and_then(|x| x.as_array()) {
+                return Some(a.clone());
+            }
+        }
+        None
+    });
+
+    if let Some(rows) = arr {
+        if rows.is_empty() {
+            return "(empty)".to_string();
+        }
+        // Column union across rows (stable order from the first row, then extras).
+        let mut cols: Vec<String> = Vec::new();
+        for r in &rows {
+            if let Some(o) = r.as_object() {
+                for k in o.keys() {
+                    if !cols.contains(k) {
+                        cols.push(k.clone());
+                    }
+                }
+            }
+        }
+        if cols.is_empty() {
+            // Array of scalars.
+            let mut t = Table::new(&["VALUE"]);
+            for r in &rows {
+                t.row(vec![scalar(r)]);
+            }
+            return t.render();
+        }
+        let headers: Vec<&str> = cols.iter().map(|s| s.as_str()).collect();
+        let mut t = Table::new(&headers);
+        for r in &rows {
+            t.row(cols.iter().map(|c| r.get(c).map(scalar).unwrap_or_default()).collect());
+        }
+        return t.render();
+    }
+
+    if let Some(obj) = v.as_object() {
+        let mut t = Table::new(&["FIELD", "VALUE"]);
+        for (k, val) in obj {
+            t.row(vec![k.clone(), scalar(val)]);
+        }
+        return t.render();
+    }
+
+    scalar(v)
+}
+
+/// Compact one-cell string for a JSON value (unquote strings; short-render nested).
+fn scalar(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Null => "-".to_string(),
+        other => {
+            let s = other.to_string();
+            if s.len() > 60 {
+                format!("{}…", &s[..59])
+            } else {
+                s
+            }
+        }
+    }
+}

@@ -78,6 +78,18 @@ impl Client {
         serde_json::from_str(&text).with_context(|| format!("parsing response from {url}"))
     }
 
+    /// DELETE `<base><path>`; returns the (possibly empty) JSON body as a value.
+    pub async fn delete(&self, path: &str) -> Result<serde_json::Value> {
+        let url = format!("{}{}", self.base, path);
+        let resp = self.http.delete(&url).send().await.with_context(|| format!("DELETE {url}"))?;
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        if !status.is_success() {
+            anyhow::bail!("DELETE {url} → HTTP {status}: {}", text.trim());
+        }
+        Ok(serde_json::from_str(&text).unwrap_or(serde_json::Value::Null))
+    }
+
     /// True if the server answers `/health` within the timeout.
     pub async fn healthy(&self) -> bool {
         let url = format!("{}/health", self.base);

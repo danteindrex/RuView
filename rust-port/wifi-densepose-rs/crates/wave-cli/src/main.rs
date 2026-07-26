@@ -70,6 +70,18 @@ enum Command {
     Calibrate(GroupArgs<CalibrateAction>),
     /// Inspect models (server-loaded + bundled).
     Model(GroupArgs<ModelAction>),
+    /// WiFi-derived pose (current, stats, zones).
+    Pose(GroupArgs<PoseAction>),
+    /// Show live vital signs.
+    Vitals,
+    /// Record / list / delete CSI sessions.
+    Recording(GroupArgs<RecordingAction>),
+    /// Training pipeline control.
+    Train(GroupArgs<TrainAction>),
+    /// Adaptive classifier control.
+    Adaptive(GroupArgs<AdaptiveAction>),
+    /// FTM ranging (auto node positioning).
+    Ranging(GroupArgs<RangingAction>),
     /// Add/remove wave-cli from the system PATH (run by the installer, or manually).
     Path(GroupArgs<pathcmd::PathAction>),
     /// Environment + connectivity self-check.
@@ -104,6 +116,8 @@ enum NodeAction {
         #[arg(long, default_value_t = 2)]
         interval: u64,
     },
+    /// Show the persisted 3D node-position map.
+    Positions,
 }
 
 #[derive(Subcommand, Debug)]
@@ -207,6 +221,74 @@ enum ModelAction {
     Bundled,
     /// Show the active model's info.
     Info,
+    /// Show the currently active model.
+    Active,
+    /// Load a model by id.
+    Load {
+        id: String,
+    },
+    /// Unload the active model.
+    Unload,
+    /// List SONA profiles.
+    Sona,
+    /// List LoRA profiles.
+    Lora,
+    /// Show progressive-loading layers.
+    Layers,
+    /// Show progressive-loading segments.
+    Segments,
+}
+
+#[derive(Subcommand, Debug)]
+enum PoseAction {
+    /// Current WiFi-derived pose.
+    Current,
+    /// Pose statistics.
+    Stats,
+    /// Per-zone occupancy summary.
+    Zones,
+}
+
+#[derive(Subcommand, Debug)]
+enum RecordingAction {
+    /// List recordings.
+    List,
+    /// Start recording.
+    Start,
+    /// Stop recording.
+    Stop,
+    /// Delete a recording by id.
+    Rm { id: String },
+}
+
+#[derive(Subcommand, Debug)]
+enum TrainAction {
+    /// Start training.
+    Start,
+    /// Stop training.
+    Stop,
+    /// Training status.
+    Status,
+}
+
+#[derive(Subcommand, Debug)]
+enum AdaptiveAction {
+    /// Train the adaptive classifier.
+    Train,
+    /// Unload the adaptive classifier.
+    Unload,
+    /// Adaptive classifier status.
+    Status,
+}
+
+#[derive(Subcommand, Debug)]
+enum RangingAction {
+    /// Run FTM ranging (auto node positioning).
+    Run,
+    /// Apply the computed positions.
+    Apply,
+    /// Ranging status.
+    Status,
 }
 
 #[tokio::main]
@@ -246,6 +328,7 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
             NodeAction::List => node_list(cli, None).await,
             NodeAction::Get { id } => node_list(cli, Some(*id)).await,
             NodeAction::Watch { interval } => node_watch(cli, *interval).await,
+            NodeAction::Positions => get_show(cli, "/api/v1/config/node-positions").await,
         },
         Command::Sensing(g) => match g.action {
             SensingAction::Latest => sensing_latest(cli).await,
@@ -295,10 +378,53 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
             CalibrateAction::Stop => calibrate_stop(cli).await,
             CalibrateAction::Status => calibrate_status(cli).await,
         },
-        Command::Model(g) => match g.action {
+        Command::Model(g) => match &g.action {
             ModelAction::List => model_list(cli).await,
             ModelAction::Bundled => model_bundled(cli).await,
             ModelAction::Info => model_info(cli).await,
+            ModelAction::Active => get_show(cli, "/api/v1/models/active").await,
+            ModelAction::Load { id } => {
+                let c = client(cli)?;
+                let body = serde_json::json!({ "id": id });
+                let v: serde_json::Value = c.post_json("/api/v1/models/load", Some(&body)).await.map_err(net)?;
+                if !cli.quiet { output::note(&format!("load requested: {id}")); }
+                if !v.is_null() { println!("{}", output::auto(cli.output, &v)?); }
+                Ok(())
+            }
+            ModelAction::Unload => post_show(cli, "/api/v1/models/unload", "unload requested").await,
+            ModelAction::Sona => get_show(cli, "/api/v1/model/sona/profiles").await,
+            ModelAction::Lora => get_show(cli, "/api/v1/models/lora/profiles").await,
+            ModelAction::Layers => get_show(cli, "/api/v1/model/layers").await,
+            ModelAction::Segments => get_show(cli, "/api/v1/model/segments").await,
+        },
+        Command::Pose(g) => match g.action {
+            PoseAction::Current => get_show(cli, "/api/v1/pose/current").await,
+            PoseAction::Stats => get_show(cli, "/api/v1/pose/stats").await,
+            PoseAction::Zones => get_show(cli, "/api/v1/pose/zones/summary").await,
+        },
+        Command::Vitals => get_show(cli, "/api/v1/vital-signs").await,
+        Command::Recording(g) => match &g.action {
+            RecordingAction::List => get_show(cli, "/api/v1/recording/list").await,
+            RecordingAction::Start => post_show(cli, "/api/v1/recording/start", "recording started").await,
+            RecordingAction::Stop => post_show(cli, "/api/v1/recording/stop", "recording stopped").await,
+            RecordingAction::Rm { id } => {
+                delete_show(cli, &format!("/api/v1/recording/{id}"), &format!("deleted recording {id}")).await
+            }
+        },
+        Command::Train(g) => match g.action {
+            TrainAction::Start => post_show(cli, "/api/v1/train/start", "training started").await,
+            TrainAction::Stop => post_show(cli, "/api/v1/train/stop", "training stopped").await,
+            TrainAction::Status => get_show(cli, "/api/v1/train/status").await,
+        },
+        Command::Adaptive(g) => match g.action {
+            AdaptiveAction::Train => post_show(cli, "/api/v1/adaptive/train", "adaptive training started").await,
+            AdaptiveAction::Unload => post_show(cli, "/api/v1/adaptive/unload", "adaptive classifier unloaded").await,
+            AdaptiveAction::Status => get_show(cli, "/api/v1/adaptive/status").await,
+        },
+        Command::Ranging(g) => match g.action {
+            RangingAction::Run => post_show(cli, "/api/v1/ranging/run", "FTM ranging started").await,
+            RangingAction::Apply => post_show(cli, "/api/v1/ranging/apply", "positions applied").await,
+            RangingAction::Status => get_show(cli, "/api/v1/ranging/status").await,
         },
         Command::Path(g) => pathcmd::run(&g.action, cli.quiet),
     }
@@ -307,6 +433,37 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
 /// Map any error to a network-category CLI error (shared by REST handlers).
 fn net(e: anyhow::Error) -> anyhow::Error {
     CliError { code: exit::NETWORK, msg: e.to_string() }.into()
+}
+
+/// GET a path and auto-render it (table/json/yaml). Used by the thin REST verbs.
+async fn get_show(cli: &Cli, path: &str) -> anyhow::Result<()> {
+    let c = client(cli)?;
+    let v: serde_json::Value = c.get_json(path).await.map_err(net)?;
+    println!("{}", output::auto(cli.output, &v)?);
+    Ok(())
+}
+
+/// POST a path (no body), print a note, and show any JSON response.
+async fn post_show(cli: &Cli, path: &str, note: &str) -> anyhow::Result<()> {
+    let c = client(cli)?;
+    let v: serde_json::Value = c.post_json::<(), _>(path, None).await.map_err(net)?;
+    if !cli.quiet {
+        output::note(note);
+    }
+    if !v.is_null() {
+        println!("{}", output::auto(cli.output, &v)?);
+    }
+    Ok(())
+}
+
+/// DELETE a path and print a note.
+async fn delete_show(cli: &Cli, path: &str, note: &str) -> anyhow::Result<()> {
+    let c = client(cli)?;
+    c.delete(path).await.map_err(net)?;
+    if !cli.quiet {
+        output::note(note);
+    }
+    Ok(())
 }
 
 fn client(cli: &Cli) -> anyhow::Result<Client> {
