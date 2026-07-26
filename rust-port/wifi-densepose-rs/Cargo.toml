@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/wifi-densepose-pi-node-agent",
+    "crates/wifi-densepose-edge-infer",
     "crates/wifi-densepose-core",
     "crates/wifi-densepose-signal",
     "crates/wifi-densepose-nn",
