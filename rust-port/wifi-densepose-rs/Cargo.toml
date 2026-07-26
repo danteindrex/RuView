@@ -12,6 +12,7 @@ members = [
     "crates/wifi-densepose-hardware",
     "crates/wifi-densepose-wasm",
     "crates/wifi-densepose-cli",
+    "crates/wave-cli",
     "crates/wifi-densepose-mat",
     "crates/wifi-densepose-train",
     "crates/wifi-densepose-sensing-server",
