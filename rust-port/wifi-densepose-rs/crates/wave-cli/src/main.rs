@@ -17,6 +17,7 @@ mod node;
 mod nvs;
 mod output;
 mod pathcmd;
+mod pi;
 mod serverproc;
 
 use clap::{Args, Parser, Subcommand};
@@ -73,6 +74,8 @@ enum Command {
     Ota(GroupArgs<OtaAction>),
     /// WASM edge modules on a node (node-direct HTTP).
     Wasm(GroupArgs<WasmAction>),
+    /// Raspberry Pi node management over SSH.
+    Pi(GroupArgs<PiAction>),
     /// Show which backend endpoints the CLI covers.
     Coverage,
     /// Empty-room field-model calibration.
@@ -164,6 +167,28 @@ enum OtaAction {
         file: String,
         #[arg(long)]
         psk: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum PiAction {
+    /// Probe a Pi over SSH (model, kernel, uptime).
+    Probe { #[arg(long)] host: String },
+    /// Control the node agent service (start|stop|restart|status).
+    Service {
+        #[arg(long)]
+        host: String,
+        #[arg(long)]
+        action: String,
+        #[arg(long, default_value = "ruview-node")]
+        name: String,
+    },
+    /// Check CSI health (agent active + monitor mode).
+    Health {
+        #[arg(long)]
+        host: String,
+        #[arg(long, default_value = "ruview-node")]
+        service: String,
     },
 }
 
@@ -563,6 +588,20 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
             WasmAction::Stop { node, id } => {
                 node::wasm_control(node, id, "stop").await?;
                 output::note(&format!("stopped {id} on {node}"));
+                Ok(())
+            }
+        },
+        Command::Pi(g) => match &g.action {
+            PiAction::Probe { host } => {
+                println!("{}", output::auto(cli.output, &pi::probe(host)?)?);
+                Ok(())
+            }
+            PiAction::Service { host, action, name } => {
+                println!("{}", output::auto(cli.output, &pi::service(host, name, action)?)?);
+                Ok(())
+            }
+            PiAction::Health { host, service } => {
+                println!("{}", output::auto(cli.output, &pi::health(host, service)?)?);
                 Ok(())
             }
         },
@@ -1005,8 +1044,9 @@ fn print_coverage(cli: &Cli) {
         ("WASM (node HTTP)", "wasm list/upload/start/stop", "done*"),
         ("admin (wave.db)", "user/role/tenant/license/plan", "done"),
         ("PATH install", "path install/uninstall/status", "done"),
-        ("Raspberry Pi (SSH)", "pi probe/nexmon/deploy/service", "TODO"),
-        ("enterprise/cloud/insights", "deployment/cloud/insight/alerts/telemetry/frappe/sshkey", "TODO"),
+        ("Raspberry Pi (SSH)", "pi probe/service/health", "core*"),
+        ("Pi Nexmon install", "(desktop wizard / nexmon_setup_auto.sh)", "desktop"),
+        ("enterprise/cloud/insights", "deployment/cloud/insight/alerts/telemetry/frappe", "desktop"),
     ];
     let value: Vec<serde_json::Value> = rows
         .iter()
