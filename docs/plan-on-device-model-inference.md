@@ -1,6 +1,15 @@
 # Plan — On-Device Model Inference + Node Stats & Health
 
-**Status:** Proposed · **Owner:** TBD · **Depends on:** bundled models (commit `524bf37f`)
+**Status:** Implemented (Phases 0–2, 4 done & building; Phase 3 code-complete,
+hardware-acceptance owed) · **Depends on:** bundled models (commit `524bf37f`)
+
+| Phase | Status |
+|-------|--------|
+| 0 — feature-order contract | ✅ locked from `scripts/deep-scan.js` |
+| 1 — shared crate + hub inference + REST/eval | ✅ `wifi-densepose-edge-infer` (3 tests green on real weights); `/api/v1/nodes/{id}/inference` (neural vs DSP) |
+| 2 — Pi on-device inference | ✅ agent runs the model, emits `0xC5110009`; hub ingests & prefers node value |
+| 3 — ESP32 on-device inference | ✅ C kernel + generated weights + packet wiring; ⏳ needs flash on a real S3 |
+| 4 — node stats & health | ✅ hub-side (`health`/`fps` + `/api/v1/nodes/{id}/stats`); node-side heap/temp/uptime packet is a follow-up |
 
 ## Goal
 
