@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  WiX fragment: add the install directory to the per-user PATH so `wave-cli` is
+  globally callable after an MSI install (parity with the NSIS installer hook).
+
+  MSI's native <Environment> element is declarative and auto-removes the entry on
+  uninstall — cleaner than a custom action. A component needs exactly one keypath
+  and <Environment> can't be one, so a small HKCU registry value provides it.
+
+  Referenced from tauri.conf.json via:
+    "wix": { "fragmentPaths": ["installer/wix-path.wxs"],
+             "componentGroupRefs": ["WaveCliPathGroup"] }
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <ComponentGroup Id="WaveCliPathGroup">
+      <Component Id="WaveCliPathEnv" Directory="INSTALLDIR" Guid="A1B2C3D4-E5F6-47A8-9B0C-1D2E3F4A5B6C">
+        <!-- Append the install dir to the user PATH (HKCU); removed on uninstall. -->
+        <Environment Id="WaveCliPath" Name="PATH" Value="[INSTALLDIR]" Part="last" Action="set" System="no" />
+        <!-- Durable keypath for the component. -->
+        <RegistryValue Root="HKCU" Key="Software\Wave\wave-cli" Name="pathAdded" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

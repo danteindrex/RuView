@@ -47,6 +47,14 @@
     "windows": {
       "nsis": {
         "installerHooks": "installer/nsis-hooks.nsh"
+      },
+      "wix": {
+        "fragmentPaths": [
+          "installer/wix-path.wxs"
+        ],
+        "componentGroupRefs": [
+          "WaveCliPathGroup"
+        ]
       }
     }
   }
