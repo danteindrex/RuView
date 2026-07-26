@@ -9,9 +9,10 @@ use tracing::{debug, info, warn};
 use wifi_densepose_pi_node_agent::config::AgentConfig;
 use wifi_densepose_pi_node_agent::edge_dsp::{process_frame, EdgeDspState};
 use wifi_densepose_pi_node_agent::frame_encoder::{
-    encode_feature_packet, encode_fused_vitals_packet, encode_raw_frame, encode_vitals_packet,
-    encode_wasm_v2_packet, EdgeVitals,
+    encode_feature_packet, encode_fused_vitals_packet, encode_inference_packet, encode_raw_frame,
+    encode_vitals_packet, encode_wasm_v2_packet, EdgeVitals,
 };
+use wifi_densepose_pi_node_agent::inference;
 use wifi_densepose_pi_node_agent::mmwave::{
     fuse_with_mmwave, MmwaveReader, MmwaveState, MockMmwaveReader,
 };
@@ -181,6 +182,19 @@ async fn run(config: AgentConfig) -> Result<()> {
                 if let Some(vitals) = outputs.vitals.clone() {
                     let packet = encode_vitals_packet(&vitals);
                     uplink.send_to(&packet, config.aggregator_addr).await?;
+
+                    // On-device neural inference: run the CSI-embedding model
+                    // locally and report the refined presence upstream (0xC5110009).
+                    let feats = inference::features_from_vitals(&vitals);
+                    if let Some(inf) = inference::infer(frame.node_id, feats) {
+                        let packet = encode_inference_packet(
+                            frame.node_id,
+                            (frame.sequence & 0xffff) as u16,
+                            inf.presence,
+                            inf.adapted,
+                        );
+                        uplink.send_to(&packet, config.aggregator_addr).await?;
+                    }
 
                     if let Some(reader) = mmwave.as_mut() {
                         reader.push(mmwave_state_from_vitals(&vitals));

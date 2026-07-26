@@ -361,6 +361,10 @@ struct NodeState {
     edge_vitals: Option<Esp32VitalsPacket>,
     /// Latest extracted features for cross-node fusion.
     latest_features: Option<FeatureInfo>,
+    /// Presence probability from the node's *own* on-device neural inference
+    /// (0xC5110009), when the node runs the model itself. Preferred over the
+    /// hub-computed value. `bool` = whether a per-room LoRA was applied on-node.
+    node_neural_presence: Option<(f32, bool)>,
     // ── RuVector Phase 2: Temporal smoothing & coherence gating ──
     /// Previous frame's smoothed keypoint positions for EMA temporal smoothing.
     prev_keypoints: Option<Vec<[f64; 3]>>,
@@ -424,6 +428,7 @@ impl NodeState {
             mac: None,
             edge_vitals: None,
             latest_features: None,
+            node_neural_presence: None,
             prev_keypoints: None,
             motion_energy_history: VecDeque::with_capacity(COHERENCE_WINDOW),
             coherence_score: 1.0, // assume stable initially
@@ -4058,8 +4063,12 @@ async fn nodes_endpoint(State(state): State<SharedState>) -> Json<serde_json::Va
                 "origin": ns.origin,
                 // Configured room position (meters), null until placed.
                 "position": s.node_positions.get(&id),
-                // Neural model presence probability (null if model unavailable).
-                "neural_presence": neural.as_ref().map(|n| n.presence),
+                // Neural presence: prefer the node's on-device value, else the
+                // hub-computed one (null if the model is unavailable).
+                "neural_presence": ns.node_neural_presence.map(|(p, _)| p)
+                    .or_else(|| neural.as_ref().map(|n| n.presence)),
+                "neural_source": if ns.node_neural_presence.is_some() { "node" }
+                    else if neural.is_some() { "hub" } else { "none" },
             })
         })
         .collect();
@@ -4083,15 +4092,24 @@ async fn node_inference_endpoint(
     let feats = node_feature_vector(ns);
     let dsp_presence = ns.current_motion_level != "absent";
     match inference::infer(id, feats) {
-        Some(n) => Json(serde_json::json!({
-            "node_id": id,
-            "model": "csi-embed-v2",
-            "room_adapted": n.adapted,
-            "input": inference::labelled_input(&n.input),
-            "neural_presence": n.presence,
-            "dsp_presence": dsp_presence,
-            "embedding": n.embedding,
-        })),
+        Some(n) => {
+            // Prefer the node's own on-device inference when it reports one.
+            let (neural_presence, source, room_adapted) = match ns.node_neural_presence {
+                Some((p, a)) => (p, "node", a),
+                None => (n.presence, "hub", n.adapted),
+            };
+            Json(serde_json::json!({
+                "node_id": id,
+                "model": "csi-embed-v2",
+                "neural_source": source,       // "node" = ran on the Pi/ESP32, "hub" = computed here
+                "room_adapted": room_adapted,
+                "input": inference::labelled_input(&n.input),
+                "neural_presence": neural_presence,
+                "hub_neural_presence": n.presence, // hub reference for comparison
+                "dsp_presence": dsp_presence,
+                "embedding": n.embedding,
+            }))
+        }
         None => Json(serde_json::json!({ "error": "model unavailable", "node_id": id })),
     }
 }
@@ -4312,6 +4330,20 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     let ns = s.node_states.entry(report.node_id).or_insert_with(NodeState::new);
                     ns.last_udp_addr = Some(src);
                     s.ranging.ingest_report(report, src);
+                    continue;
+                }
+
+                // On-device inference result (magic 0xC511_0009, 12 bytes): the
+                // node ran the CSI-embedding model itself. Record its presence —
+                // preferred over the hub-computed value in the API.
+                if len == 12 && u32::from_le_bytes(buf[0..4].try_into().unwrap()) == 0xC511_0009 {
+                    let node_id = buf[4];
+                    let presence = f32::from_le_bytes(buf[7..11].try_into().unwrap());
+                    let adapted = buf[11] & 1 != 0;
+                    let mut s = state.write().await;
+                    let ns = s.node_states.entry(node_id).or_insert_with(NodeState::new);
+                    ns.node_neural_presence = Some((presence, adapted));
+                    ns.last_udp_addr = Some(src);
                     continue;
                 }
 

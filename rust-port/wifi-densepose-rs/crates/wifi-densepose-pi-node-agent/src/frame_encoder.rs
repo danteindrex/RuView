@@ -6,6 +6,20 @@ pub const MAGIC_FEATURE: u32 = 0xC511_0003;
 pub const MAGIC_FUSED_VITALS: u32 = 0xC511_0004;
 pub const MAGIC_COMPRESSED: u32 = 0xC511_0005;
 pub const MAGIC_WASM_V2: u32 = 0xC511_0006;
+/// On-device neural inference result (12 bytes): magic | node_id | seq(u16) |
+/// presence(f32) | flags(u8, bit0 = per-room LoRA applied).
+pub const MAGIC_INFERENCE: u32 = 0xC511_0009;
+
+/// Encode an on-device inference-result packet (`0xC5110009`).
+pub fn encode_inference_packet(node_id: u8, seq: u16, presence: f32, adapted: bool) -> Vec<u8> {
+    let mut out = vec![0u8; 12];
+    out[0..4].copy_from_slice(&MAGIC_INFERENCE.to_le_bytes());
+    out[4] = node_id;
+    out[5..7].copy_from_slice(&seq.to_le_bytes());
+    out[7..11].copy_from_slice(&presence.to_le_bytes());
+    out[11] = if adapted { 1 } else { 0 };
+    out
+}
 
 #[derive(Debug, Clone)]
 pub struct RawFrame {
