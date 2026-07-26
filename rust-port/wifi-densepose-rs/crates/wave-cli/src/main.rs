@@ -10,6 +10,7 @@
 //! stdout for piping, diagnostics to stderr, and categorized exit codes.
 
 mod client;
+mod hardware;
 mod output;
 mod pathcmd;
 
@@ -57,6 +58,10 @@ enum Command {
     Node(GroupArgs<NodeAction>),
     /// Inspect live sensing output.
     Sensing(GroupArgs<SensingAction>),
+    /// List serial ports (find a connected ESP32).
+    Serial(GroupArgs<SerialAction>),
+    /// Scan nearby WiFi networks (pick a 2.4GHz SSID to provision).
+    Wifi(GroupArgs<WifiAction>),
     /// Empty-room field-model calibration.
     Calibrate(GroupArgs<CalibrateAction>),
     /// Inspect models (server-loaded + bundled).
@@ -101,6 +106,18 @@ enum NodeAction {
 enum SensingAction {
     /// Show the latest sensing frame (presence, persons, vitals).
     Latest,
+}
+
+#[derive(Subcommand, Debug)]
+enum SerialAction {
+    /// List serial ports; ESP32-compatible ones are flagged.
+    List,
+}
+
+#[derive(Subcommand, Debug)]
+enum WifiAction {
+    /// Scan nearby WiFi networks (SSID + band).
+    Scan,
 }
 
 #[derive(Subcommand, Debug)]
@@ -167,6 +184,12 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
         },
         Command::Sensing(g) => match g.action {
             SensingAction::Latest => sensing_latest(cli).await,
+        },
+        Command::Serial(g) => match g.action {
+            SerialAction::List => serial_list_cmd(cli),
+        },
+        Command::Wifi(g) => match g.action {
+            WifiAction::Scan => wifi_scan_cmd(cli),
         },
         Command::Calibrate(g) => match g.action {
             CalibrateAction::Start { duration } => calibrate_start(cli, duration).await,
@@ -447,6 +470,48 @@ async fn model_bundled(cli: &Cli) -> anyhow::Result<()> {
     println!("{out}");
     if files.is_empty() && !cli.quiet {
         output::note("no bundled models found next to wave-cli (expected resources/models/)");
+    }
+    Ok(())
+}
+
+fn serial_list_cmd(cli: &Cli) -> anyhow::Result<()> {
+    let ports = hardware::serial_list()?;
+    let out = output::render(cli.output, &ports, || {
+        let mut t = Table::new(&["PORT", "ESP32?", "VID", "PID", "DESCRIPTION"]);
+        for p in &ports {
+            t.row(vec![
+                p.name.clone(),
+                if p.esp32_compatible { "yes".into() } else { "".into() },
+                p.vid.clone().unwrap_or_default(),
+                p.pid.clone().unwrap_or_default(),
+                p.description.clone(),
+            ]);
+        }
+        t
+    })?;
+    println!("{out}");
+    if ports.is_empty() && !cli.quiet {
+        output::note("no serial ports found — plug in the ESP32 with a data cable");
+    }
+    Ok(())
+}
+
+fn wifi_scan_cmd(cli: &Cli) -> anyhow::Result<()> {
+    let nets = hardware::wifi_scan()?;
+    let out = output::render(cli.output, &nets, || {
+        let mut t = Table::new(&["SSID", "BAND", "CHANNEL"]);
+        for n in &nets {
+            t.row(vec![
+                n.ssid.clone(),
+                n.band.clone(),
+                n.channel.map(|c| c.to_string()).unwrap_or_default(),
+            ]);
+        }
+        t
+    })?;
+    println!("{out}");
+    if !cli.quiet {
+        output::note("ESP32 nodes need a 2.4GHz SSID");
     }
     Ok(())
 }
