@@ -12,6 +12,8 @@ set(SRCS
     "rv_feature_state.c"
     "rv_mesh.c"
     "adaptive_controller.c"
+    # On-device CSI-embedding model inference (parity with edge-infer crate)
+    "inference.c"
 )
 
 set(REQUIRES "")

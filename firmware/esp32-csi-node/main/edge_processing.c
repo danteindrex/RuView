@@ -26,6 +26,7 @@
 extern nvs_config_t g_nvs_config;
 #include "wasm_runtime.h"
 #include "stream_sender.h"
+#include "inference.h"       /* on-device CSI-embedding model */
 
 #include <math.h>
 #include <string.h>
@@ -552,6 +553,36 @@ static void update_multi_person_vitals(const uint8_t *iq_data, uint16_t n_sc,
  * Vitals Packet Sending
  * ====================================================================== */
 
+/* On-device neural inference: run the CSI-embedding model on the 8 DSP features
+ * and broadcast the refined presence (magic 0xC5110009, 12 bytes). Parity with
+ * the hub (wifi-densepose-edge-infer) and the Pi agent. `n_persons` is the count
+ * of active person slots. The firmware embeds node-1's LoRA as the default room
+ * adapter, so the room-adapted flag is set. */
+static void send_inference_packet(uint8_t n_persons)
+{
+    const float in[8] = {
+        s_presence_detected ? 1.0f : 0.0f, /* presence   */
+        s_motion_energy,                   /* motion     */
+        s_breathing_bpm,                   /* breathing  */
+        s_heartrate_bpm,                   /* heart_rate */
+        s_presence_score,                  /* phase_var (proxy; no phase-var feature) */
+        (float)n_persons,                  /* persons    */
+        s_fall_detected ? 1.0f : 0.0f,     /* fall       */
+        (float)s_latest_rssi,              /* rssi       */
+    };
+    float presence = csi_model_presence(in, NULL);
+
+    uint8_t pkt[12];
+    uint32_t magic = 0xC5110009u;
+    memcpy(&pkt[0], &magic, 4);
+    pkt[4] = csi_collector_get_node_id();
+    uint16_t seq = (uint16_t)((esp_timer_get_time() / 1000) & 0xffff);
+    memcpy(&pkt[5], &seq, 2);
+    memcpy(&pkt[7], &presence, 4);
+    pkt[11] = 0x01; /* room-adapted (node-1 LoRA embedded) */
+    stream_sender_send(pkt, sizeof(pkt));
+}
+
 static void send_vitals_packet(void)
 {
     edge_vitals_pkt_t pkt;
@@ -636,6 +667,9 @@ static void send_vitals_packet(void)
         /* No mmWave — send standard 32-byte packet. */
         stream_sender_send((const uint8_t *)&pkt, sizeof(pkt));
     }
+
+    /* On-device neural inference result, alongside the vitals. */
+    send_inference_packet(n_active);
 }
 
 /* ======================================================================
