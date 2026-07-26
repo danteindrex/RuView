@@ -13,6 +13,7 @@ mod admin;
 mod client;
 mod esp32;
 mod hardware;
+mod node;
 mod nvs;
 mod output;
 mod pathcmd;
@@ -68,6 +69,12 @@ enum Command {
     Wifi(GroupArgs<WifiAction>),
     /// Onboard an ESP32: flash, provision, verify.
     Esp32(GroupArgs<Esp32Action>),
+    /// OTA firmware updates (node-direct HTTP).
+    Ota(GroupArgs<OtaAction>),
+    /// WASM edge modules on a node (node-direct HTTP).
+    Wasm(GroupArgs<WasmAction>),
+    /// Show which backend endpoints the CLI covers.
+    Coverage,
     /// Empty-room field-model calibration.
     Calibrate(GroupArgs<CalibrateAction>),
     /// Inspect models (server-loaded + bundled).
@@ -133,6 +140,52 @@ enum UserAction {
 enum RoleAction {
     /// List roles.
     List,
+}
+
+#[derive(Subcommand, Debug)]
+enum OtaAction {
+    /// Check a node's OTA endpoint.
+    Check { #[arg(long)] node: String },
+    /// Flash firmware to a node over the network.
+    Update {
+        #[arg(long)]
+        node: String,
+        #[arg(long)]
+        file: String,
+        #[arg(long)]
+        psk: Option<String>,
+    },
+    /// Flash firmware to many nodes.
+    Batch {
+        /// Comma-separated node IPs.
+        #[arg(long, value_delimiter = ',')]
+        nodes: Vec<String>,
+        #[arg(long)]
+        file: String,
+        #[arg(long)]
+        psk: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum WasmAction {
+    /// List modules on a node.
+    List { #[arg(long)] node: String },
+    /// Upload a WASM module to a node.
+    Upload {
+        #[arg(long)]
+        node: String,
+        #[arg(long)]
+        file: String,
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        auto_start: bool,
+    },
+    /// Start a module.
+    Start { #[arg(long)] node: String, #[arg(long)] id: String },
+    /// Stop a module.
+    Stop { #[arg(long)] node: String, #[arg(long)] id: String },
 }
 
 #[derive(Subcommand, Debug)]
@@ -468,6 +521,55 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
                 esp32_onboard(cli, port, chip, ssid, password.clone(), target_ip.clone(), *node_id, *skip_flash).await
             }
         },
+        Command::Ota(g) => match &g.action {
+            OtaAction::Check { node } => {
+                println!("{}", output::auto(cli.output, &node::ota_check(node).await?)?);
+                Ok(())
+            }
+            OtaAction::Update { node, file, psk } => {
+                let v = node::ota_update(node, file, psk.as_deref()).await?;
+                output::note(&format!("OTA sent to {node}"));
+                println!("{}", output::auto(cli.output, &v)?);
+                Ok(())
+            }
+            OtaAction::Batch { nodes, file, psk } => {
+                let mut results = Vec::new();
+                for n in nodes {
+                    let r = node::ota_update(n, file, psk.as_deref()).await;
+                    output::note(&format!("{n}: {}", if r.is_ok() { "ok" } else { "FAILED" }));
+                    results.push(serde_json::json!({ "node": n, "ok": r.is_ok(),
+                        "error": r.as_ref().err().map(|e| e.to_string()) }));
+                }
+                println!("{}", output::auto(cli.output, &serde_json::json!({ "results": results }))?);
+                Ok(())
+            }
+        },
+        Command::Wasm(g) => match &g.action {
+            WasmAction::List { node } => {
+                println!("{}", output::auto(cli.output, &node::wasm_list(node).await?)?);
+                Ok(())
+            }
+            WasmAction::Upload { node, file, name, auto_start } => {
+                let v = node::wasm_upload(node, file, name, *auto_start).await?;
+                output::note(&format!("uploaded {name} to {node}"));
+                println!("{}", output::auto(cli.output, &v)?);
+                Ok(())
+            }
+            WasmAction::Start { node, id } => {
+                node::wasm_control(node, id, "start").await?;
+                output::note(&format!("started {id} on {node}"));
+                Ok(())
+            }
+            WasmAction::Stop { node, id } => {
+                node::wasm_control(node, id, "stop").await?;
+                output::note(&format!("stopped {id} on {node}"));
+                Ok(())
+            }
+        },
+        Command::Coverage => {
+            print_coverage(cli);
+            Ok(())
+        }
         Command::Calibrate(g) => match g.action {
             CalibrateAction::Start { duration } => calibrate_start(cli, duration).await,
             CalibrateAction::Stop => calibrate_stop(cli).await,
@@ -879,6 +981,49 @@ async fn model_bundled(cli: &Cli) -> anyhow::Result<()> {
         output::note("no bundled models found next to wave-cli (expected resources/models/)");
     }
     Ok(())
+}
+
+/// Honest self-audit of backend coverage.
+fn print_coverage(cli: &Cli) {
+    // (area, cli command, status)
+    let rows: &[(&str, &str, &str)] = &[
+        ("server status/info/health", "server status, doctor", "done"),
+        ("nodes roster", "node list/get/watch", "done"),
+        ("node positions", "node positions", "done"),
+        ("sensing latest / vitals", "sensing latest, vitals", "done"),
+        ("pose current/stats/zones", "pose current/stats/zones", "done"),
+        ("calibration", "calibrate start/stop/status", "done"),
+        ("recording", "recording list/start/stop/rm", "done"),
+        ("training", "train start/stop/status", "done"),
+        ("adaptive classifier", "adaptive train/unload/status", "done"),
+        ("FTM ranging", "ranging run/apply/status", "done"),
+        ("model mgmt", "model list/active/load/unload/sona/lora/layers/segments/info/bundled", "done"),
+        ("server lifecycle", "server start/stop/restart/logs", "done"),
+        ("serial + wifi discovery", "serial list, wifi scan", "done"),
+        ("ESP32 onboarding", "esp32 flash/provision/serial-check/onboard", "done*"),
+        ("OTA (node HTTP)", "ota check/update/batch", "done*"),
+        ("WASM (node HTTP)", "wasm list/upload/start/stop", "done*"),
+        ("admin (wave.db)", "user/role/tenant/license/plan", "done"),
+        ("PATH install", "path install/uninstall/status", "done"),
+        ("Raspberry Pi (SSH)", "pi probe/nexmon/deploy/service", "TODO"),
+        ("enterprise/cloud/insights", "deployment/cloud/insight/alerts/telemetry/frappe/sshkey", "TODO"),
+    ];
+    let value: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|(a, c, s)| serde_json::json!({ "area": a, "command": c, "status": s }))
+        .collect();
+    let out = output::render(cli.output, &value, || {
+        let mut t = Table::new(&["AREA", "COMMAND", "STATUS"]);
+        for (a, c, s) in rows {
+            t.row(vec![a.to_string(), c.to_string(), s.to_string()]);
+        }
+        t
+    })
+    .unwrap_or_default();
+    println!("{out}");
+    if !cli.quiet {
+        output::note("* code-complete; hardware acceptance owed (needs a node/board). TODO = not yet built.");
+    }
 }
 
 /// Resolve the WiFi password: --password › $WAVE_WIFI_PASSWORD › saved profile.

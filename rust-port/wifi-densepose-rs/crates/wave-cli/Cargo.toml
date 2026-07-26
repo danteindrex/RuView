@@ -17,7 +17,12 @@ clap = { version = "4.4", features = ["derive", "env", "wrap_help"] }
 
 # HTTP client for the sensing-server REST API (localhost by default; rustls so no
 # system OpenSSL is required for any future https targets).
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
+
+# Node-direct OTA/WASM (multipart + HMAC-SHA256 PSK signing, matching the desktop).
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
 
 # Async runtime
 tokio = { version = "1.35", features = ["macros", "rt-multi-thread", "process", "signal", "time"] }
