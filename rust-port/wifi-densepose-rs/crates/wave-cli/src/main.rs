@@ -11,6 +11,7 @@
 
 mod client;
 mod output;
+mod pathcmd;
 
 use clap::{Args, Parser, Subcommand};
 
@@ -60,6 +61,8 @@ enum Command {
     Calibrate(GroupArgs<CalibrateAction>),
     /// Inspect models (server-loaded + bundled).
     Model(GroupArgs<ModelAction>),
+    /// Add/remove wave-cli from the system PATH (run by the installer, or manually).
+    Path(GroupArgs<pathcmd::PathAction>),
     /// Environment + connectivity self-check.
     Doctor,
 }
@@ -175,6 +178,7 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
             ModelAction::Bundled => model_bundled(cli).await,
             ModelAction::Info => model_info(cli).await,
         },
+        Command::Path(g) => pathcmd::run(&g.action, cli.quiet),
     }
 }
 

@@ -105,6 +105,26 @@ jobs:
           cp "$SRC" "crates/wifi-densepose-desktop/binaries/sensing-server-${TRIPLE}${EXT}"
           echo "Staged sidecar: sensing-server-${TRIPLE}${EXT}"
 
+      # Build the management CLI and stage it as a second sidecar. On Windows the
+      # installer's NSIS hook adds it to PATH so `wave-cli` is globally callable.
+      - name: Build & stage wave-cli sidecar
+        shell: bash
+        working-directory: ${{ env.WORKSPACE }}
+        run: |
+          set -euo pipefail
+          TRIPLE="${{ matrix.triple }}"
+          EXT=""
+          [ "${{ runner.os }}" = "Windows" ] && EXT=".exe"
+          if [ -n "${{ matrix.args }}" ]; then
+            cargo build --release -p wave-cli --target "$TRIPLE"
+            SRC="target/${TRIPLE}/release/wave-cli${EXT}"
+          else
+            cargo build --release -p wave-cli
+            SRC="target/release/wave-cli${EXT}"
+          fi
+          cp "$SRC" "crates/wifi-densepose-desktop/binaries/wave-cli-${TRIPLE}${EXT}"
+          echo "Staged sidecar: wave-cli-${TRIPLE}${EXT}"
+
       - name: Build & release Tauri app
         uses: tauri-apps/tauri-action@v0
         env:

@@ -37,6 +37,10 @@ anyhow = "1.0"
 # Time
 chrono = { version = "0.4", features = ["serde"] }
 
+# Windows-only: edit the user PATH registry for `wave-cli path install`.
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+
 [dev-dependencies]
 assert_cmd = "2.0"
 predicates = "3.0"
