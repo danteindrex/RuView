@@ -3968,6 +3968,68 @@ fn node_feature_vector(ns: &NodeState) -> [f32; 8] {
     [presence, motion, breathing, heart_rate, phase_var, persons, fall, rssi]
 }
 
+/// Measured sample rate (Hz) for a node's raw CSI, from the EMA of its
+/// inter-frame interval. `None` until enough frames have arrived.
+fn node_fps(ns: &NodeState) -> Option<f64> {
+    ns.ema_frame_interval_s.and_then(|dt| if dt > 1e-6 { Some(1.0 / dt) } else { None })
+}
+
+/// Compute a node's health status + human-readable reasons from its live state.
+/// `offline` (gone), `stale` (no recent frame), `degraded` (streaming but sample
+/// rate well below the detector's expected rate), else `healthy`.
+fn node_health(ns: &NodeState, elapsed_ms: u64) -> (&'static str, Vec<String>) {
+    let mut reasons = Vec::new();
+    if elapsed_ms > 30_000 {
+        return ("offline", vec![format!("no frame for {}s", elapsed_ms / 1000)]);
+    }
+    if elapsed_ms > 5_000 {
+        return ("stale", vec![format!("last frame {}ms ago", elapsed_ms)]);
+    }
+    let mut status = "healthy";
+    if let Some(fps) = node_fps(ns) {
+        // Flag if streaming at < 50% of the rate the vital detector expects.
+        if ns.detector_rate_hz > 0.0 && fps < ns.detector_rate_hz * 0.5 {
+            status = "degraded";
+            reasons.push(format!("low sample rate {fps:.1} Hz (expected ~{:.0})", ns.detector_rate_hz));
+        }
+    }
+    (status, reasons)
+}
+
+/// GET /api/v1/nodes/{id}/stats — detailed per-node stats & health.
+async fn node_stats_endpoint(
+    Path(id): Path<u8>,
+    State(state): State<SharedState>,
+) -> Json<serde_json::Value> {
+    let s = state.read().await;
+    let now = std::time::Instant::now();
+    let Some(ns) = s.node_states.get(&id) else {
+        return Json(serde_json::json!({ "error": "node not found", "node_id": id }));
+    };
+    let elapsed_ms = ns.last_frame_time.map(|t| now.duration_since(t).as_millis() as u64).unwrap_or(999_999);
+    let (health, reasons) = node_health(ns, elapsed_ms);
+    let infer_age_ms = ns.last_inference_time.map(|t| now.duration_since(t).as_millis() as u64);
+    let mac = ns.mac.map(|m| {
+        format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", m[0], m[1], m[2], m[3], m[4], m[5])
+    });
+    Json(serde_json::json!({
+        "node_id": id,
+        "health": health,
+        "health_reasons": reasons,
+        "status": if elapsed_ms > 5000 { "stale" } else { "active" },
+        "last_seen_ms": elapsed_ms,
+        "fps": node_fps(ns),
+        "detector_rate_hz": ns.detector_rate_hz,
+        "rssi_dbm": ns.rssi_history.back().copied().unwrap_or(-90.0),
+        "person_count": ns.prev_person_count,
+        "motion_level": &ns.current_motion_level,
+        "origin": ns.origin,
+        "mac": mac,
+        "last_inference_ms": infer_age_ms,
+        "position": s.node_positions.get(&id),
+    }))
+}
+
 /// GET /api/v1/nodes — per-node health and feature info.
 async fn nodes_endpoint(State(state): State<SharedState>) -> Json<serde_json::Value> {
     let s = state.read().await;
@@ -3982,9 +4044,12 @@ async fn nodes_endpoint(State(state): State<SharedState>) -> Json<serde_json::Va
             let rssi = ns.rssi_history.back().copied().unwrap_or(-90.0);
             // Neural presence (bundled CSI-embedding model, per-room adapted).
             let neural = inference::infer(id, node_feature_vector(ns));
+            let (health, _reasons) = node_health(ns, elapsed_ms);
             serde_json::json!({
                 "node_id": id,
                 "status": status,
+                "health": health,
+                "fps": node_fps(ns),
                 "last_seen_ms": elapsed_ms,
                 "rssi_dbm": rssi,
                 "motion_level": &ns.current_motion_level,
@@ -5829,6 +5894,7 @@ async fn main() {
         // Per-node health endpoint
         .route("/api/v1/nodes", get(nodes_endpoint))
         .route("/api/v1/nodes/{id}/inference", get(node_inference_endpoint))
+        .route("/api/v1/nodes/{id}/stats", get(node_stats_endpoint))
         .route(
             "/api/v1/config/node-positions",
             get(get_node_positions).put(put_node_positions),
