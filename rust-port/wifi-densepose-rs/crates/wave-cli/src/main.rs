@@ -9,6 +9,7 @@
 //! Design follows clig.dev: noun-verb commands, TTY-aware output (`-o`), quiet
 //! stdout for piping, diagnostics to stderr, and categorized exit codes.
 
+mod admin;
 mod client;
 mod esp32;
 mod hardware;
@@ -83,10 +84,61 @@ enum Command {
     Adaptive(GroupArgs<AdaptiveAction>),
     /// FTM ranging (auto node positioning).
     Ranging(GroupArgs<RangingAction>),
+    /// User management (reads/writes wave.db).
+    User(GroupArgs<UserAction>),
+    /// List roles (wave.db).
+    Role(GroupArgs<RoleAction>),
+    /// List tenants (wave.db).
+    Tenant(GroupArgs<TenantAction>),
+    /// Show the license status (wave.db).
+    License,
+    /// Show the plan tier (wave.db).
+    Plan,
     /// Add/remove wave-cli from the system PATH (run by the installer, or manually).
     Path(GroupArgs<pathcmd::PathAction>),
     /// Environment + connectivity self-check.
     Doctor,
+}
+
+#[derive(Subcommand, Debug)]
+enum UserAction {
+    /// List users.
+    List,
+    /// Show one user by email.
+    Get { email: String },
+    /// Create a user (Argon2id-hashed password).
+    Create {
+        #[arg(long)]
+        email: String,
+        #[arg(long)]
+        first: String,
+        #[arg(long)]
+        last: String,
+        /// Password (or set WAVE_NEW_PASSWORD).
+        #[arg(long)]
+        password: Option<String>,
+        /// Tenant id (defaults to the first tenant).
+        #[arg(long)]
+        tenant: Option<String>,
+    },
+    /// Delete a user by email.
+    Delete {
+        email: String,
+        #[arg(short, long)]
+        yes: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum RoleAction {
+    /// List roles.
+    List,
+}
+
+#[derive(Subcommand, Debug)]
+enum TenantAction {
+    /// List tenants.
+    List,
 }
 
 /// Wrapper so each group gets its own action subcommand.
@@ -469,6 +521,62 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
             RangingAction::Apply => post_show(cli, "/api/v1/ranging/apply", "positions applied").await,
             RangingAction::Status => get_show(cli, "/api/v1/ranging/status").await,
         },
+        Command::User(g) => match &g.action {
+            UserAction::List => {
+                println!("{}", output::auto(cli.output, &admin::user_list(None).await?)?);
+                Ok(())
+            }
+            UserAction::Get { email } => {
+                println!("{}", output::auto(cli.output, &admin::user_list(Some(email)).await?)?);
+                Ok(())
+            }
+            UserAction::Create { email, first, last, password, tenant } => {
+                let pw = password
+                    .clone()
+                    .or_else(|| std::env::var("WAVE_NEW_PASSWORD").ok())
+                    .filter(|p| !p.is_empty())
+                    .ok_or_else(|| CliError { code: exit::USAGE, msg: "provide --password or set WAVE_NEW_PASSWORD".into() })?;
+                admin::user_create(email, first, last, &pw, tenant.as_deref()).await?;
+                output::note(&format!("created user {email}"));
+                Ok(())
+            }
+            UserAction::Delete { email, yes } => {
+                if !yes && std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+                    eprint!("delete user {email}? [y/N] ");
+                    use std::io::Write;
+                    let _ = std::io::stderr().flush();
+                    let mut line = String::new();
+                    std::io::stdin().read_line(&mut line).ok();
+                    if !line.trim().eq_ignore_ascii_case("y") {
+                        output::note("aborted");
+                        return Ok(());
+                    }
+                }
+                let n = admin::user_delete(email).await?;
+                output::note(&format!("deleted {n} user(s)"));
+                Ok(())
+            }
+        },
+        Command::Role(g) => match g.action {
+            RoleAction::List => {
+                println!("{}", output::auto(cli.output, &admin::role_list().await?)?);
+                Ok(())
+            }
+        },
+        Command::Tenant(g) => match g.action {
+            TenantAction::List => {
+                println!("{}", output::auto(cli.output, &admin::tenant_list().await?)?);
+                Ok(())
+            }
+        },
+        Command::License => {
+            println!("{}", output::auto(cli.output, &admin::license_status().await?)?);
+            Ok(())
+        }
+        Command::Plan => {
+            println!("{}", output::auto(cli.output, &admin::plan().await?)?);
+            Ok(())
+        }
         Command::Path(g) => pathcmd::run(&g.action, cli.quiet),
     }
 }
