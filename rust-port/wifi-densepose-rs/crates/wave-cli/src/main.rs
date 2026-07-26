@@ -10,7 +10,9 @@
 //! stdout for piping, diagnostics to stderr, and categorized exit codes.
 
 mod client;
+mod esp32;
 mod hardware;
+mod nvs;
 mod output;
 mod pathcmd;
 
@@ -62,6 +64,8 @@ enum Command {
     Serial(GroupArgs<SerialAction>),
     /// Scan nearby WiFi networks (pick a 2.4GHz SSID to provision).
     Wifi(GroupArgs<WifiAction>),
+    /// Onboard an ESP32: flash, provision, verify.
+    Esp32(GroupArgs<Esp32Action>),
     /// Empty-room field-model calibration.
     Calibrate(GroupArgs<CalibrateAction>),
     /// Inspect models (server-loaded + bundled).
@@ -118,6 +122,67 @@ enum SerialAction {
 enum WifiAction {
     /// Scan nearby WiFi networks (SSID + band).
     Scan,
+}
+
+#[derive(Subcommand, Debug)]
+enum Esp32Action {
+    /// Flash the release firmware bundle (downloads + esptool).
+    Flash {
+        #[arg(long)]
+        port: String,
+        #[arg(long, default_value = "esp32s3")]
+        chip: String,
+        #[arg(long, default_value = "v0.8.3-esp32")]
+        tag: String,
+        #[arg(long, default_value_t = 460800)]
+        baud: u32,
+    },
+    /// Write WiFi credentials + hub target to the node's NVS.
+    Provision {
+        #[arg(long)]
+        port: String,
+        #[arg(long, default_value = "esp32s3")]
+        chip: String,
+        #[arg(long)]
+        ssid: String,
+        /// WiFi password (or set WAVE_WIFI_PASSWORD, or rely on the saved profile).
+        #[arg(long)]
+        password: Option<String>,
+        /// Hub IP the node streams to (defaults to this PC's Wi-Fi IPv4).
+        #[arg(long)]
+        target_ip: Option<String>,
+        #[arg(long, default_value_t = 5005)]
+        target_port: u16,
+        #[arg(long, default_value_t = 1)]
+        node_id: u8,
+        #[arg(long, default_value_t = 460800)]
+        baud: u32,
+    },
+    /// Read the serial boot log to confirm the node joined WiFi.
+    SerialCheck {
+        #[arg(long)]
+        port: String,
+        #[arg(long, default_value_t = 30)]
+        timeout: u64,
+    },
+    /// Full flow: flash → provision → serial-check → watch the roster.
+    Onboard {
+        #[arg(long)]
+        port: String,
+        #[arg(long, default_value = "esp32s3")]
+        chip: String,
+        #[arg(long)]
+        ssid: String,
+        #[arg(long)]
+        password: Option<String>,
+        #[arg(long)]
+        target_ip: Option<String>,
+        #[arg(long, default_value_t = 1)]
+        node_id: u8,
+        /// Skip flashing (node already has firmware).
+        #[arg(long)]
+        skip_flash: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -190,6 +255,40 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
         },
         Command::Wifi(g) => match g.action {
             WifiAction::Scan => wifi_scan_cmd(cli),
+        },
+        Command::Esp32(g) => match &g.action {
+            Esp32Action::Flash { port, chip, tag, baud } => {
+                esp32::flash(port, chip, tag, *baud).await?;
+                output::note("flashed. next: wave-cli esp32 provision --port ... --ssid ...");
+                Ok(())
+            }
+            Esp32Action::Provision {
+                port, chip, ssid, password, target_ip, target_port, node_id, baud,
+            } => {
+                let pw = resolve_password(password.clone(), ssid)?;
+                let ip = resolve_target_ip(target_ip.clone())?;
+                esp32::provision(port, chip, ssid, &pw, &ip, *target_port, *node_id, *baud)?;
+                output::note(&format!("provisioned node {node_id} → '{ssid}', streaming to {ip}:{target_port}"));
+                Ok(())
+            }
+            Esp32Action::SerialCheck { port, timeout } => {
+                let (joined, ip, log) = esp32::serial_check(port, *timeout)?;
+                let v = serde_json::json!({ "joined": joined, "ip": ip });
+                println!("{}", output::render(cli.output, &v, || {
+                    let mut t = Table::new(&["Field", "Value"]);
+                    t.row(vec!["joined".into(), joined.to_string()]);
+                    t.row(vec!["ip".into(), ip.clone().unwrap_or_default()]);
+                    t
+                })?);
+                if !joined {
+                    eprintln!("{}", log.trim());
+                    return Err(CliError { code: exit::USAGE, msg: format!("node did not join '{port}' within {timeout}s") }.into());
+                }
+                Ok(())
+            }
+            Esp32Action::Onboard { port, chip, ssid, password, target_ip, node_id, skip_flash } => {
+                esp32_onboard(cli, port, chip, ssid, password.clone(), target_ip.clone(), *node_id, *skip_flash).await
+            }
         },
         Command::Calibrate(g) => match g.action {
             CalibrateAction::Start { duration } => calibrate_start(cli, duration).await,
@@ -472,6 +571,73 @@ async fn model_bundled(cli: &Cli) -> anyhow::Result<()> {
         output::note("no bundled models found next to wave-cli (expected resources/models/)");
     }
     Ok(())
+}
+
+/// Resolve the WiFi password: --password › $WAVE_WIFI_PASSWORD › saved profile.
+fn resolve_password(explicit: Option<String>, ssid: &str) -> anyhow::Result<String> {
+    if let Some(p) = explicit {
+        return Ok(p);
+    }
+    if let Ok(p) = std::env::var("WAVE_WIFI_PASSWORD") {
+        if !p.is_empty() {
+            return Ok(p);
+        }
+    }
+    if let Some(p) = hardware::wifi_saved_password(ssid) {
+        eprintln!("using the saved WiFi password for '{ssid}'");
+        return Ok(p);
+    }
+    anyhow::bail!(
+        "no WiFi password — pass --password, set WAVE_WIFI_PASSWORD, or connect this PC to '{ssid}' first"
+    )
+}
+
+/// Resolve the hub target IP: --target-ip › this PC's Wi-Fi LAN IPv4.
+fn resolve_target_ip(explicit: Option<String>) -> anyhow::Result<String> {
+    if let Some(ip) = explicit {
+        return Ok(ip);
+    }
+    hardware::host_lan_ip()
+        .ok_or_else(|| anyhow::anyhow!("could not detect this PC's LAN IP — pass --target-ip"))
+}
+
+/// End-to-end onboarding: (flash) → provision → serial-check → watch roster.
+async fn esp32_onboard(
+    cli: &Cli,
+    port: &str,
+    chip: &str,
+    ssid: &str,
+    password: Option<String>,
+    target_ip: Option<String>,
+    node_id: u8,
+    skip_flash: bool,
+) -> anyhow::Result<()> {
+    let pw = resolve_password(password, ssid)?;
+    let ip = resolve_target_ip(target_ip)?;
+    if !skip_flash {
+        output::note("[1/4] flashing firmware …");
+        esp32::flash(port, chip, "v0.8.3-esp32", 460800).await?;
+    } else {
+        output::note("[1/4] skipping flash");
+    }
+    output::note("[2/4] provisioning NVS …");
+    esp32::provision(port, chip, ssid, &pw, &ip, 5005, node_id, 460800)?;
+    output::note("[3/4] verifying WiFi join over serial …");
+    let (joined, node_ip, log) = esp32::serial_check(port, 40)?;
+    if !joined {
+        eprintln!("{}", log.trim());
+        return Err(CliError {
+            code: exit::USAGE,
+            msg: format!("node did not join '{ssid}' — check the password / that it's 2.4GHz"),
+        }
+        .into());
+    }
+    output::note(&format!(
+        "[3/4] joined WiFi{} — now watching the hub roster for node {node_id}",
+        node_ip.map(|i| format!(" (IP {i})")).unwrap_or_default()
+    ));
+    output::note("[4/4] watching (Ctrl-C to stop) …");
+    node_watch(cli, 2).await
 }
 
 fn serial_list_cmd(cli: &Cli) -> anyhow::Result<()> {

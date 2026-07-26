@@ -163,3 +163,53 @@ pub fn wifi_scan() -> Result<Vec<WifiNet>> {
 pub fn wifi_scan() -> Result<Vec<WifiNet>> {
     anyhow::bail!("wifi scan is currently Windows-only (uses netsh)");
 }
+
+// ── helpers for provisioning ────────────────────────────────────────────────
+
+/// Read the saved WiFi key for an SSID from the Windows profile (for auto-fill).
+#[cfg(windows)]
+pub fn wifi_saved_password(ssid: &str) -> Option<String> {
+    if ssid.contains('"') || ssid.contains('\n') || ssid.contains('\r') {
+        return None;
+    }
+    let out = std::process::Command::new("netsh")
+        .args(["wlan", "show", "profile", &format!("name={ssid}"), "key=clear"])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    for line in text.lines() {
+        if let Some(idx) = line.find("Key Content") {
+            if let Some(c) = line[idx..].find(':') {
+                let pw = line[idx + c + 1..].trim().to_string();
+                if !pw.is_empty() {
+                    return Some(pw);
+                }
+            }
+        }
+    }
+    None
+}
+
+#[cfg(not(windows))]
+pub fn wifi_saved_password(_ssid: &str) -> Option<String> {
+    None
+}
+
+/// This PC's Wi-Fi LAN IPv4 (the address a node should stream to).
+#[cfg(windows)]
+pub fn host_lan_ip() -> Option<String> {
+    let ps = "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { \
+              $_.InterfaceAlias -like 'Wi-Fi*' -and $_.IPAddress -notlike '169.254*' } | \
+              Select-Object -First 1).IPAddress";
+    let out = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-Command", ps])
+        .output()
+        .ok()?;
+    let ip = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if ip.is_empty() { None } else { Some(ip) }
+}
+
+#[cfg(not(windows))]
+pub fn host_lan_ip() -> Option<String> {
+    None
+}
