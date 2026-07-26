@@ -15,6 +15,7 @@ mod hardware;
 mod nvs;
 mod output;
 mod pathcmd;
+mod serverproc;
 
 use clap::{Args, Parser, Subcommand};
 
@@ -99,6 +100,27 @@ struct GroupArgs<A: Subcommand> {
 enum ServerAction {
     /// Show server status (source, ports, health).
     Status,
+    /// Start the bundled sensing-server (detached).
+    Start {
+        #[arg(long, default_value_t = 4000)]
+        port: u16,
+        #[arg(long, default_value = "esp32")]
+        source: String,
+    },
+    /// Stop the running sensing-server.
+    Stop,
+    /// Restart the sensing-server.
+    Restart {
+        #[arg(long, default_value_t = 4000)]
+        port: u16,
+        #[arg(long, default_value = "esp32")]
+        source: String,
+    },
+    /// Tail the sensing-server log.
+    Logs {
+        #[arg(long, default_value_t = 50)]
+        lines: usize,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -321,8 +343,29 @@ impl std::error::Error for CliError {}
 async fn run(cli: &Cli) -> anyhow::Result<()> {
     match &cli.command {
         Command::Doctor => doctor(cli).await,
-        Command::Server(g) => match g.action {
+        Command::Server(g) => match &g.action {
             ServerAction::Status => server_status(cli).await,
+            ServerAction::Start { port, source } => {
+                let pid = serverproc::start(*port, source)?;
+                output::note(&format!("sensing-server started (pid {pid}) on :{port} [source={source}]"));
+                Ok(())
+            }
+            ServerAction::Stop => {
+                serverproc::stop()?;
+                output::note("sensing-server stopped");
+                Ok(())
+            }
+            ServerAction::Restart { port, source } => {
+                let _ = serverproc::stop();
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                let pid = serverproc::start(*port, source)?;
+                output::note(&format!("sensing-server restarted (pid {pid}) on :{port}"));
+                Ok(())
+            }
+            ServerAction::Logs { lines } => {
+                println!("{}", serverproc::logs(*lines)?);
+                Ok(())
+            }
         },
         Command::Node(g) => match &g.action {
             NodeAction::List => node_list(cli, None).await,
