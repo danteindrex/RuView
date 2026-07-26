@@ -27,6 +27,9 @@ tokio = { workspace = true, features = ["full", "process"] }
 futures-util = "0.3"
 ruvector-mincut = { workspace = true }
 
+# On-device CSI-embedding model inference (shared with the Pi agent)
+wifi-densepose-edge-infer = { version = "0.1.0", path = "../wifi-densepose-edge-infer" }
+
 # Serialization
 serde = { workspace = true }
 serde_json.workspace = true

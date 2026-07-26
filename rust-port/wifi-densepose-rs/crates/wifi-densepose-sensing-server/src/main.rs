@@ -19,6 +19,7 @@ pub mod middleware;
 mod multistatic_bridge;
 pub mod pose;
 mod pose_inference;
+mod inference;
 mod rvf_container;
 mod rvf_pipeline;
 pub mod tls;
@@ -3947,6 +3948,26 @@ async fn sona_activate(
     }
 }
 
+/// Assemble the model's 8-feature input vector from a node's latest state, in the
+/// canonical order `[presence, motion, breathing, heart_rate, phase_var, persons,
+/// fall, rssi]` (see `scripts/deep-scan.js`). Best-effort from the DSP outputs the
+/// node/hub already compute — this is what the neural model re-scores on top of.
+fn node_feature_vector(ns: &NodeState) -> [f32; 8] {
+    let presence = if ns.current_motion_level == "absent" { 0.0 } else { 1.0 };
+    let motion = ns.smoothed_motion as f32;
+    let breathing = ns.smoothed_br as f32;
+    let heart_rate = ns.smoothed_hr as f32;
+    let phase_var = ns.latest_features.as_ref().map(|f| f.variance as f32).unwrap_or(0.0);
+    let persons = ns.prev_person_count as f32;
+    let fall = ns
+        .edge_vitals
+        .as_ref()
+        .map(|v| if v.fall_detected { 1.0 } else { 0.0 })
+        .unwrap_or(0.0);
+    let rssi = ns.rssi_history.back().copied().unwrap_or(-90.0) as f32;
+    [presence, motion, breathing, heart_rate, phase_var, persons, fall, rssi]
+}
+
 /// GET /api/v1/nodes — per-node health and feature info.
 async fn nodes_endpoint(State(state): State<SharedState>) -> Json<serde_json::Value> {
     let s = state.read().await;
@@ -3959,6 +3980,8 @@ async fn nodes_endpoint(State(state): State<SharedState>) -> Json<serde_json::Va
             let stale = elapsed_ms > 5000;
             let status = if stale { "stale" } else { "active" };
             let rssi = ns.rssi_history.back().copied().unwrap_or(-90.0);
+            // Neural presence (bundled CSI-embedding model, per-room adapted).
+            let neural = inference::infer(id, node_feature_vector(ns));
             serde_json::json!({
                 "node_id": id,
                 "status": status,
@@ -3970,6 +3993,8 @@ async fn nodes_endpoint(State(state): State<SharedState>) -> Json<serde_json::Va
                 "origin": ns.origin,
                 // Configured room position (meters), null until placed.
                 "position": s.node_positions.get(&id),
+                // Neural model presence probability (null if model unavailable).
+                "neural_presence": neural.as_ref().map(|n| n.presence),
             })
         })
         .collect();
@@ -3977,6 +4002,33 @@ async fn nodes_endpoint(State(state): State<SharedState>) -> Json<serde_json::Va
         "nodes": nodes,
         "total": nodes.len(),
     }))
+}
+
+/// GET /api/v1/nodes/{id}/inference — full neural inference for one node:
+/// the 8-feature input, presence probability, embedding, and the DSP presence
+/// for side-by-side comparison (the neural-vs-DSP eval).
+async fn node_inference_endpoint(
+    Path(id): Path<u8>,
+    State(state): State<SharedState>,
+) -> Json<serde_json::Value> {
+    let s = state.read().await;
+    let Some(ns) = s.node_states.get(&id) else {
+        return Json(serde_json::json!({ "error": "node not found", "node_id": id }));
+    };
+    let feats = node_feature_vector(ns);
+    let dsp_presence = ns.current_motion_level != "absent";
+    match inference::infer(id, feats) {
+        Some(n) => Json(serde_json::json!({
+            "node_id": id,
+            "model": "csi-embed-v2",
+            "room_adapted": n.adapted,
+            "input": inference::labelled_input(&n.input),
+            "neural_presence": n.presence,
+            "dsp_presence": dsp_presence,
+            "embedding": n.embedding,
+        })),
+        None => Json(serde_json::json!({ "error": "model unavailable", "node_id": id })),
+    }
 }
 
 // ── Node position placement API ──────────────────────────────────────────────
@@ -5776,6 +5828,7 @@ async fn main() {
         .route("/api/v1/sensing/latest", get(latest))
         // Per-node health endpoint
         .route("/api/v1/nodes", get(nodes_endpoint))
+        .route("/api/v1/nodes/{id}/inference", get(node_inference_endpoint))
         .route(
             "/api/v1/config/node-positions",
             get(get_node_positions).put(put_node_positions),
