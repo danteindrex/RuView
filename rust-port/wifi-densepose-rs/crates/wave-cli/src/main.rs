@@ -143,12 +143,43 @@ enum UserAction {
         #[arg(short, long)]
         yes: bool,
     },
+    /// Update a user's name / active flag.
+    Update {
+        #[arg(long)]
+        email: String,
+        #[arg(long)]
+        first: Option<String>,
+        #[arg(long)]
+        last: Option<String>,
+        #[arg(long)]
+        active: Option<bool>,
+    },
+    /// Assign a role to a user.
+    AssignRole {
+        #[arg(long)]
+        email: String,
+        #[arg(long)]
+        role: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
 enum RoleAction {
     /// List roles.
     List,
+    /// Create a role.
+    Create {
+        #[arg(long)]
+        name: String,
+        #[arg(long, default_value = "")]
+        description: String,
+        #[arg(long)]
+        tenant: Option<String>,
+    },
+    /// Delete a role by name.
+    Delete { name: String },
+    /// List access modules.
+    Modules,
 }
 
 #[derive(Subcommand, Debug)]
@@ -223,6 +254,24 @@ enum WasmAction {
 enum TenantAction {
     /// List tenants.
     List,
+    /// Create a tenant.
+    Create {
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        industry: Option<String>,
+        #[arg(long, default_value = "COMPANY")]
+        kind: String,
+    },
+    /// Delete a tenant by id or name.
+    Delete { id: String },
+    /// Grant modules to a tenant (comma-separated module codes).
+    AssignModules {
+        #[arg(long)]
+        tenant: String,
+        #[arg(long, value_delimiter = ',')]
+        modules: Vec<String>,
+    },
 }
 
 /// Wrapper so each group gets its own action subcommand.
@@ -704,16 +753,55 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
                 output::note(&format!("deleted {n} user(s)"));
                 Ok(())
             }
+            UserAction::Update { email, first, last, active } => {
+                let n = admin::user_update(email, first.as_deref(), last.as_deref(), *active).await?;
+                output::note(&format!("updated {n} user(s)"));
+                Ok(())
+            }
+            UserAction::AssignRole { email, role } => {
+                admin::user_assign_role(email, role).await?;
+                output::note(&format!("assigned role '{role}' to {email}"));
+                Ok(())
+            }
         },
-        Command::Role(g) => match g.action {
+        Command::Role(g) => match &g.action {
             RoleAction::List => {
                 println!("{}", output::auto(cli.output, &admin::role_list().await?)?);
                 Ok(())
             }
+            RoleAction::Create { name, description, tenant } => {
+                admin::role_create(name, description, tenant.as_deref()).await?;
+                output::note(&format!("created role {name}"));
+                Ok(())
+            }
+            RoleAction::Delete { name } => {
+                let n = admin::role_delete(name).await?;
+                output::note(&format!("deleted {n} role(s)"));
+                Ok(())
+            }
+            RoleAction::Modules => {
+                println!("{}", output::auto(cli.output, &admin::list_modules().await?)?);
+                Ok(())
+            }
         },
-        Command::Tenant(g) => match g.action {
+        Command::Tenant(g) => match &g.action {
             TenantAction::List => {
                 println!("{}", output::auto(cli.output, &admin::tenant_list().await?)?);
+                Ok(())
+            }
+            TenantAction::Create { name, industry, kind } => {
+                admin::tenant_create(name, industry.as_deref(), kind).await?;
+                output::note(&format!("created tenant {name}"));
+                Ok(())
+            }
+            TenantAction::Delete { id } => {
+                let n = admin::tenant_delete(id).await?;
+                output::note(&format!("deleted {n} tenant(s)"));
+                Ok(())
+            }
+            TenantAction::AssignModules { tenant, modules } => {
+                let n = admin::tenant_assign_modules(tenant, modules).await?;
+                output::note(&format!("assigned {n} module(s) to tenant"));
                 Ok(())
             }
         },

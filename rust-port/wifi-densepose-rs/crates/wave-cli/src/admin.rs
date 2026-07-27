@@ -175,3 +175,138 @@ pub async fn user_delete(email: &str) -> Result<u64> {
         .await?;
     Ok(res.rows_affected())
 }
+
+pub async fn user_update(
+    email: &str,
+    first: Option<&str>,
+    last: Option<&str>,
+    active: Option<bool>,
+) -> Result<u64> {
+    let pool = open().await?;
+    let res = sqlx::query(
+        "UPDATE users SET first_name = COALESCE(?1, first_name), \
+         last_name = COALESCE(?2, last_name), is_active = COALESCE(?3, is_active), \
+         updated_at = datetime('now') WHERE email = ?4",
+    )
+    .bind(first)
+    .bind(last)
+    .bind(active.map(|b| b as i64))
+    .bind(email)
+    .execute(&pool)
+    .await?;
+    Ok(res.rows_affected())
+}
+
+pub async fn user_assign_role(email: &str, role_name: &str) -> Result<()> {
+    let pool = open().await?;
+    let uid: String = sqlx::query_scalar("SELECT id FROM users WHERE email = ?1")
+        .bind(email)
+        .fetch_optional(&pool)
+        .await?
+        .context("user not found")?;
+    let rid: String = sqlx::query_scalar("SELECT id FROM roles WHERE name = ?1 LIMIT 1")
+        .bind(role_name)
+        .fetch_optional(&pool)
+        .await?
+        .context("role not found")?;
+    sqlx::query("INSERT INTO user_roles (id, user_id, role_id) VALUES (?1, ?2, ?3)")
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(uid)
+        .bind(rid)
+        .execute(&pool)
+        .await
+        .context("assigning role (already assigned?)")?;
+    Ok(())
+}
+
+async fn first_tenant(pool: &SqlitePool) -> Result<String> {
+    sqlx::query_scalar("SELECT id FROM tenants LIMIT 1")
+        .fetch_optional(pool)
+        .await?
+        .context("no tenant in wave.db — activate a license / create a tenant first")
+}
+
+pub async fn role_create(name: &str, description: &str, tenant: Option<&str>) -> Result<()> {
+    let pool = open().await?;
+    let tenant_id = match tenant {
+        Some(t) => t.to_string(),
+        None => first_tenant(&pool).await?,
+    };
+    sqlx::query("INSERT INTO roles (id, name, description, tenant_id) VALUES (?1, ?2, ?3, ?4)")
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(name)
+        .bind(description)
+        .bind(tenant_id)
+        .execute(&pool)
+        .await
+        .context("creating role")?;
+    Ok(())
+}
+
+pub async fn role_delete(name: &str) -> Result<u64> {
+    let pool = open().await?;
+    let res = sqlx::query("DELETE FROM roles WHERE name = ?1")
+        .bind(name)
+        .execute(&pool)
+        .await?;
+    Ok(res.rows_affected())
+}
+
+pub async fn list_modules() -> Result<Value> {
+    let pool = open().await?;
+    let rows = sqlx::query("SELECT code, name FROM access_modules ORDER BY code")
+        .fetch_all(&pool)
+        .await?;
+    let mods: Vec<Value> = rows
+        .iter()
+        .map(|r| json!({ "code": r.get::<String, _>("code"), "name": r.get::<String, _>("name") }))
+        .collect();
+    Ok(json!({ "modules": mods }))
+}
+
+pub async fn tenant_create(name: &str, industry: Option<&str>, kind: &str) -> Result<()> {
+    let pool = open().await?;
+    sqlx::query("INSERT INTO tenants (id, name, industry, type) VALUES (?1, ?2, ?3, ?4)")
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(name)
+        .bind(industry)
+        .bind(kind)
+        .execute(&pool)
+        .await
+        .context("creating tenant")?;
+    Ok(())
+}
+
+pub async fn tenant_delete(id_or_name: &str) -> Result<u64> {
+    let pool = open().await?;
+    let res = sqlx::query("DELETE FROM tenants WHERE id = ?1 OR name = ?1")
+        .bind(id_or_name)
+        .execute(&pool)
+        .await?;
+    Ok(res.rows_affected())
+}
+
+pub async fn tenant_assign_modules(tenant_id: &str, module_codes: &[String]) -> Result<u64> {
+    let pool = open().await?;
+    let mut n = 0u64;
+    for code in module_codes {
+        let mid: Option<String> = sqlx::query_scalar("SELECT id FROM access_modules WHERE code = ?1")
+            .bind(code)
+            .fetch_optional(&pool)
+            .await?;
+        if let Some(module_id) = mid {
+            let res = sqlx::query(
+                "INSERT INTO tenant_modules (id, tenant_id, module_id, is_active) VALUES (?1, ?2, ?3, 1)",
+            )
+            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(tenant_id)
+            .bind(module_id)
+            .execute(&pool)
+            .await;
+            if res.is_ok() {
+                n += 1;
+            }
+        }
+    }
+    Ok(n)
+}
