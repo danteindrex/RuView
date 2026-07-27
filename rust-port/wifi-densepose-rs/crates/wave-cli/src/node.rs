@@ -96,6 +96,30 @@ pub async fn wasm_upload(node_ip: &str, file: &str, name: &str, auto_start: bool
     Ok(serde_json::from_str(&text).unwrap_or(json!({ "ok": true })))
 }
 
+pub async fn wasm_info(node_ip: &str, id: &str) -> Result<Value> {
+    let url = format!("http://{node_ip}:{WASM_PORT}/wasm/{id}");
+    let text = client(10)?.get(&url).send().await.with_context(|| format!("GET {url}"))?.text().await.unwrap_or_default();
+    Ok(serde_json::from_str(&text).unwrap_or(json!({ "response": text })))
+}
+
+pub async fn wasm_stats(node_ip: &str) -> Result<Value> {
+    let url = format!("http://{node_ip}:{WASM_PORT}/wasm/stats");
+    let text = client(10)?.get(&url).send().await.with_context(|| format!("GET {url}"))?.text().await.unwrap_or_default();
+    Ok(serde_json::from_str(&text).unwrap_or(json!({ "response": text })))
+}
+
+pub async fn wasm_support(node_ip: &str) -> Result<Value> {
+    let url = format!("http://{node_ip}:{WASM_PORT}/wasm/support");
+    match client(5)?.get(&url).send().await {
+        Ok(r) => {
+            let ok = r.status().is_success();
+            let text = r.text().await.unwrap_or_default();
+            Ok(serde_json::from_str(&text).unwrap_or(json!({ "supported": ok })))
+        }
+        Err(e) => Ok(json!({ "supported": false, "error": e.to_string() })),
+    }
+}
+
 pub async fn wasm_control(node_ip: &str, id: &str, action: &str) -> Result<Value> {
     let url = format!("http://{node_ip}:{WASM_PORT}/wasm/{id}/{action}");
     let resp = client(15)?.post(&url).send().await.with_context(|| format!("POST {url}"))?;

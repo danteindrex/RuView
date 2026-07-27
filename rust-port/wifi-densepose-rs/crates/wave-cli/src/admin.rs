@@ -219,6 +219,28 @@ pub async fn user_assign_role(email: &str, role_name: &str) -> Result<()> {
     Ok(())
 }
 
+pub async fn set_password(email: &str, new_password: &str) -> Result<u64> {
+    use argon2::password_hash::{PasswordHasher, SaltString};
+    use argon2::Argon2;
+    use rand_core::OsRng;
+
+    let pool = open().await?;
+    let salt = SaltString::generate(&mut OsRng);
+    let hash = Argon2::default()
+        .hash_password(new_password.as_bytes(), &salt)
+        .map_err(|e| anyhow::anyhow!("hashing password: {e}"))?
+        .to_string();
+    let res = sqlx::query(
+        "UPDATE users SET password_hash = ?1, must_change_password = 0, updated_at = datetime('now') \
+         WHERE email = ?2",
+    )
+    .bind(hash)
+    .bind(email)
+    .execute(&pool)
+    .await?;
+    Ok(res.rows_affected())
+}
+
 async fn first_tenant(pool: &SqlitePool) -> Result<String> {
     sqlx::query_scalar("SELECT id FROM tenants LIMIT 1")
         .fetch_optional(pool)

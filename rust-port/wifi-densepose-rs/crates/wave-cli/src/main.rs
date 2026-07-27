@@ -19,6 +19,7 @@ mod output;
 mod pathcmd;
 mod pi;
 mod serverproc;
+mod settings;
 
 use clap::{Args, Parser, Subcommand};
 
@@ -110,6 +111,8 @@ enum Command {
     License,
     /// Show the plan tier (wave.db).
     Plan,
+    /// Read/write app settings (settings.json).
+    Config(GroupArgs<ConfigAction>),
     /// Add/remove wave-cli from the system PATH (run by the installer, or manually).
     Path(GroupArgs<pathcmd::PathAction>),
     /// Environment + connectivity self-check.
@@ -160,6 +163,13 @@ enum UserAction {
         email: String,
         #[arg(long)]
         role: String,
+    },
+    /// Set/reset a user's password.
+    Passwd {
+        #[arg(long)]
+        email: String,
+        #[arg(long)]
+        password: String,
     },
 }
 
@@ -248,6 +258,12 @@ enum WasmAction {
     Start { #[arg(long)] node: String, #[arg(long)] id: String },
     /// Stop a module.
     Stop { #[arg(long)] node: String, #[arg(long)] id: String },
+    /// Show a module's detail.
+    Info { #[arg(long)] node: String, #[arg(long)] id: String },
+    /// Show the node's WASM runtime stats.
+    Stats { #[arg(long)] node: String },
+    /// Show the node's WASM support/capabilities.
+    Support { #[arg(long)] node: String },
 }
 
 #[derive(Subcommand, Debug)]
@@ -343,6 +359,16 @@ enum SerialAction {
 enum WifiAction {
     /// Scan nearby WiFi networks (SSID + band).
     Scan,
+    /// Show this PC's current SSID + LAN IP (hub info).
+    Host,
+}
+
+#[derive(Subcommand, Debug)]
+enum ConfigAction {
+    /// Get all settings, or one key.
+    Get { key: Option<String> },
+    /// Set one key (value parsed as JSON, else string).
+    Set { key: String, value: String },
 }
 
 #[derive(Subcommand, Debug)]
@@ -385,6 +411,28 @@ enum Esp32Action {
         port: String,
         #[arg(long, default_value_t = 30)]
         timeout: u64,
+    },
+    /// List the chips onboarding supports.
+    Chips,
+    /// Erase the node's NVS (clears provisioning).
+    EraseNvs {
+        #[arg(long)]
+        port: String,
+        #[arg(long, default_value = "esp32s3")]
+        chip: String,
+        #[arg(long, default_value_t = 460800)]
+        baud: u32,
+    },
+    /// Dump the raw NVS region to a file.
+    ReadNvs {
+        #[arg(long)]
+        port: String,
+        #[arg(long, default_value = "esp32s3")]
+        chip: String,
+        #[arg(long)]
+        out: String,
+        #[arg(long, default_value_t = 460800)]
+        baud: u32,
     },
     /// Full flow: flash → provision → serial-check → watch the roster.
     Onboard {
@@ -566,6 +614,21 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
         },
         Command::Wifi(g) => match g.action {
             WifiAction::Scan => wifi_scan_cmd(cli),
+            WifiAction::Host => {
+                println!("{}", output::auto(cli.output, &hardware::host_info())?);
+                Ok(())
+            }
+        },
+        Command::Config(g) => match &g.action {
+            ConfigAction::Get { key } => {
+                println!("{}", output::auto(cli.output, &settings::get(key.as_deref())?)?);
+                Ok(())
+            }
+            ConfigAction::Set { key, value } => {
+                settings::set(key, value)?;
+                output::note(&format!("set {key}"));
+                Ok(())
+            }
         },
         Command::Esp32(g) => match &g.action {
             Esp32Action::Flash { port, chip, tag, baud } => {
@@ -599,6 +662,20 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
             }
             Esp32Action::Onboard { port, chip, ssid, password, target_ip, node_id, skip_flash } => {
                 esp32_onboard(cli, port, chip, ssid, password.clone(), target_ip.clone(), *node_id, *skip_flash).await
+            }
+            Esp32Action::Chips => {
+                println!("{}", output::auto(cli.output, &esp32::supported_chips())?);
+                Ok(())
+            }
+            Esp32Action::EraseNvs { port, chip, baud } => {
+                esp32::erase_nvs(port, chip, *baud)?;
+                output::note(&format!("erased NVS on {port}"));
+                Ok(())
+            }
+            Esp32Action::ReadNvs { port, chip, out, baud } => {
+                esp32::read_nvs(port, chip, out, *baud)?;
+                output::note(&format!("dumped NVS to {out}"));
+                Ok(())
             }
         },
         Command::Ota(g) => match &g.action {
@@ -643,6 +720,18 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
             WasmAction::Stop { node, id } => {
                 node::wasm_control(node, id, "stop").await?;
                 output::note(&format!("stopped {id} on {node}"));
+                Ok(())
+            }
+            WasmAction::Info { node, id } => {
+                println!("{}", output::auto(cli.output, &node::wasm_info(node, id).await?)?);
+                Ok(())
+            }
+            WasmAction::Stats { node } => {
+                println!("{}", output::auto(cli.output, &node::wasm_stats(node).await?)?);
+                Ok(())
+            }
+            WasmAction::Support { node } => {
+                println!("{}", output::auto(cli.output, &node::wasm_support(node).await?)?);
                 Ok(())
             }
         },
@@ -761,6 +850,11 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
             UserAction::AssignRole { email, role } => {
                 admin::user_assign_role(email, role).await?;
                 output::note(&format!("assigned role '{role}' to {email}"));
+                Ok(())
+            }
+            UserAction::Passwd { email, password } => {
+                let n = admin::set_password(email, password).await?;
+                output::note(&format!("password set for {n} user(s)"));
                 Ok(())
             }
         },

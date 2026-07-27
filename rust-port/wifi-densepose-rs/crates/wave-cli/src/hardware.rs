@@ -213,3 +213,29 @@ pub fn host_lan_ip() -> Option<String> {
 pub fn host_lan_ip() -> Option<String> {
     None
 }
+
+/// This PC's current WiFi SSID + LAN IP (the hub info for provisioning).
+#[cfg(windows)]
+pub fn host_info() -> serde_json::Value {
+    let ssid = std::process::Command::new("netsh")
+        .args(["wlan", "show", "interfaces"])
+        .output()
+        .ok()
+        .and_then(|o| {
+            let t = String::from_utf8_lossy(&o.stdout).to_string();
+            t.lines().find_map(|l| {
+                let l = l.trim();
+                if l.starts_with("SSID") && l.contains(':') {
+                    l.split_once(':').map(|(_, v)| v.trim().to_string())
+                } else {
+                    None
+                }
+            })
+        });
+    serde_json::json!({ "ssid": ssid, "lan_ip": host_lan_ip() })
+}
+
+#[cfg(not(windows))]
+pub fn host_info() -> serde_json::Value {
+    serde_json::json!({ "ssid": serde_json::Value::Null, "lan_ip": host_lan_ip() })
+}

@@ -115,6 +115,38 @@ pub fn provision(
     r
 }
 
+/// Erase the node's NVS region (0x9000, 0x6000) — clears provisioning.
+pub fn erase_nvs(port: &str, chip: &str, baud: u32) -> Result<()> {
+    let args: Vec<String> = vec![
+        "--chip".into(), chip.into(),
+        "--port".into(), port.into(),
+        "--baud".into(), baud.to_string(),
+        "erase-region".into(),
+        "0x9000".into(),
+        "0x6000".into(),
+    ];
+    run_esptool(&args)
+}
+
+/// Read the raw NVS region to a local file (for inspection / backup).
+pub fn read_nvs(port: &str, chip: &str, out_file: &str, baud: u32) -> Result<()> {
+    let args: Vec<String> = vec![
+        "--chip".into(), chip.into(),
+        "--port".into(), port.into(),
+        "--baud".into(), baud.to_string(),
+        "read-flash".into(),
+        "0x9000".into(),
+        "0x6000".into(),
+        out_file.into(),
+    ];
+    run_esptool(&args)
+}
+
+/// The chips wave-cli's onboarding supports.
+pub fn supported_chips() -> serde_json::Value {
+    serde_json::json!({ "chips": ["esp32s3", "esp32c6", "esp32", "esp32s2"] })
+}
+
 /// Read the serial boot log to confirm WiFi association. Returns (joined, ip, log_tail).
 pub fn serial_check(port: &str, timeout_secs: u64) -> Result<(bool, Option<String>, String)> {
     let script = r#"import serial, sys, time, re
