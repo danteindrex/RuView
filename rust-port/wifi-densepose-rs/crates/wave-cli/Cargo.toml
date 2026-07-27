@@ -49,6 +49,10 @@ argon2 = "0.5"
 rand_core = { version = "0.6", features = ["getrandom"] }
 uuid = { version = "1", features = ["v4"] }
 
+# Frappe/enterprise config: the OS keychain, same service the desktop uses
+# (`ruview-frappe`), so credentials set here are picked up by the app and vice-versa.
+keyring = "2"
+
 # Windows-only: edit the user PATH registry for `wave-cli path install`.
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

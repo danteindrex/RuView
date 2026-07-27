@@ -11,7 +11,9 @@
 
 mod admin;
 mod client;
+mod enterprise;
 mod esp32;
+mod frappe;
 mod hardware;
 mod node;
 mod nvs;
@@ -113,6 +115,16 @@ enum Command {
     Plan,
     /// Read/write app settings (settings.json).
     Config(GroupArgs<ConfigAction>),
+    /// Cloud backend (Frappe) credentials — same keychain the desktop uses.
+    Frappe(GroupArgs<FrappeAction>),
+    /// LangGraph insight pipeline + analytics (needs the Frappe backend).
+    Insight(GroupArgs<InsightAction>),
+    /// This installation's deployment identity + multi-location registry.
+    Deployment(GroupArgs<DeploymentAction>),
+    /// WhatsApp (whapi) enterprise alerts — per-tenant, in wave.db.
+    Alerts(GroupArgs<AlertsAction>),
+    /// Cloud upload configuration (read-only).
+    Cloud(GroupArgs<CloudAction>),
     /// Add/remove wave-cli from the system PATH (run by the installer, or manually).
     Path(GroupArgs<pathcmd::PathAction>),
     /// Environment + connectivity self-check.
@@ -372,6 +384,129 @@ enum ConfigAction {
 }
 
 #[derive(Subcommand, Debug)]
+enum FrappeAction {
+    /// Show the Frappe URL + a masked key hint.
+    Config,
+    /// Set Frappe URL and API key/secret (stored in the OS keychain).
+    Set {
+        #[arg(long)]
+        url: String,
+        #[arg(long)]
+        api_key: Option<String>,
+        #[arg(long)]
+        api_secret: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum InsightAction {
+    /// Enqueue the LangGraph insight pipeline for a recorded session.
+    Run {
+        #[arg(long)]
+        session_id: String,
+        /// Deployment id (defaults to this installation's).
+        #[arg(long)]
+        deployment_id: Option<String>,
+        #[arg(long, default_value_t = 0)]
+        duration_seconds: i64,
+        #[arg(long, default_value_t = 0.0)]
+        csi_snr_db: f64,
+        /// Vital summary as JSON (default `{}`).
+        #[arg(long)]
+        vitals: Option<String>,
+        /// Pose anomaly label (repeatable).
+        #[arg(long = "anomaly")]
+        anomalies: Vec<String>,
+    },
+    /// Poll for a session's insight report.
+    Get { session_id: String },
+    /// HR/BR trend data across recent sessions.
+    Trends,
+    /// Risk-level distribution across sessions.
+    Risk,
+}
+
+#[derive(Subcommand, Debug)]
+enum DeploymentAction {
+    /// Show this installation's deployment identity (local).
+    Info,
+    /// Set the deployment name / location / coordinates (local).
+    Set {
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        location: Option<String>,
+        #[arg(long)]
+        lat: Option<f64>,
+        #[arg(long)]
+        lon: Option<f64>,
+        #[arg(long)]
+        tenant: Option<String>,
+    },
+    /// Register / heartbeat this deployment with Frappe.
+    Register,
+    /// List all deployments for a tenant (Frappe).
+    List {
+        #[arg(long)]
+        tenant: String,
+    },
+    /// Aggregate status across a tenant's deployments (Frappe).
+    Aggregate {
+        #[arg(long)]
+        tenant: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum AlertsAction {
+    /// Show a tenant's alert settings (whapi config masked).
+    Settings {
+        #[arg(long)]
+        tenant: String,
+    },
+    /// Set a tenant's whapi token / number / alert target.
+    Set {
+        #[arg(long)]
+        tenant: String,
+        #[arg(long)]
+        token: Option<String>,
+        #[arg(long)]
+        number: Option<String>,
+        #[arg(long)]
+        target: Option<String>,
+    },
+    /// Fetch a WhatsApp login QR for the tenant's whapi account.
+    Qr {
+        #[arg(long)]
+        tenant: String,
+    },
+    /// Send a test alert (sends a real WhatsApp message — confirms first).
+    Test {
+        #[arg(long)]
+        tenant: String,
+        /// Skip the confirmation prompt.
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Send an alert message (sends a real WhatsApp message — confirms first).
+    Send {
+        #[arg(long)]
+        tenant: String,
+        #[arg(long)]
+        message: String,
+        /// Skip the confirmation prompt.
+        #[arg(long)]
+        yes: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum CloudAction {
+    /// Show the cloud upload endpoint + signing-key status.
+    Config,
+}
+
+#[derive(Subcommand, Debug)]
 enum Esp32Action {
     /// Flash the release firmware bundle (downloads + esptool).
     Flash {
@@ -627,6 +762,118 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
             ConfigAction::Set { key, value } => {
                 settings::set(key, value)?;
                 output::note(&format!("set {key}"));
+                Ok(())
+            }
+        },
+        Command::Frappe(g) => match &g.action {
+            FrappeAction::Config => {
+                println!("{}", output::auto(cli.output, &frappe::config_get()?)?);
+                Ok(())
+            }
+            FrappeAction::Set { url, api_key, api_secret } => {
+                frappe::config_set(url, api_key.as_deref(), api_secret.as_deref())?;
+                output::note(&format!("saved Frappe config → {url}"));
+                Ok(())
+            }
+        },
+        Command::Insight(g) => match &g.action {
+            InsightAction::Run {
+                session_id, deployment_id, duration_seconds, csi_snr_db, vitals, anomalies,
+            } => {
+                let dep = match deployment_id {
+                    Some(d) => d.clone(),
+                    None => frappe::deployment_load_or_create()?.deployment_id,
+                };
+                let vs: serde_json::Value = vitals
+                    .as_deref()
+                    .map(|s| serde_json::from_str(s))
+                    .transpose()
+                    .map_err(|e| CliError { code: exit::USAGE, msg: format!("--vitals must be JSON: {e}") })?
+                    .unwrap_or_else(|| serde_json::json!({}));
+                let v = frappe::insight_run(session_id, &dep, *duration_seconds, *csi_snr_db, vs, anomalies.clone()).await.map_err(net)?;
+                println!("{}", output::auto(cli.output, &v)?);
+                Ok(())
+            }
+            InsightAction::Get { session_id } => {
+                let v = frappe::insight_get(session_id).await.map_err(net)?;
+                println!("{}", output::auto(cli.output, &v)?);
+                Ok(())
+            }
+            InsightAction::Trends => {
+                let v = frappe::insight_trends().await.map_err(net)?;
+                println!("{}", output::auto(cli.output, &v)?);
+                Ok(())
+            }
+            InsightAction::Risk => {
+                let v = frappe::insight_risk().await.map_err(net)?;
+                println!("{}", output::auto(cli.output, &v)?);
+                Ok(())
+            }
+        },
+        Command::Deployment(g) => match &g.action {
+            DeploymentAction::Info => {
+                println!("{}", output::auto(cli.output, &serde_json::to_value(frappe::deployment_load_or_create()?)?)?);
+                Ok(())
+            }
+            DeploymentAction::Set { name, location, lat, lon, tenant } => {
+                let info = frappe::deployment_set(name.as_deref(), location.as_deref(), *lat, *lon, tenant.as_deref())?;
+                output::note("updated deployment identity");
+                println!("{}", output::auto(cli.output, &serde_json::to_value(info)?)?);
+                Ok(())
+            }
+            DeploymentAction::Register => {
+                let v = frappe::deployment_register().await.map_err(net)?;
+                if !cli.quiet { output::note("registered with Frappe"); }
+                println!("{}", output::auto(cli.output, &v)?);
+                Ok(())
+            }
+            DeploymentAction::List { tenant } => {
+                let v = frappe::deployment_list(tenant).await.map_err(net)?;
+                println!("{}", output::auto(cli.output, &v)?);
+                Ok(())
+            }
+            DeploymentAction::Aggregate { tenant } => {
+                let v = frappe::deployment_aggregate(tenant).await.map_err(net)?;
+                println!("{}", output::auto(cli.output, &v)?);
+                Ok(())
+            }
+        },
+        Command::Alerts(g) => match &g.action {
+            AlertsAction::Settings { tenant } => {
+                println!("{}", output::auto(cli.output, &enterprise::settings_get(tenant).await?)?);
+                Ok(())
+            }
+            AlertsAction::Set { tenant, token, number, target } => {
+                enterprise::settings_set(tenant, token.as_deref(), number.as_deref(), target.as_deref()).await?;
+                output::note(&format!("updated alert settings for tenant {tenant}"));
+                Ok(())
+            }
+            AlertsAction::Qr { tenant } => {
+                println!("{}", output::auto(cli.output, &enterprise::qr(tenant).await.map_err(net)?)?);
+                Ok(())
+            }
+            AlertsAction::Test { tenant, yes } => {
+                if !confirm(*yes, &format!("send a REAL test WhatsApp alert for tenant {tenant}?")) {
+                    output::note("aborted");
+                    return Ok(());
+                }
+                enterprise::send(tenant, "🚨 RuView Enterprise: Test notification successful.").await.map_err(net)?;
+                output::note("test alert sent");
+                Ok(())
+            }
+            AlertsAction::Send { tenant, message, yes } => {
+                if !confirm(*yes, &format!("send a REAL WhatsApp alert for tenant {tenant}?")) {
+                    output::note("aborted");
+                    return Ok(());
+                }
+                enterprise::send(tenant, message).await.map_err(net)?;
+                output::note("alert sent");
+                Ok(())
+            }
+        },
+        Command::Cloud(g) => match &g.action {
+            CloudAction::Config => {
+                println!("{}", output::auto(cli.output, &frappe::cloud_config())?);
                 Ok(())
             }
         },
@@ -914,6 +1161,24 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
 /// Map any error to a network-category CLI error (shared by REST handlers).
 fn net(e: anyhow::Error) -> anyhow::Error {
     CliError { code: exit::NETWORK, msg: e.to_string() }.into()
+}
+
+/// Confirm a side-effecting action. Returns true to proceed. `--yes` skips the
+/// prompt; a non-interactive stdin without `--yes` refuses (safe default).
+fn confirm(yes: bool, prompt: &str) -> bool {
+    if yes {
+        return true;
+    }
+    if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+        eprintln!("refusing {prompt} without --yes (non-interactive)");
+        return false;
+    }
+    use std::io::Write;
+    eprint!("{prompt} [y/N] ");
+    let _ = std::io::stderr().flush();
+    let mut line = String::new();
+    std::io::stdin().read_line(&mut line).ok();
+    line.trim().eq_ignore_ascii_case("y")
 }
 
 /// GET a path and auto-render it (table/json/yaml). Used by the thin REST verbs.
@@ -1331,10 +1596,18 @@ fn print_coverage(cli: &Cli) {
         ("admin (wave.db)", "user (crud/update/assign/passwd), role, tenant, license, plan", "done"),
         ("PATH install", "path install/uninstall/status", "done"),
         ("Raspberry Pi (SSH)", "pi probe/service/health", "core*"),
+        ("Frappe backend config", "frappe config/set (OS keychain)", "done"),
+        ("deployment identity", "deployment info/set (local deployment.json)", "done"),
+        ("cloud config (read)", "cloud config", "done"),
+        ("alerts config", "alerts settings/set (wave.db tenant_settings)", "done"),
+        ("insight pipeline", "insight run/get/trends/risk (Frappe)", "coupled*"),
+        ("deployment registry", "deployment register/list/aggregate (Frappe)", "coupled*"),
+        ("whapi alerts", "alerts qr/test/send (whapi.cloud)", "coupled*"),
         ("license activate", "(cloud/dev-bypass)", "TODO"),
         ("flash verify / fetch", "esp32 verify, firmware fetch", "TODO"),
         ("Pi deploy/nexmon", "(desktop wizard / nexmon_setup_auto.sh)", "desktop"),
-        ("enterprise/cloud/insights", "deployment/cloud/insight/alerts/telemetry/frappe", "coupled"),
+        ("cloud consent/upload", "(no-op stub / app deployment+HMAC)", "desktop-only"),
+        ("telemetry (langfuse)", "(desktop sets ephemeral process env only)", "desktop-only"),
     ];
     let value: Vec<serde_json::Value> = rows
         .iter()
@@ -1350,7 +1623,8 @@ fn print_coverage(cli: &Cli) {
     .unwrap_or_default();
     println!("{out}");
     if !cli.quiet {
-        output::note("* code-complete; hardware acceptance owed (needs a node/board). TODO = not yet built.");
+        output::note("* code-complete, acceptance owed: done* needs a node/board; coupled* needs a live \
+Frappe/whapi backend. TODO = not yet built. desktop-only = not portable to a CLI (no-op/ephemeral in the app).");
     }
 }
 

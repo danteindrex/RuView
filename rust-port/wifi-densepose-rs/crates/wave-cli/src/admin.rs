@@ -26,7 +26,7 @@ fn db_path() -> Result<std::path::PathBuf> {
     Ok(p)
 }
 
-async fn open() -> Result<SqlitePool> {
+pub(crate) async fn open() -> Result<SqlitePool> {
     let opts = SqliteConnectOptions::new().filename(db_path()?);
     SqlitePoolOptions::new()
         .max_connections(1)
