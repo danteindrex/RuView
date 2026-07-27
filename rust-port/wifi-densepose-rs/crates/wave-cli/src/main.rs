@@ -109,8 +109,8 @@ enum Command {
     Role(GroupArgs<RoleAction>),
     /// List tenants (wave.db).
     Tenant(GroupArgs<TenantAction>),
-    /// Show the license status (wave.db).
-    License,
+    /// License status + first-launch activation (wave.db).
+    License(GroupArgs<LicenseAction>),
     /// Show the plan tier (wave.db).
     Plan,
     /// Read/write app settings (settings.json).
@@ -299,6 +299,32 @@ enum TenantAction {
         tenant: String,
         #[arg(long, value_delimiter = ',')]
         modules: Vec<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum LicenseAction {
+    /// Show the cached license status.
+    Status,
+    /// Activate a license key and seed the first tenant + admin user.
+    Activate {
+        #[arg(long)]
+        key: String,
+        /// Dev bypass: seed an enterprise dev tenant without a license server.
+        #[arg(long)]
+        dev: bool,
+        /// License server base URL (overrides $WAVE_LICENSE_SERVER_URL).
+        #[arg(long)]
+        server: Option<String>,
+        #[arg(long)]
+        admin_email: String,
+        #[arg(long, default_value = "Admin")]
+        admin_first: String,
+        #[arg(long, default_value = "User")]
+        admin_last: String,
+        /// Admin password (or set WAVE_NEW_PASSWORD).
+        #[arg(long)]
+        admin_password: Option<String>,
     },
 }
 
@@ -549,6 +575,22 @@ enum Esp32Action {
     },
     /// List the chips onboarding supports.
     Chips,
+    /// Download (and cache) the release firmware bundle without flashing.
+    Fetch {
+        #[arg(long, default_value = "v0.8.3-esp32")]
+        tag: String,
+    },
+    /// Verify a flashed node against the release bundle (esptool verify-flash).
+    Verify {
+        #[arg(long)]
+        port: String,
+        #[arg(long, default_value = "esp32s3")]
+        chip: String,
+        #[arg(long, default_value = "v0.8.3-esp32")]
+        tag: String,
+        #[arg(long, default_value_t = 460800)]
+        baud: u32,
+    },
     /// Erase the node's NVS (clears provisioning).
     EraseNvs {
         #[arg(long)]
@@ -914,6 +956,17 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
                 println!("{}", output::auto(cli.output, &esp32::supported_chips())?);
                 Ok(())
             }
+            Esp32Action::Fetch { tag } => {
+                let v = esp32::firmware_fetch(tag).await?;
+                if !cli.quiet { output::note("firmware bundle cached"); }
+                println!("{}", output::auto(cli.output, &v)?);
+                Ok(())
+            }
+            Esp32Action::Verify { port, chip, tag, baud } => {
+                esp32::verify(port, chip, tag, *baud).await?;
+                output::note(&format!("verified {chip} on {port} against {tag}"));
+                Ok(())
+            }
             Esp32Action::EraseNvs { port, chip, baud } => {
                 esp32::erase_nvs(port, chip, *baud)?;
                 output::note(&format!("erased NVS on {port}"));
@@ -1146,10 +1199,29 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
                 Ok(())
             }
         },
-        Command::License => {
-            println!("{}", output::auto(cli.output, &admin::license_status().await?)?);
-            Ok(())
-        }
+        Command::License(g) => match &g.action {
+            LicenseAction::Status => {
+                println!("{}", output::auto(cli.output, &admin::license_status().await?)?);
+                Ok(())
+            }
+            LicenseAction::Activate {
+                key, dev, server, admin_email, admin_first, admin_last, admin_password,
+            } => {
+                let pw = admin_password
+                    .clone()
+                    .or_else(|| std::env::var("WAVE_NEW_PASSWORD").ok())
+                    .filter(|p| !p.is_empty())
+                    .ok_or_else(|| CliError { code: exit::USAGE, msg: "provide --admin-password or set WAVE_NEW_PASSWORD".into() })?;
+                let url = server
+                    .clone()
+                    .or_else(|| std::env::var("WAVE_LICENSE_SERVER_URL").ok())
+                    .unwrap_or_else(|| "https://license.wave.io".to_string());
+                let v = admin::license_activate(key, &url, *dev, admin_email, admin_first, admin_last, &pw).await?;
+                if !cli.quiet { output::note("license activated"); }
+                println!("{}", output::auto(cli.output, &v)?);
+                Ok(())
+            }
+        },
         Command::Plan => {
             println!("{}", output::auto(cli.output, &admin::plan().await?)?);
             Ok(())
@@ -1603,8 +1675,8 @@ fn print_coverage(cli: &Cli) {
         ("insight pipeline", "insight run/get/trends/risk (Frappe)", "coupled*"),
         ("deployment registry", "deployment register/list/aggregate (Frappe)", "coupled*"),
         ("whapi alerts", "alerts qr/test/send (whapi.cloud)", "coupled*"),
-        ("license activate", "(cloud/dev-bypass)", "TODO"),
-        ("flash verify / fetch", "esp32 verify, firmware fetch", "TODO"),
+        ("license activate", "license activate (--dev bypass or license server)", "done"),
+        ("flash verify / fetch", "esp32 fetch, esp32 verify", "done*"),
         ("Pi deploy/nexmon", "(desktop wizard / nexmon_setup_auto.sh)", "desktop"),
         ("cloud consent/upload", "(no-op stub / app deployment+HMAC)", "desktop-only"),
         ("telemetry (langfuse)", "(desktop sets ephemeral process env only)", "desktop-only"),

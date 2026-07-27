@@ -78,6 +78,53 @@ pub async fn flash(port: &str, chip: &str, tag: &str, baud: u32) -> Result<()> {
     run_esptool(&args)
 }
 
+/// Download (and cache) the release firmware bundle without flashing. Returns
+/// the local paths + offsets so a later `verify`/`flash` reuses the cache.
+pub async fn firmware_fetch(tag: &str) -> Result<serde_json::Value> {
+    let dir = cache_dir(tag)?;
+    let http = reqwest::Client::new();
+    let mut files = Vec::new();
+    for (asset, off) in ASSETS {
+        let dest = dir.join(asset);
+        if !dest.exists() {
+            let url = format!("https://github.com/{FIRMWARE_REPO}/releases/download/{tag}/{asset}");
+            eprintln!("downloading {asset} …");
+            let resp = http.get(&url).send().await.with_context(|| format!("GET {url}"))?;
+            let resp = resp.error_for_status().with_context(|| {
+                format!("download {asset} failed (is release '{tag}' published?)")
+            })?;
+            std::fs::write(&dest, &resp.bytes().await?)?;
+        }
+        files.push(serde_json::json!({
+            "asset": asset,
+            "offset": off,
+            "path": dest.to_string_lossy(),
+            "size": std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0),
+        }));
+    }
+    Ok(serde_json::json!({ "tag": tag, "dir": dir.to_string_lossy(), "files": files }))
+}
+
+/// Verify the flashed firmware against the release bundle (esptool verify-flash).
+pub async fn verify(port: &str, chip: &str, tag: &str, baud: u32) -> Result<()> {
+    let dir = cache_dir(tag)?;
+    // Ensure the bundle is present locally to compare against.
+    firmware_fetch(tag).await?;
+    let mut args: Vec<String> = vec![
+        "--chip".into(), chip.into(),
+        "--port".into(), port.into(),
+        "--baud".into(), baud.to_string(),
+        "verify-flash".into(),
+        "--flash-size".into(), "8MB".into(),
+    ];
+    for (asset, off) in ASSETS {
+        args.push(off.to_string());
+        args.push(dir.join(asset).to_string_lossy().to_string());
+    }
+    eprintln!("verifying {chip} on {port} …");
+    run_esptool(&args)
+}
+
 /// Provision the `csi_cfg` NVS (WiFi creds + hub target) and write it at 0x9000.
 pub fn provision(
     port: &str,

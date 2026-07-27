@@ -118,6 +118,211 @@ pub async fn license_status() -> Result<Value> {
     })
 }
 
+/// The 12 Wave access modules (id, code, name) — mirrors the desktop's seed.
+const WAVE_MODULES: &[(&str, &str, &str)] = &[
+    ("mod-dashboard", "dashboard", "Dashboard"),
+    ("mod-network", "network", "Network Management"),
+    ("mod-firmware", "firmware", "Firmware Management"),
+    ("mod-edge", "edge-modules", "Edge Modules"),
+    ("mod-pi", "pi-nodes", "Pi Node Management"),
+    ("mod-sensing", "sensing", "Sensing Server"),
+    ("mod-mesh", "mesh", "Mesh Network"),
+    ("mod-provision", "provisioning", "Device Provisioning"),
+    ("mod-pose", "pose-3d", "3D Pose Visualization"),
+    ("mod-settings", "settings", "System Settings"),
+    ("mod-users", "user-management", "User Management"),
+    ("mod-tenants", "tenant-management", "Tenant Management"),
+];
+
+/// This machine's hardware fingerprint (SHA-256 of the machine UID) — identical
+/// to the desktop's `get_hardware_fingerprint`, so a key bound here validates in
+/// the app.
+fn hardware_fingerprint() -> String {
+    match machine_uid::get() {
+        Ok(uid) => {
+            use sha2::{Digest, Sha256};
+            hex::encode(Sha256::digest(uid.as_bytes()))
+        }
+        Err(_) => "unknown".to_string(),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct LicenseServerResponse {
+    valid: bool,
+    tenant: Option<LicenseTenant>,
+    tier: Option<String>,
+    modules: Option<Vec<String>>,
+    max_users: Option<i32>,
+    expires_at: Option<String>,
+    error: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct LicenseTenant {
+    id: String,
+    name: String,
+    industry: Option<String>,
+}
+
+/// Activate a license and seed the first-launch tenant/admin — mirrors the
+/// desktop `activate_license` command end to end (license row, tenant,
+/// tenant_modules, default Admin role + permissions, first admin user).
+///
+/// `dev` fabricates the same enterprise dev-tenant the desktop uses in debug
+/// builds (no server call); otherwise POSTs to the license server.
+#[allow(clippy::too_many_arguments)]
+pub async fn license_activate(
+    license_key: &str,
+    server_url: &str,
+    dev: bool,
+    admin_email: &str,
+    admin_first: &str,
+    admin_last: &str,
+    admin_password: &str,
+) -> Result<Value> {
+    use argon2::password_hash::{PasswordHasher, SaltString};
+    use argon2::Argon2;
+    use rand_core::OsRng;
+
+    let fingerprint = hardware_fingerprint();
+    let app_version = env!("CARGO_PKG_VERSION");
+
+    // 1. Resolve the license (dev bypass or license server).
+    let resp: LicenseServerResponse = if dev {
+        LicenseServerResponse {
+            valid: true,
+            tenant: Some(LicenseTenant {
+                id: uuid::Uuid::new_v4().to_string(),
+                name: "Development Tenant".to_string(),
+                industry: Some("Software".to_string()),
+            }),
+            tier: Some("enterprise".to_string()),
+            modules: Some(WAVE_MODULES.iter().map(|(_, code, _)| code.to_string()).collect()),
+            max_users: Some(50),
+            expires_at: chrono::Utc::now()
+                .checked_add_months(chrono::Months::new(12))
+                .map(|d| d.format("%Y-%m-%dT%H:%M:%SZ").to_string()),
+            error: None,
+        }
+    } else {
+        let url = format!("{}/api/v1/license/activate", server_url.trim_end_matches('/'));
+        let http = reqwest::Client::new();
+        let r = http
+            .post(&url)
+            .json(&json!({
+                "license_key": license_key,
+                "hardware_fingerprint": fingerprint,
+                "app_version": app_version,
+            }))
+            .timeout(std::time::Duration::from_secs(30))
+            .send()
+            .await
+            .with_context(|| format!("cannot reach license server {url}"))?;
+        let status = r.status();
+        let body: LicenseServerResponse = r.json().await.context("invalid license server response")?;
+        if !status.is_success() || !body.valid {
+            anyhow::bail!("{}", body.error.unwrap_or_else(|| "invalid license key".into()));
+        }
+        body
+    };
+
+    let tenant = resp.tenant.as_ref().context("license server returned no tenant")?;
+    let modules = resp.modules.clone().unwrap_or_default();
+    let tier = resp.tier.as_deref().unwrap_or("starter");
+    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let expires = resp.expires_at.clone().unwrap_or_else(|| now.clone());
+
+    let pool = open().await?;
+
+    // 2. Ensure the 12 access modules exist (idempotent).
+    for (id, code, name) in WAVE_MODULES {
+        sqlx::query("INSERT OR IGNORE INTO access_modules (id, code, name) VALUES (?1, ?2, ?3)")
+            .bind(id).bind(code).bind(name)
+            .execute(&pool).await?;
+    }
+
+    // 3. Cache the license row.
+    let modules_json = serde_json::to_string(&modules).unwrap_or_default();
+    sqlx::query(
+        "INSERT INTO licenses \
+         (id, license_key, tenant_id, tenant_name, tier, hardware_fingerprint, allowed_modules, \
+          max_users, issued_at, expires_at, last_validated_at, is_active) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?9, 1)",
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(license_key).bind(&tenant.id).bind(&tenant.name).bind(tier)
+    .bind(&fingerprint).bind(&modules_json).bind(resp.max_users.unwrap_or(5))
+    .bind(&now).bind(&expires)
+    .execute(&pool).await.context("caching license")?;
+
+    // 4. Create the tenant.
+    sqlx::query(
+        "INSERT OR IGNORE INTO tenants (id, name, industry, type, verification_status) \
+         VALUES (?1, ?2, ?3, 'COMPANY', 'verified')",
+    )
+    .bind(&tenant.id).bind(&tenant.name).bind(&tenant.industry)
+    .execute(&pool).await.context("creating tenant")?;
+
+    // 5. Seed tenant_modules + a default Admin role with full permissions.
+    let role_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO roles (id, name, description, tenant_id) \
+         VALUES (?1, 'Admin', 'Full access to all licensed modules', ?2)",
+    )
+    .bind(&role_id).bind(&tenant.id)
+    .execute(&pool).await.context("creating Admin role")?;
+
+    for code in &modules {
+        let mid: Option<String> = sqlx::query_scalar("SELECT id FROM access_modules WHERE code = ?1")
+            .bind(code).fetch_optional(&pool).await?;
+        let Some(mid) = mid else { continue };
+        sqlx::query("INSERT OR IGNORE INTO tenant_modules (id, tenant_id, module_id, is_active) VALUES (?1, ?2, ?3, 1)")
+            .bind(uuid::Uuid::new_v4().to_string()).bind(&tenant.id).bind(&mid)
+            .execute(&pool).await?;
+        let perm_id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO permissions \
+             (id, can_read, can_add, can_edit, can_delete, can_approve, can_give_discount, \
+              read_scope, add_scope, edit_scope, delete_scope, approve_scope) \
+             VALUES (?1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1)",
+        )
+        .bind(&perm_id).execute(&pool).await?;
+        sqlx::query("INSERT INTO role_modules (id, role_id, module_id, permission_id) VALUES (?1, ?2, ?3, ?4)")
+            .bind(uuid::Uuid::new_v4().to_string()).bind(&role_id).bind(&mid).bind(&perm_id)
+            .execute(&pool).await?;
+    }
+
+    // 6. Create the first admin user + assign the Admin role.
+    let salt = SaltString::generate(&mut OsRng);
+    let hash = Argon2::default()
+        .hash_password(admin_password.as_bytes(), &salt)
+        .map_err(|e| anyhow::anyhow!("hashing password: {e}"))?
+        .to_string();
+    let user_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO users \
+         (id, first_name, last_name, email, password_hash, is_active, must_change_password, tenant_id) \
+         VALUES (?1, ?2, ?3, ?4, ?5, 1, 1, ?6)",
+    )
+    .bind(&user_id).bind(admin_first).bind(admin_last).bind(admin_email).bind(hash).bind(&tenant.id)
+    .execute(&pool).await.context("creating admin user (already exists?)")?;
+    sqlx::query("INSERT INTO user_roles (id, user_id, role_id) VALUES (?1, ?2, ?3)")
+        .bind(uuid::Uuid::new_v4().to_string()).bind(&user_id).bind(&role_id)
+        .execute(&pool).await.context("assigning Admin role")?;
+
+    Ok(json!({
+        "activated": true,
+        "tenant": tenant.name,
+        "tenant_id": tenant.id,
+        "tier": tier,
+        "modules": modules,
+        "admin_user": admin_email,
+        "expires_at": expires,
+        "dev_bypass": dev,
+    }))
+}
+
 /// Plan tier, derived from the active license tier.
 pub async fn plan() -> Result<Value> {
     let lic = license_status().await?;

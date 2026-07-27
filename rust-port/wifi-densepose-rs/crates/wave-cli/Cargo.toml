@@ -53,6 +53,10 @@ uuid = { version = "1", features = ["v4"] }
 # (`ruview-frappe`), so credentials set here are picked up by the app and vice-versa.
 keyring = "2"
 
+# License activation: same hardware fingerprint the desktop binds (SHA-256 of the
+# machine UID) so a key activated here validates identically in the app.
+machine-uid = "0.5"
+
 # Windows-only: edit the user PATH registry for `wave-cli path install`.
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
