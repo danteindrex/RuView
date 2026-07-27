@@ -76,6 +76,12 @@ enum Command {
     Wasm(GroupArgs<WasmAction>),
     /// Raspberry Pi node management over SSH.
     Pi(GroupArgs<PiAction>),
+    /// Live terminal dashboard: CSI stream rate, DSP pipeline, ML inference.
+    Monitor {
+        /// Refresh interval in milliseconds.
+        #[arg(long, default_value_t = 500)]
+        interval_ms: u64,
+    },
     /// Show which backend endpoints the CLI covers.
     Coverage,
     /// Empty-room field-model calibration.
@@ -605,6 +611,7 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
                 Ok(())
             }
         },
+        Command::Monitor { interval_ms } => monitor(cli, *interval_ms).await,
         Command::Coverage => {
             print_coverage(cli);
             Ok(())
@@ -1020,6 +1027,101 @@ async fn model_bundled(cli: &Cli) -> anyhow::Result<()> {
         output::note("no bundled models found next to wave-cli (expected resources/models/)");
     }
     Ok(())
+}
+
+/// Live terminal dashboard — the CLI equivalent of the 3D-pose tab: CSI stream
+/// rate, DSP pipeline state, and ML inference speed, refreshed in place.
+async fn monitor(cli: &Cli, interval_ms: u64) -> anyhow::Result<()> {
+    let c = client(cli)?;
+    let interval = std::time::Duration::from_millis(interval_ms.max(100));
+    loop {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                print!("\x1b[2J\x1b[H");
+                if !cli.quiet { output::note("stopped."); }
+                break;
+            }
+            _ = tokio::time::sleep(interval) => {
+                let nodes_v: serde_json::Value = c.get_json("/api/v1/nodes").await.map_err(net)?;
+                let latest: serde_json::Value = c.get_json("/api/v1/sensing/latest").await.unwrap_or(serde_json::Value::Null);
+                let stream: serde_json::Value = c.get_json("/api/v1/stream/status").await.unwrap_or(serde_json::Value::Null);
+                let status: serde_json::Value = c.get_json("/api/v1/status").await.unwrap_or(serde_json::Value::Null);
+                let empty = vec![];
+                let nodes = nodes_v.get("nodes").and_then(|n| n.as_array()).unwrap_or(&empty);
+
+                // Per-node inference latency (best-effort).
+                let mut infer_lat: std::collections::HashMap<u64, f64> = std::collections::HashMap::new();
+                for n in nodes {
+                    if let Some(id) = n.get("node_id").and_then(|v| v.as_u64()) {
+                        if let Ok(inf) = c.get_json::<serde_json::Value>(&format!("/api/v1/nodes/{id}/inference")).await {
+                            if let Some(us) = inf.get("latency_us").and_then(|v| v.as_f64()) {
+                                infer_lat.insert(id, us);
+                            }
+                        }
+                    }
+                }
+
+                print!("\x1b[2J\x1b[H");
+                let now = chrono::Local::now().format("%H:%M:%S");
+                println!(
+                    "Wave Live Monitor   {now}   server: {}/{}   (every {interval_ms}ms · Ctrl-C to quit)\n",
+                    jstr(&status, "status"), jstr(&status, "source")
+                );
+
+                println!("── CSI STREAM (per node) ──");
+                let table = output::render(Format::Table, nodes, || {
+                    let mut t = Table::new(&["NODE", "FPS", "RSSI", "HEALTH", "DSP MOTION", "PERSONS", "NEURAL", "SRC", "INFER µs"]);
+                    for n in nodes {
+                        let id = n.get("node_id").and_then(|v| v.as_u64()).unwrap_or(0);
+                        t.row(vec![
+                            id.to_string(),
+                            fmt_num(n, "fps"),
+                            jstr(n, "rssi_dbm"),
+                            jstr(n, "health"),
+                            jstr(n, "motion_level"),
+                            jstr(n, "person_count"),
+                            fmt_num(n, "neural_presence"),
+                            jstr(n, "neural_source"),
+                            infer_lat.get(&id).map(|u| format!("{u:.0}")).unwrap_or_else(|| "-".into()),
+                        ]);
+                    }
+                    t
+                })?;
+                println!("{table}");
+
+                println!("\n── DSP PIPELINE (sensing/latest) ──");
+                let presence = latest.get("classification").and_then(|c| c.get("presence")).map(|v| v.to_string()).unwrap_or_else(|| "-".into());
+                let persons = latest.get("persons").and_then(|p| p.as_array()).map(|a| a.len().to_string()).unwrap_or_else(|| jstr(&latest, "estimated_persons"));
+                let vit = latest.get("vital_signs");
+                let br = vit.and_then(|v| v.get("breathing_rate_bpm")).map(|v| v.to_string()).unwrap_or_else(|| "-".into());
+                let hr = vit.and_then(|v| v.get("heart_rate_bpm")).map(|v| v.to_string()).unwrap_or_else(|| "-".into());
+                let sq = latest.get("signal_quality_score").map(|v| v.to_string()).unwrap_or_else(|| "-".into());
+                println!("  presence={presence}  persons={persons}  breathing={br}bpm  heart={hr}bpm  signal_q={sq}");
+                if let Some(f) = latest.get("features") {
+                    println!("  features: variance={} motion_band={} spectral={} change_pts={}",
+                        jstr(f, "variance"), jstr(f, "motion_band_power"), jstr(f, "spectral_power"), jstr(f, "change_points"));
+                }
+
+                println!("\n── ML INFERENCE / STREAM RATE ──");
+                let fps_vals: Vec<f64> = nodes.iter().filter_map(|n| n.get("fps").and_then(|x| x.as_f64())).collect();
+                let avg_fps = if fps_vals.is_empty() { 0.0 } else { fps_vals.iter().sum::<f64>() / fps_vals.len() as f64 };
+                let avg_lat = if infer_lat.is_empty() { 0.0 } else { infer_lat.values().sum::<f64>() / infer_lat.len() as f64 };
+                let running = nodes.iter().filter(|n| n.get("neural_source").and_then(|v| v.as_str()).map(|s| !s.is_empty() && s != "none").unwrap_or(false)).count();
+                let stream_fps = stream.get("fps").map(|v| v.to_string()).unwrap_or_else(|| jstr(&stream, "rate"));
+                println!("  CSI stream: avg {avg_fps:.1} fps/node   server pose stream: {stream_fps} fps");
+                println!("  ML inference: avg {avg_lat:.0} µs/frame   nodes running model: {running}/{}", nodes.len());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Format a numeric JSON field to 1 decimal (falls back to raw stringify).
+fn fmt_num(v: &serde_json::Value, key: &str) -> String {
+    match v.get(key).and_then(|x| x.as_f64()) {
+        Some(n) => format!("{n:.1}"),
+        None => jstr(v, key),
+    }
 }
 
 /// Honest self-audit of backend coverage.
