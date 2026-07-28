@@ -6,7 +6,7 @@
 | Date | 2026-03-06 |
 | Deciders | ruv |
 | Depends on | ADR-012 (ESP32 CSI Mesh), ADR-039 (Edge Intelligence), ADR-040 (WASM Programmable Sensing), ADR-044 (Provisioning Enhancements), ADR-050 (Security Hardening), ADR-051 (Server Decomposition) |
-| Issue | [#177](https://github.com/ruvnet/Wave/issues/177) |
+| Issue | [#177](https://github.com/ruvnet/RuView/issues/177) |
 
 ## Context
 

@@ -118,7 +118,7 @@ sudo apt install -y \
 This prepares the native GTK/WebKit dependencies used by the desktop/Tauri crates in this workspace.
 
 ```bash
-git clone https://github.com/ruvnet/Wave.git
+git clone https://github.com/ruvnet/RuView.git
 cd Wave/rust-port/wifi-densepose-rs
 
 # Build
@@ -165,7 +165,7 @@ See the full crate list and dependency order in [CLAUDE.md](../CLAUDE.md#crate-p
 ### From Source (Python)
 
 ```bash
-git clone https://github.com/ruvnet/Wave.git
+git clone https://github.com/ruvnet/RuView.git
 cd Wave
 
 pip install -r requirements.txt
@@ -182,7 +182,7 @@ pip install wifi-densepose[all]   # All optional deps
 An interactive installer that detects your hardware and recommends a profile:
 
 ```bash
-git clone https://github.com/ruvnet/Wave.git
+git clone https://github.com/ruvnet/RuView.git
 cd Wave
 ./install.sh
 ```
@@ -269,7 +269,7 @@ Uses `netsh wlan` to capture RSSI from nearby access points. No special hardware
 docker run --network host ruvnet/wifi-densepose:latest --source wifi --tick-ms 500
 ```
 
-> **Community verified:** Tested on Windows 10 (10.0.26200) with Intel Wi-Fi 6 AX201 160MHz, Python 3.14, StormFiber 5 GHz network. All 7 tutorial steps passed with stable RSSI readings at -48 dBm. See [Tutorial #36](https://github.com/ruvnet/Wave/issues/36) for the full walkthrough and test results.
+> **Community verified:** Tested on Windows 10 (10.0.26200) with Intel Wi-Fi 6 AX201 160MHz, Python 3.14, StormFiber 5 GHz network. All 7 tutorial steps passed with stable RSSI readings at -48 dBm. See [Tutorial #36](https://github.com/ruvnet/RuView/issues/36) for the full walkthrough and test results.
 
 **Vital signs from RSSI:** The sensing server now supports breathing rate estimation from RSSI variance patterns (requires stationary subject near AP) and motion classification with confidence scoring. RSSI-based vital sign detection has lower fidelity than ESP32 CSI — it is best for presence detection and coarse motion classification.
 
@@ -1002,15 +1002,15 @@ A 3-6 node ESP32-S3 mesh provides full CSI at 20 Hz. Total cost: ~$54 for a 3-no
 
 **Flashing firmware:**
 
-Pre-built binaries are available at [Releases](https://github.com/ruvnet/Wave/releases):
+Pre-built binaries are available at [Releases](https://github.com/ruvnet/RuView/releases):
 
 | Release | What It Includes | Tag |
 |---------|-----------------|-----|
-| [v0.5.0](https://github.com/ruvnet/Wave/releases/tag/v0.5.0-esp32) | **Stable (recommended)** — mmWave sensor fusion (MR60BHA2/LD2410 auto-detect), 48-byte fused vitals, all v0.4.3.1 fixes | `v0.5.0-esp32` |
-| [v0.4.3.1](https://github.com/ruvnet/Wave/releases/tag/v0.4.3.1-esp32) | Fall detection fix ([#263](https://github.com/ruvnet/Wave/issues/263)), 4MB flash ([#265](https://github.com/ruvnet/Wave/issues/265)), watchdog fix ([#266](https://github.com/ruvnet/Wave/issues/266)) | `v0.4.3.1-esp32` |
-| [v0.4.1](https://github.com/ruvnet/Wave/releases/tag/v0.4.1-esp32) | CSI build fix, compile guard, AMOLED display, edge intelligence ([ADR-057](../docs/adr/ADR-057-firmware-csi-build-guard.md)) | `v0.4.1-esp32` |
-| [v0.3.0-alpha](https://github.com/ruvnet/Wave/releases/tag/v0.3.0-alpha-esp32) | Alpha — adds on-device edge intelligence (ADR-039) | `v0.3.0-alpha-esp32` |
-| [v0.2.0](https://github.com/ruvnet/Wave/releases/tag/v0.2.0-esp32) | Raw CSI streaming, TDM, channel hopping, QUIC mesh | `v0.2.0-esp32` |
+| [v0.5.0](https://github.com/ruvnet/RuView/releases/tag/v0.5.0-esp32) | **Stable (recommended)** — mmWave sensor fusion (MR60BHA2/LD2410 auto-detect), 48-byte fused vitals, all v0.4.3.1 fixes | `v0.5.0-esp32` |
+| [v0.4.3.1](https://github.com/ruvnet/RuView/releases/tag/v0.4.3.1-esp32) | Fall detection fix ([#263](https://github.com/ruvnet/RuView/issues/263)), 4MB flash ([#265](https://github.com/ruvnet/RuView/issues/265)), watchdog fix ([#266](https://github.com/ruvnet/RuView/issues/266)) | `v0.4.3.1-esp32` |
+| [v0.4.1](https://github.com/ruvnet/RuView/releases/tag/v0.4.1-esp32) | CSI build fix, compile guard, AMOLED display, edge intelligence ([ADR-057](../docs/adr/ADR-057-firmware-csi-build-guard.md)) | `v0.4.1-esp32` |
+| [v0.3.0-alpha](https://github.com/ruvnet/RuView/releases/tag/v0.3.0-alpha-esp32) | Alpha — adds on-device edge intelligence (ADR-039) | `v0.3.0-alpha-esp32` |
+| [v0.2.0](https://github.com/ruvnet/RuView/releases/tag/v0.2.0-esp32) | Raw CSI streaming, TDM, channel hopping, QUIC mesh | `v0.2.0-esp32` |
 
 > **Important:** Always use **v0.4.3.1 or later**. Earlier versions have false fall detection alerts (v0.4.2 and below) and CSI disabled in the build config (pre-v0.4.1).
 
@@ -1022,7 +1022,7 @@ python -m esptool --chip esp32s3 --port COM7 --baud 460800 \
   0xf000 ota_data_initial.bin 0x20000 esp32-csi-node.bin
 ```
 
-**4MB flash boards** (e.g. ESP32-S3 SuperMini 4MB): download the 4MB binaries from the [v0.4.3 release](https://github.com/ruvnet/Wave/releases/tag/v0.4.3-esp32) and use `--flash-size 4MB`:
+**4MB flash boards** (e.g. ESP32-S3 SuperMini 4MB): download the 4MB binaries from the [v0.4.3 release](https://github.com/ruvnet/RuView/releases/tag/v0.4.3-esp32) and use `--flash-size 4MB`:
 
 ```bash
 python -m esptool --chip esp32s3 --port COM7 --baud 460800 \
@@ -1113,7 +1113,7 @@ Binary size: 990 KB (8MB flash, 52% free) or 773 KB (4MB flash). v0.5.0 adds mmW
 docker run -p 3000:3000 -p 3001:3001 -p 5005:5005/udp -e CSI_SOURCE=esp32 ruvnet/wifi-densepose:latest
 ```
 
-See [ADR-018](../docs/adr/ADR-018-esp32-dev-implementation.md), [ADR-029](../docs/adr/ADR-029-ruvsense-multistatic-sensing-mode.md), and [Tutorial #34](https://github.com/ruvnet/Wave/issues/34).
+See [ADR-018](../docs/adr/ADR-018-esp32-dev-implementation.md), [ADR-029](../docs/adr/ADR-029-ruvsense-multistatic-sensing-mode.md), and [Tutorial #34](https://github.com/ruvnet/RuView/issues/34).
 
 ### Intel 5300 / Atheros NIC
 
@@ -1682,7 +1682,7 @@ docker run -p 3000:3000 -p 3001:3001 ruvnet/wifi-densepose:latest
 
 ### ESP32: "CSI not enabled in menuconfig"
 
-Firmware versions prior to v0.4.1 had `CONFIG_ESP_WIFI_CSI_ENABLED` disabled in the build config. Upgrade to [v0.4.1](https://github.com/ruvnet/Wave/releases/tag/v0.4.1-esp32) or later. If building from source, ensure `sdkconfig.defaults` exists (not just `sdkconfig.defaults.template`). See [ADR-057](../docs/adr/ADR-057-firmware-csi-build-guard.md).
+Firmware versions prior to v0.4.1 had `CONFIG_ESP_WIFI_CSI_ENABLED` disabled in the build config. Upgrade to [v0.4.1](https://github.com/ruvnet/RuView/releases/tag/v0.4.1-esp32) or later. If building from source, ensure `sdkconfig.defaults` exists (not just `sdkconfig.defaults.template`). See [ADR-057](../docs/adr/ADR-057-firmware-csi-build-guard.md).
 
 ### ESP32: No data arriving
 
@@ -1814,10 +1814,10 @@ The system uses WiFi radio signals, not cameras. No images or video are captured
 The Rust implementation (v2) is 810x faster than Python (v1) for the full CSI pipeline. The Docker image is 132 MB vs 569 MB. Rust is the primary and recommended runtime. Python v1 remains available for legacy workflows.
 
 **Q: Can I use an ESP8266 instead of ESP32-S3?**
-No. The ESP8266 does not expose WiFi Channel State Information (CSI) through its SDK, has insufficient RAM (~80 KB vs 512 KB), and runs a single-core 80 MHz CPU that cannot handle the signal processing pipeline. The ESP32-S3 is the minimum supported CSI capture device. See [Issue #138](https://github.com/ruvnet/Wave/issues/138) for alternatives including using cheap Android TV boxes as aggregation hubs.
+No. The ESP8266 does not expose WiFi Channel State Information (CSI) through its SDK, has insufficient RAM (~80 KB vs 512 KB), and runs a single-core 80 MHz CPU that cannot handle the signal processing pipeline. The ESP32-S3 is the minimum supported CSI capture device. See [Issue #138](https://github.com/ruvnet/RuView/issues/138) for alternatives including using cheap Android TV boxes as aggregation hubs.
 
 **Q: Does the Windows WiFi tutorial work on Windows 10?**
-Yes. Community-tested on Windows 10 (build 26200) with an Intel Wi-Fi 6 AX201 160MHz adapter on a 5 GHz network. All 7 tutorial steps passed with Python 3.14. See [Issue #36](https://github.com/ruvnet/Wave/issues/36) for full test results.
+Yes. Community-tested on Windows 10 (build 26200) with an Intel Wi-Fi 6 AX201 160MHz adapter on a 5 GHz network. All 7 tutorial steps passed with Python 3.14. See [Issue #36](https://github.com/ruvnet/RuView/issues/36) for full test results.
 
 **Q: Can I run the sensing server on an ARM device (Raspberry Pi, TV box)?**
 ARM64 deployment is planned ([ADR-046](adr/ADR-046-android-tv-box-armbian-deployment.md)) but not yet available as a pre-built binary. You can cross-compile from source using `cross build --release --target aarch64-unknown-linux-gnu -p wifi-densepose-sensing-server` if you have the Rust cross-compilation toolchain set up.

@@ -11,7 +11,7 @@
 > - Single ESP32 deployments have limited spatial resolution — use 2+ nodes or add a [Cognitum Seed](https://cognitum.one) for best results
 > - Camera-free pose accuracy is limited — use [camera ground-truth training](docs/adr/ADR-079-camera-ground-truth-training.md) for 92.9% PCK@20
 >
-> Contributions and bug reports welcome at [Issues](https://github.com/ruvnet/Wave/issues).
+> Contributions and bug reports welcome at [Issues](https://github.com/ruvnet/RuView/issues).
 
 ## **See through walls with WiFi** ##
 
@@ -40,7 +40,7 @@ Wave also supports pose estimation (17 COCO keypoints via the WiFlow architectur
 
 [![Rust 1.85+](https://img.shields.io/badge/rust-1.85+-orange.svg)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests: 1463](https://img.shields.io/badge/tests-1463%20passed-brightgreen.svg)](https://github.com/ruvnet/Wave)
+[![Tests: 1463](https://img.shields.io/badge/tests-1463%20passed-brightgreen.svg)](https://github.com/ruvnet/RuView)
 [![Docker: multi-arch](https://img.shields.io/badge/docker-amd64%20%2B%20arm64-blue.svg)](https://hub.docker.com/r/ruvnet/wifi-densepose)
 [![Vital Signs](https://img.shields.io/badge/vital%20signs-breathing%20%2B%20heartbeat-red.svg)](#vital-sign-detection)
 [![ESP32 Ready](https://img.shields.io/badge/ESP32--S3-CSI%20streaming-purple.svg)](#esp32-s3-hardware-pipeline)
@@ -135,7 +135,7 @@ The pose overlay currently uses an **amplitude-energy heuristic** (`heuristic_po
 
 **Brain integration:** Spatial observations (motion, vitals, skeleton, occupancy) sync to the ruOS brain every 60 seconds for agent reasoning.
 
-See [PR #405](https://github.com/ruvnet/Wave/pull/405) for full details.
+See [PR #405](https://github.com/ruvnet/RuView/pull/405) for full details.
 
 ### What's New in v0.7.0
 
@@ -851,7 +851,7 @@ The installer walks through 7 steps: system detection, toolchain check, WiFi har
 <summary><strong>From Source</strong> — Rust (primary) or Python</summary>
 
 ```bash
-git clone https://github.com/ruvnet/Wave.git
+git clone https://github.com/ruvnet/RuView.git
 cd Wave
 
 # Rust (primary — 810x faster)
@@ -1032,9 +1032,9 @@ The signal processing stack transforms raw WiFi Channel State Information into a
 |---------|-------------|------|
 | [Key Features](#key-features) | Sensing, Intelligence, and Performance & Deployment capabilities | — |
 | [How It Works](#how-it-works) | End-to-end pipeline: radio waves → CSI capture → signal processing → AI → pose + vitals | — |
-| [ESP32-S3 Hardware Pipeline](#esp32-s3-hardware-pipeline) | 20 Hz CSI streaming, binary frame parsing, flash & provision | [ADR-018](docs/adr/ADR-018-esp32-dev-implementation.md) · [Tutorial #34](https://github.com/ruvnet/Wave/issues/34) |
+| [ESP32-S3 Hardware Pipeline](#esp32-s3-hardware-pipeline) | 20 Hz CSI streaming, binary frame parsing, flash & provision | [ADR-018](docs/adr/ADR-018-esp32-dev-implementation.md) · [Tutorial #34](https://github.com/ruvnet/RuView/issues/34) |
 | [Vital Sign Detection](#vital-sign-detection) | Breathing 6-30 BPM, heartbeat 40-120 BPM, FFT peak detection | [ADR-021](docs/adr/ADR-021-vital-sign-detection-rvdna-pipeline.md) |
-| [WiFi Scan Domain Layer](#wifi-scan-domain-layer) | 8-stage RSSI pipeline, multi-BSSID fingerprinting, Windows WiFi | [ADR-022](docs/adr/ADR-022-windows-wifi-enhanced-fidelity-ruvector.md) · [Tutorial #36](https://github.com/ruvnet/Wave/issues/36) |
+| [WiFi Scan Domain Layer](#wifi-scan-domain-layer) | 8-stage RSSI pipeline, multi-BSSID fingerprinting, Windows WiFi | [ADR-022](docs/adr/ADR-022-windows-wifi-enhanced-fidelity-ruvector.md) · [Tutorial #36](https://github.com/ruvnet/RuView/issues/36) |
 | [WiFi-Mat Disaster Response](#wifi-mat-disaster-response) | Search & rescue, START triage, 3D localization through debris | [ADR-001](docs/adr/ADR-001-wifi-mat-disaster-detection.md) · [User Guide](docs/wifi-mat-user-guide.md) |
 | [SOTA Signal Processing](#sota-signal-processing) | SpotFi, Hampel, Fresnel, STFT spectrogram, subcarrier selection, BVP | [ADR-014](docs/adr/ADR-014-sota-signal-processing.md) |
 
@@ -1104,7 +1104,7 @@ WiFi DensePose is MIT-licensed open source, developed by [ruvnet](https://github
 |---------|-------------|------|
 | [Changelog](#changelog) | v3.0.0 (AETHER AI + Docker), v2.0.0 (Rust port + SOTA + WiFi-Mat) | [CHANGELOG.md](CHANGELOG.md) |
 | [License](#license) | MIT License | [LICENSE](LICENSE) |
-| [Support](#support) | Bug reports, feature requests, community discussion | [Issues](https://github.com/ruvnet/Wave/issues) · [Discussions](https://github.com/ruvnet/Wave/discussions) |
+| [Support](#support) | Bug reports, feature requests, community discussion | [Issues](https://github.com/ruvnet/RuView/issues) · [Discussions](https://github.com/ruvnet/RuView/discussions) |
 
 </details>
 
@@ -1354,15 +1354,15 @@ Download a pre-built binary — no build toolchain needed:
 
 | Release | What's included | Tag |
 |---------|-----------------|-----|
-| [v0.7.0](https://github.com/ruvnet/Wave/releases/tag/v0.7.0) | **Latest** — Camera-supervised WiFlow model (92.9% PCK@20), ground-truth training pipeline, ruvector optimizations | `v0.7.0` |
-| [v0.6.0](https://github.com/ruvnet/Wave/releases/tag/v0.6.0-esp32) | [Pre-trained models on HuggingFace](https://huggingface.co/ruv/wave), 17 sensing apps, 51.6% contrastive improvement, 0.008ms inference | `v0.6.0-esp32` |
-| [v0.5.5](https://github.com/ruvnet/Wave/releases/tag/v0.5.5-esp32) | SNN + MinCut (#348 fix) + CNN spectrogram + WiFlow + multi-freq mesh + graph transformer | `v0.5.5-esp32` |
-| [v0.5.4](https://github.com/ruvnet/Wave/releases/tag/v0.5.4-esp32) | Cognitum Seed integration ([ADR-069](docs/adr/ADR-069-cognitum-seed-csi-pipeline.md)), 8-dim feature vectors, RVF store, witness chain, security hardening | `v0.5.4-esp32` |
-| [v0.5.0](https://github.com/ruvnet/Wave/releases/tag/v0.5.0-esp32) | mmWave sensor fusion ([ADR-063](docs/adr/ADR-063-mmwave-sensor-fusion.md)), auto-detect MR60BHA2/LD2410, 48-byte fused vitals, all v0.4.3.1 fixes | `v0.5.0-esp32` |
-| [v0.4.3.1](https://github.com/ruvnet/Wave/releases/tag/v0.4.3.1-esp32) | Fall detection fix ([#263](https://github.com/ruvnet/Wave/issues/263)), 4MB flash ([#265](https://github.com/ruvnet/Wave/issues/265)), watchdog fix ([#266](https://github.com/ruvnet/Wave/issues/266)) | `v0.4.3.1-esp32` |
-| [v0.4.1](https://github.com/ruvnet/Wave/releases/tag/v0.4.1-esp32) | CSI build fix, compile guard, AMOLED display, edge intelligence ([ADR-057](docs/adr/ADR-057-firmware-csi-build-guard.md)) | `v0.4.1-esp32` |
-| [v0.3.0-alpha](https://github.com/ruvnet/Wave/releases/tag/v0.3.0-alpha-esp32) | Alpha — adds on-device edge intelligence and WASM modules ([ADR-039](docs/adr/ADR-039-esp32-edge-intelligence.md), [ADR-040](docs/adr/ADR-040-wasm-programmable-sensing.md)) | `v0.3.0-alpha-esp32` |
-| [v0.2.0](https://github.com/ruvnet/Wave/releases/tag/v0.2.0-esp32) | Raw CSI streaming, multi-node TDM, channel hopping | `v0.2.0-esp32` |
+| [v0.7.0](https://github.com/ruvnet/RuView/releases/tag/v0.7.0) | **Latest** — Camera-supervised WiFlow model (92.9% PCK@20), ground-truth training pipeline, ruvector optimizations | `v0.7.0` |
+| [v0.6.0](https://github.com/ruvnet/RuView/releases/tag/v0.6.0-esp32) | [Pre-trained models on HuggingFace](https://huggingface.co/ruv/wave), 17 sensing apps, 51.6% contrastive improvement, 0.008ms inference | `v0.6.0-esp32` |
+| [v0.5.5](https://github.com/ruvnet/RuView/releases/tag/v0.5.5-esp32) | SNN + MinCut (#348 fix) + CNN spectrogram + WiFlow + multi-freq mesh + graph transformer | `v0.5.5-esp32` |
+| [v0.5.4](https://github.com/ruvnet/RuView/releases/tag/v0.5.4-esp32) | Cognitum Seed integration ([ADR-069](docs/adr/ADR-069-cognitum-seed-csi-pipeline.md)), 8-dim feature vectors, RVF store, witness chain, security hardening | `v0.5.4-esp32` |
+| [v0.5.0](https://github.com/ruvnet/RuView/releases/tag/v0.5.0-esp32) | mmWave sensor fusion ([ADR-063](docs/adr/ADR-063-mmwave-sensor-fusion.md)), auto-detect MR60BHA2/LD2410, 48-byte fused vitals, all v0.4.3.1 fixes | `v0.5.0-esp32` |
+| [v0.4.3.1](https://github.com/ruvnet/RuView/releases/tag/v0.4.3.1-esp32) | Fall detection fix ([#263](https://github.com/ruvnet/RuView/issues/263)), 4MB flash ([#265](https://github.com/ruvnet/RuView/issues/265)), watchdog fix ([#266](https://github.com/ruvnet/RuView/issues/266)) | `v0.4.3.1-esp32` |
+| [v0.4.1](https://github.com/ruvnet/RuView/releases/tag/v0.4.1-esp32) | CSI build fix, compile guard, AMOLED display, edge intelligence ([ADR-057](docs/adr/ADR-057-firmware-csi-build-guard.md)) | `v0.4.1-esp32` |
+| [v0.3.0-alpha](https://github.com/ruvnet/RuView/releases/tag/v0.3.0-alpha-esp32) | Alpha — adds on-device edge intelligence and WASM modules ([ADR-039](docs/adr/ADR-039-esp32-edge-intelligence.md), [ADR-040](docs/adr/ADR-040-wasm-programmable-sensing.md)) | `v0.3.0-alpha-esp32` |
+| [v0.2.0](https://github.com/ruvnet/RuView/releases/tag/v0.2.0-esp32) | Raw CSI streaming, multi-node TDM, channel hopping | `v0.2.0-esp32` |
 
 ```bash
 # 1. Flash the firmware to your ESP32-S3 (8MB flash — most boards)
@@ -1458,7 +1458,7 @@ python firmware/esp32-csi-node/provision.py --port COM7 \
 
 When Tier 2 is active, the node sends a 32-byte vitals packet once per second containing: presence, motion level, breathing BPM, heart rate BPM, confidence scores, fall alert flag, and occupancy count.
 
-See [firmware/esp32-csi-node/README.md](firmware/esp32-csi-node/README.md), [ADR-039](docs/adr/ADR-039-esp32-edge-intelligence.md), [ADR-044](docs/adr/ADR-044-provisioning-tool-enhancements.md), and [Tutorial #34](https://github.com/ruvnet/Wave/issues/34).
+See [firmware/esp32-csi-node/README.md](firmware/esp32-csi-node/README.md), [ADR-039](docs/adr/ADR-039-esp32-edge-intelligence.md), [ADR-044](docs/adr/ADR-044-provisioning-tool-enhancements.md), and [Tutorial #34](https://github.com/ruvnet/RuView/issues/34).
 
 </details>
 
@@ -1529,7 +1529,7 @@ See [ADR-021](docs/adr/ADR-021-vital-sign-detection-rvdna-pipeline.md).
 cargo test -p wifi-densepose-wifiscan
 ```
 
-See [ADR-022](docs/adr/ADR-022-windows-wifi-enhanced-fidelity-ruvector.md) and [Tutorial #36](https://github.com/ruvnet/Wave/issues/36).
+See [ADR-022](docs/adr/ADR-022-windows-wifi-enhanced-fidelity-ruvector.md) and [Tutorial #36](https://github.com/ruvnet/RuView/issues/36).
 
 </details>
 
@@ -1633,7 +1633,7 @@ The [`wifi-densepose-ruvector`](https://crates.io/crates/wifi-densepose-ruvector
 | **O(1) survivor triangulation** | O(N^3) matrix inversion | `ruvector-solver` | Neumann series linearization for instant position updates |
 | **75% memory compression** | 13.4 MB breathing buffers that overflow edge devices | `ruvector-temporal-tensor` | Tiered 3-8 bit quantization fits 60s of vitals in 3.4 MB |
 
-See [issue #67](https://github.com/ruvnet/Wave/issues/67) for a deep dive with code examples, or [`cargo add wifi-densepose-ruvector`](https://crates.io/crates/wifi-densepose-ruvector) to use it directly.
+See [issue #67](https://github.com/ruvnet/RuView/issues/67) for a deep dive with code examples, or [`cargo add wifi-densepose-ruvector`](https://crates.io/crates/wifi-densepose-ruvector) to use it directly.
 
 </details>
 
@@ -2034,10 +2034,10 @@ WebSocket: `ws://localhost:3001/ws/sensing` (real-time sensing + vital signs)
 
 | Hardware | CSI | Cost | Guide |
 |----------|-----|------|-------|
-| **ESP32-S3** | Native | ~$8 | [Tutorial #34](https://github.com/ruvnet/Wave/issues/34) |
+| **ESP32-S3** | Native | ~$8 | [Tutorial #34](https://github.com/ruvnet/RuView/issues/34) |
 | Intel 5300 | Firmware mod | ~$15 | Linux `iwl-csi` |
 | Atheros AR9580 | ath9k patch | ~$20 | Linux only |
-| Any Windows WiFi | RSSI only | $0 | [Tutorial #36](https://github.com/ruvnet/Wave/issues/36) |
+| Any Windows WiFi | RSSI only | $0 | [Tutorial #36](https://github.com/ruvnet/RuView/issues/36) |
 | Any macOS WiFi | RSSI only (CoreWLAN) | $0 | [ADR-025](docs/adr/ADR-025-macos-corewlan-wifi-sensing.md) |
 | Any Linux WiFi | RSSI only (`iw`) | $0 | Requires `iw` + `CAP_NET_ADMIN` |
 
@@ -2254,7 +2254,7 @@ POSE_MAX_PERSONS=10              # Max tracked individuals
 <summary><strong>Dev setup, code standards, PR process</strong></summary>
 
 ```bash
-git clone https://github.com/ruvnet/Wave.git
+git clone https://github.com/ruvnet/RuView.git
 cd Wave
 
 # Rust development
@@ -2353,7 +2353,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ## 📞 Support
 
-[GitHub Issues](https://github.com/ruvnet/Wave/issues) | [Discussions](https://github.com/ruvnet/Wave/discussions) | [PyPI](https://pypi.org/project/wifi-densepose/)
+[GitHub Issues](https://github.com/ruvnet/RuView/issues) | [Discussions](https://github.com/ruvnet/RuView/discussions) | [PyPI](https://pypi.org/project/wifi-densepose/)
 
 ---
 

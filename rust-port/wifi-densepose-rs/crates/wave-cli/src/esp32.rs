@@ -9,7 +9,7 @@ use std::process::Command;
 use crate::nvs::{generate_nvs_csi_cfg, Esp32NvsConfig};
 
 /// Public GitHub repo + tag that publishes the ESP32 firmware release.
-pub const FIRMWARE_REPO: &str = "ruvnet/Wave";
+pub const FIRMWARE_REPO: &str = "ruvnet/RuView";
 pub const DEFAULT_TAG: &str = "v0.8.3-esp32";
 
 /// The 4 release assets + flash offsets for the 8 MB S3 layout.

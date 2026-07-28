@@ -101,7 +101,7 @@ This tool is intended for:
 
 ### How This Connects to Wave
 
-This example is part of the [Wave](https://github.com/ruvnet/Wave) ambient intelligence platform. When combined with WiFi CSI sensing:
+This example is part of the [Wave](https://github.com/ruvnet/RuView) ambient intelligence platform. When combined with WiFi CSI sensing:
 
 - **WiFi CSI** provides through-wall presence detection and room-scale activity recognition
 - **mmWave radar** provides clinical-grade heart rate, breathing rate, and BP estimation
