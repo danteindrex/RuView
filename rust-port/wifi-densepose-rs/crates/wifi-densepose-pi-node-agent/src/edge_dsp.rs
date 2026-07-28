@@ -1,10 +1,25 @@
+use std::collections::VecDeque;
+
 use crate::frame_encoder::{encode_compressed_packet, EdgeVitals, RawFrame};
+
+/// Seconds of amplitude history retained for vital-sign estimation. Breathing
+/// (down to 0.1 Hz) needs a long window; 30 s covers ~3 cycles at the low end.
+const VITALS_WINDOW_S: f64 = 30.0;
+/// Physiological bands (Hz): breathing 6–30 BPM, heart 40–180 BPM.
+const BR_LO_HZ: f64 = 0.1;
+const BR_HI_HZ: f64 = 0.5;
+const HR_LO_HZ: f64 = 0.7;
+const HR_HI_HZ: f64 = 3.0;
 
 #[derive(Debug, Clone)]
 pub struct EdgeDspState {
     pub tier: u8,
     prev_amplitudes: Option<Vec<f32>>,
     last_emit_ms: Option<u64>,
+    /// (timestamp_ms, mean-amplitude) history for real vital-sign estimation.
+    /// Breathing/heartbeat modulate CSI amplitude; we recover the rate from the
+    /// periodicity of this series — never from a frame counter.
+    amp_hist: VecDeque<(u64, f32)>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -20,8 +35,61 @@ impl EdgeDspState {
             tier,
             prev_amplitudes: None,
             last_emit_ms: None,
+            amp_hist: VecDeque::new(),
         }
     }
+}
+
+/// Estimate a rate (BPM) from an evenly-ish sampled `(t_ms, value)` series by
+/// autocorrelation, searching only the lag range for the given frequency band.
+/// Returns `Some(bpm)` when a clear periodic peak exists, else `None` — we never
+/// invent a value when the signal doesn't support one.
+fn estimate_rate_bpm(hist: &VecDeque<(u64, f32)>, lo_hz: f64, hi_hz: f64) -> Option<f32> {
+    let n = hist.len();
+    if n < 32 {
+        return None;
+    }
+    let t0 = hist.front()?.0;
+    let t1 = hist.back()?.0;
+    let span_s = (t1.saturating_sub(t0)) as f64 / 1000.0;
+    if span_s < 1.0 / lo_hz {
+        return None; // not enough time to see the slowest cycle in the band
+    }
+    let fs = (n as f64 - 1.0) / span_s; // mean sample rate (Hz)
+    if !fs.is_finite() || fs <= 0.0 {
+        return None;
+    }
+    // Detrend (remove DC + slow drift via mean subtraction).
+    let mean = hist.iter().map(|(_, v)| *v as f64).sum::<f64>() / n as f64;
+    let x: Vec<f64> = hist.iter().map(|(_, v)| *v as f64 - mean).collect();
+    let energy: f64 = x.iter().map(|v| v * v).sum();
+    if energy < 1e-9 {
+        return None; // flat signal — no vitals present
+    }
+    // Lag range (samples) corresponding to the frequency band.
+    let min_lag = ((fs / hi_hz).floor() as usize).max(1);
+    let max_lag = ((fs / lo_hz).ceil() as usize).min(n / 2);
+    if min_lag >= max_lag {
+        return None;
+    }
+    let (mut best_lag, mut best_corr) = (0usize, 0.0f64);
+    for lag in min_lag..=max_lag {
+        let mut c = 0.0;
+        for i in 0..(n - lag) {
+            c += x[i] * x[i + lag];
+        }
+        let norm = c / energy;
+        if norm > best_corr {
+            best_corr = norm;
+            best_lag = lag;
+        }
+    }
+    // Require a meaningful peak; otherwise report "no measurable rate".
+    if best_lag == 0 || best_corr < 0.3 {
+        return None;
+    }
+    let period_s = best_lag as f64 / fs;
+    Some((60.0 / period_s) as f32)
 }
 
 fn summarize(signal: &[f32]) -> (f32, f32) {
@@ -91,8 +159,28 @@ pub fn process_frame(state: &mut EdgeDspState, frame: &RawFrame, timestamp_ms: u
     } else {
         0
     };
-    let breathing_rate_bpm = (12.0 + (frame.sequence % 30) as f32 * 0.35).clamp(8.0, 40.0);
-    let heartrate_bpm = (62.0 + (frame.sequence % 80) as f32 * 0.45).clamp(40.0, 180.0);
+
+    // Push this frame's mean amplitude into the vitals history and trim to the
+    // window, then estimate real breathing/heart rates from the signal's
+    // periodicity. 0.0 means "not measurable yet" (never a fabricated number);
+    // the hub's VitalSignDetector remains the authoritative vitals source.
+    state.amp_hist.push_back((timestamp_ms, mean_amp));
+    while let Some(&(t, _)) = state.amp_hist.front() {
+        if (timestamp_ms.saturating_sub(t)) as f64 / 1000.0 > VITALS_WINDOW_S {
+            state.amp_hist.pop_front();
+        } else {
+            break;
+        }
+    }
+    // Only report vitals when a person is present (no target ⇒ no vitals).
+    let (breathing_rate_bpm, heartrate_bpm) = if presence {
+        (
+            estimate_rate_bpm(&state.amp_hist, BR_LO_HZ, BR_HI_HZ).unwrap_or(0.0),
+            estimate_rate_bpm(&state.amp_hist, HR_LO_HZ, HR_HI_HZ).unwrap_or(0.0),
+        )
+    } else {
+        (0.0, 0.0)
+    };
 
     let should_emit = state
         .last_emit_ms
@@ -169,6 +257,31 @@ mod tests {
         let decoded = decompress_iq(&compress_iq(&frame));
         let kept: Vec<(i8, i8)> = iq.iter().copied().step_by(2).collect();
         assert_eq!(decoded, kept);
+    }
+
+    #[test]
+    fn estimate_rate_recovers_known_breathing_frequency() {
+        // 15 BPM (0.25 Hz) sinusoid sampled at 20 Hz for 30 s.
+        let fs = 20.0;
+        let f = 0.25;
+        let mut hist = VecDeque::new();
+        for i in 0..(fs as u64 * 30) {
+            let t_ms = (i as f64 / fs * 1000.0) as u64;
+            let v = (2.0 * std::f64::consts::PI * f * (i as f64 / fs)).sin() as f32;
+            hist.push_back((t_ms, v));
+        }
+        let bpm = estimate_rate_bpm(&hist, BR_LO_HZ, BR_HI_HZ).expect("should find the rate");
+        assert!((bpm - 15.0).abs() < 1.5, "estimated {bpm} BPM, expected ~15");
+    }
+
+    #[test]
+    fn estimate_rate_returns_none_for_flat_signal() {
+        // A flat (no-oscillation) signal must NOT invent a vital sign.
+        let mut hist = VecDeque::new();
+        for i in 0..600 {
+            hist.push_back((i * 50, 5.0));
+        }
+        assert!(estimate_rate_bpm(&hist, BR_LO_HZ, BR_HI_HZ).is_none());
     }
 
     #[test]
