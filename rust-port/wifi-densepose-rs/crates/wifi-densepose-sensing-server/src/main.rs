@@ -3910,9 +3910,9 @@ async fn node_fhir_endpoint(
         "resource": {
             "resourceType": "Device",
             "id": format!("node-{id}"),
-            "identifier": [{ "system": "urn:ruview:node", "value": mac.clone().unwrap_or_else(|| id.to_string()) }],
+            "identifier": [{ "system": "urn:wave:node", "value": mac.clone().unwrap_or_else(|| id.to_string()) }],
             "status": "active",
-            "deviceName": [{ "name": format!("RuView WiFi-CSI sensing node {id}"), "type": "user-friendly-name" }],
+            "deviceName": [{ "name": format!("Wave WiFi-CSI sensing node {id}"), "type": "user-friendly-name" }],
             "type": { "text": "WiFi Channel-State-Information human-sensing node" }
         }
     })];
@@ -3943,6 +3943,93 @@ async fn node_fhir_endpoint(
         "timestamp": now,
         "entry": entries,
     }))
+}
+
+/// A security-relevant event derived from real node state (never fabricated).
+struct SecurityEvent {
+    node_id: u8,
+    signature: u32,
+    name: &'static str,
+    severity: u8, // CEF 0-10
+    person_count: usize,
+    rssi: f64,
+    motion_level: String,
+}
+
+/// Derive current security events from live node state. Only nodes that are
+/// actively streaming and detecting presence/motion raise events — a stale or
+/// empty node raises nothing (no fabricated activity).
+fn collect_security_events(s: &AppStateInner, now: std::time::Instant) -> Vec<SecurityEvent> {
+    let mut out = Vec::new();
+    for (&id, ns) in s.node_states.iter() {
+        let elapsed_ms = ns
+            .last_frame_time
+            .map(|t| now.duration_since(t).as_millis() as u64)
+            .unwrap_or(u64::MAX);
+        if elapsed_ms > 5000 {
+            continue; // no live data ⇒ no security event
+        }
+        if ns.current_motion_level != "absent" {
+            let (signature, name, severity) = if ns.current_motion_level.contains("moving") {
+                (100u32, "Motion Detected", 6u8)
+            } else {
+                (101u32, "Presence Detected", 4u8)
+            };
+            out.push(SecurityEvent {
+                node_id: id,
+                signature,
+                name,
+                severity,
+                person_count: ns.prev_person_count,
+                rssi: ns.rssi_history.back().copied().unwrap_or(-90.0),
+                motion_level: ns.current_motion_level.clone(),
+            });
+        }
+    }
+    out
+}
+
+/// GET /api/v1/events/security — current security events as structured JSON.
+async fn security_events_endpoint(State(state): State<SharedState>) -> Json<serde_json::Value> {
+    let s = state.read().await;
+    let now = std::time::Instant::now();
+    let ts = chrono::Utc::now().to_rfc3339();
+    let events: Vec<serde_json::Value> = collect_security_events(&s, now)
+        .into_iter()
+        .map(|e| {
+            serde_json::json!({
+                "timestamp": ts,
+                "node_id": e.node_id,
+                "signature_id": e.signature,
+                "name": e.name,
+                "severity": e.severity,
+                "person_count": e.person_count,
+                "rssi_dbm": e.rssi,
+                "motion_level": e.motion_level,
+            })
+        })
+        .collect();
+    Json(serde_json::json!({ "events": events, "total": events.len() }))
+}
+
+/// GET /api/v1/events/security/cef — the same events in ArcSight **CEF**
+/// (Common Event Format) for SIEM ingestion (Splunk/ArcSight/QRadar). One event
+/// per line: `CEF:0|Vendor|Product|Version|SignatureID|Name|Severity|Extension`.
+async fn security_events_cef_endpoint(State(state): State<SharedState>) -> String {
+    let s = state.read().await;
+    let now = std::time::Instant::now();
+    let ts = chrono::Utc::now().to_rfc3339();
+    collect_security_events(&s, now)
+        .into_iter()
+        .map(|e| {
+            format!(
+                "CEF:0|Wave|WiFi-Sensing|{}|{}|{}|{}|dvchost=node-{} rt={} cn1Label=personCount cn1={} cs1Label=motionLevel cs1={} cn2Label=rssiDbm cn2={:.0}",
+                env!("CARGO_PKG_VERSION"),
+                e.signature, e.name, e.severity, e.node_id, ts, e.person_count, e.motion_level, e.rssi
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// GET /api/v1/nodes — per-node health and feature info.
@@ -4319,6 +4406,16 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                     ns.last_udp_addr = Some(src);
                     ns.update_coherence(vitals.motion_energy as f64);
                     ns.edge_vitals = Some(vitals.clone());
+                    // Persist per-node motion classification so downstream
+                    // consumers (inference feature vector, security events)
+                    // read real edge-node state instead of a stale "absent".
+                    ns.current_motion_level = if vitals.motion {
+                        "present_moving".to_string()
+                    } else if vitals.presence {
+                        "present_still".to_string()
+                    } else {
+                        "absent".to_string()
+                    };
                     ns.rssi_history.push_back(vitals.rssi as f64);
                     if ns.rssi_history.len() > 60 { ns.rssi_history.pop_front(); }
 
@@ -5728,6 +5825,12 @@ async fn main() {
         .route("/api/v1/nodes/:id/inference", get(node_inference_endpoint))
         .route("/api/v1/nodes/:id/stats", get(node_stats_endpoint))
         .route("/api/v1/export/fhir/:id", get(node_fhir_endpoint))
+        // Security event export (SIEM: JSON + ArcSight CEF)
+        .route("/api/v1/events/security", get(security_events_endpoint))
+        .route(
+            "/api/v1/events/security/cef",
+            get(security_events_cef_endpoint),
+        )
         .route(
             "/api/v1/config/node-positions",
             get(get_node_positions).put(put_node_positions),
