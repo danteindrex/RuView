@@ -1626,8 +1626,12 @@ async fn monitor(cli: &Cli, interval_ms: u64) -> anyhow::Result<()> {
                 let avg_fps = if fps_vals.is_empty() { 0.0 } else { fps_vals.iter().sum::<f64>() / fps_vals.len() as f64 };
                 let avg_lat = if infer_lat.is_empty() { 0.0 } else { infer_lat.values().sum::<f64>() / infer_lat.len() as f64 };
                 let running = nodes.iter().filter(|n| n.get("neural_source").and_then(|v| v.as_str()).map(|s| !s.is_empty() && s != "none").unwrap_or(false)).count();
-                let stream_fps = stream.get("fps").map(|v| v.to_string()).unwrap_or_else(|| jstr(&stream, "rate"));
-                println!("  CSI stream: avg {avg_fps:.1} fps/node   server pose stream: {stream_fps} fps");
+                // fps is null when no node is streaming (offline) — show "-", not "null".
+                let stream_fps = stream.get("fps").and_then(|v| v.as_f64())
+                    .map(|f| format!("{f:.1}"))
+                    .unwrap_or_else(|| "-".into());
+                let stream_src = jstr(&stream, "source");
+                println!("  CSI stream: avg {avg_fps:.1} fps/node   server pose stream: {stream_fps} fps   ({stream_src})");
                 println!("  ML inference: avg {avg_lat:.0} µs/frame   nodes running model: {running}/{}", nodes.len());
             }
         }
