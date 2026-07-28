@@ -3820,7 +3820,7 @@ fn node_health(ns: &NodeState, elapsed_ms: u64) -> (&'static str, Vec<String>) {
     (status, reasons)
 }
 
-/// GET /api/v1/nodes/{id}/stats — detailed per-node stats & health.
+/// GET /api/v1/nodes/:id/stats — detailed per-node stats & health.
 async fn node_stats_endpoint(
     Path(id): Path<u8>,
     State(state): State<SharedState>,
@@ -3851,6 +3851,97 @@ async fn node_stats_endpoint(
         "mac": mac,
         "last_inference_ms": infer_age_ms,
         "position": s.node_positions.get(&id),
+    }))
+}
+
+/// Build a FHIR R4 `Observation` (vital-signs) resource. Returns `None` when the
+/// value is not actually measured (<= 0) — we never emit a fabricated vital.
+fn fhir_vital_observation(
+    node_id: u8,
+    loinc: &str,
+    display: &str,
+    value: f64,
+    now: &str,
+) -> Option<serde_json::Value> {
+    if !(value.is_finite() && value > 0.0) {
+        return None;
+    }
+    Some(serde_json::json!({
+        "resourceType": "Observation",
+        "status": "final",
+        "category": [{
+            "coding": [{
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "vital-signs", "display": "Vital Signs"
+            }]
+        }],
+        "code": { "coding": [{ "system": "http://loinc.org", "code": loinc, "display": display }] },
+        "effectiveDateTime": now,
+        "valueQuantity": {
+            "value": (value * 10.0).round() / 10.0,
+            "unit": "beats/minute",
+            "system": "http://unitsofmeasure.org",
+            "code": "/min"
+        },
+        "device": { "reference": format!("Device/node-{node_id}") }
+    }))
+}
+
+/// GET /api/v1/export/fhir/:id — export a node's live vitals as a FHIR R4
+/// "Devices on FHIR" collection Bundle (Device + Observation resources, LOINC-
+/// coded). Only actually-measured vitals are included — no fabricated data.
+/// This is the EHR-facing surface (Epic / Oracle Health / Meditech via FHIR).
+async fn node_fhir_endpoint(
+    Path(id): Path<u8>,
+    State(state): State<SharedState>,
+) -> Json<serde_json::Value> {
+    let s = state.read().await;
+    let Some(ns) = s.node_states.get(&id) else {
+        return Json(serde_json::json!({
+            "resourceType": "OperationOutcome",
+            "issue": [{ "severity": "error", "code": "not-found", "diagnostics": format!("node {id} not found") }]
+        }));
+    };
+    let now = chrono::Utc::now().to_rfc3339();
+    let mac = ns.mac.map(|m| {
+        format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", m[0], m[1], m[2], m[3], m[4], m[5])
+    });
+    let mut entries = vec![serde_json::json!({
+        "resource": {
+            "resourceType": "Device",
+            "id": format!("node-{id}"),
+            "identifier": [{ "system": "urn:ruview:node", "value": mac.clone().unwrap_or_else(|| id.to_string()) }],
+            "status": "active",
+            "deviceName": [{ "name": format!("RuView WiFi-CSI sensing node {id}"), "type": "user-friendly-name" }],
+            "type": { "text": "WiFi Channel-State-Information human-sensing node" }
+        }
+    })];
+    // Prefer the hub's CSI vital detector; fall back to the node's edge vitals.
+    // Both are real measurements — never fabricated.
+    let hr = if ns.smoothed_hr > 0.0 {
+        ns.smoothed_hr
+    } else {
+        ns.edge_vitals.as_ref().map(|v| v.heartrate_bpm).unwrap_or(0.0)
+    };
+    let br = if ns.smoothed_br > 0.0 {
+        ns.smoothed_br
+    } else {
+        ns.edge_vitals.as_ref().map(|v| v.breathing_rate_bpm).unwrap_or(0.0)
+    };
+    for obs in [
+        fhir_vital_observation(id, "8867-4", "Heart rate", hr, &now),
+        fhir_vital_observation(id, "9279-1", "Respiratory rate", br, &now),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        entries.push(serde_json::json!({ "resource": obs }));
+    }
+    Json(serde_json::json!({
+        "resourceType": "Bundle",
+        "type": "collection",
+        "timestamp": now,
+        "entry": entries,
     }))
 }
 
@@ -3897,7 +3988,7 @@ async fn nodes_endpoint(State(state): State<SharedState>) -> Json<serde_json::Va
     }))
 }
 
-/// GET /api/v1/nodes/{id}/inference — full neural inference for one node:
+/// GET /api/v1/nodes/:id/inference — full neural inference for one node:
 /// the 8-feature input, presence probability, embedding, and the DSP presence
 /// for side-by-side comparison (the neural-vs-DSP eval).
 async fn node_inference_endpoint(
@@ -5634,8 +5725,9 @@ async fn main() {
         .route("/api/v1/sensing/latest", get(latest))
         // Per-node health endpoint
         .route("/api/v1/nodes", get(nodes_endpoint))
-        .route("/api/v1/nodes/{id}/inference", get(node_inference_endpoint))
-        .route("/api/v1/nodes/{id}/stats", get(node_stats_endpoint))
+        .route("/api/v1/nodes/:id/inference", get(node_inference_endpoint))
+        .route("/api/v1/nodes/:id/stats", get(node_stats_endpoint))
+        .route("/api/v1/export/fhir/:id", get(node_fhir_endpoint))
         .route(
             "/api/v1/config/node-positions",
             get(get_node_positions).put(put_node_positions),
@@ -5669,14 +5761,14 @@ async fn main() {
         .route("/api/v1/models/active", get(get_active_model))
         .route("/api/v1/models/load", post(load_model))
         .route("/api/v1/models/unload", post(unload_model))
-        .route("/api/v1/models/{id}", delete(delete_model))
+        .route("/api/v1/models/:id", delete(delete_model))
         .route("/api/v1/models/lora/profiles", get(list_lora_profiles))
         .route("/api/v1/models/lora/activate", post(activate_lora_profile))
         // Recording endpoints
         .route("/api/v1/recording/list", get(list_recordings))
         .route("/api/v1/recording/start", post(start_recording))
         .route("/api/v1/recording/stop", post(stop_recording))
-        .route("/api/v1/recording/{id}", delete(delete_recording))
+        .route("/api/v1/recording/:id", delete(delete_recording))
         // Training endpoints
         .route("/api/v1/train/status", get(train_status))
         .route("/api/v1/train/start", post(train_start))
