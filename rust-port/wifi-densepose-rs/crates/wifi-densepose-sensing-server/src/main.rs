@@ -618,6 +618,9 @@ struct AppStateInner {
     /// Per-node sensing state for multi-node deployments.
     /// Keyed by `node_id` from the ESP32 frame header.
     node_states: HashMap<u8, NodeState>,
+    /// IEC 60601-1-8 clinical alarm state machine (fall / vital-threshold
+    /// alarms with priority, latching, ack, silence, escalation, audit log).
+    alarm_manager: wifi_densepose_sensing_server::standards::alarm::AlarmManager,
     // ── Accuracy sprint: Kalman tracker, multistatic fusion, eigenvalue counting ──
     /// Global Kalman-based pose tracker for stable person IDs and smoothed keypoints.
     pose_tracker: PoseTracker,
@@ -4058,6 +4061,41 @@ async fn security_events_cef_endpoint(State(state): State<SharedState>) -> Strin
         .join("\n")
 }
 
+/// GET /api/v1/alarms — active IEC 60601-1-8 clinical alarms + audit log.
+async fn alarms_endpoint(State(state): State<SharedState>) -> Json<serde_json::Value> {
+    let s = state.read().await;
+    Json(serde_json::json!({
+        "active": s.alarm_manager.active(),
+        "audit": s.alarm_manager.audit(),
+    }))
+}
+
+/// POST /api/v1/alarms/:id/ack?actor=<name> — acknowledge an alarm.
+async fn alarm_ack_endpoint(
+    Path(id): Path<u64>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    State(state): State<SharedState>,
+) -> Json<serde_json::Value> {
+    let actor = params.get("actor").map(|a| a.trim()).filter(|a| !a.is_empty()).unwrap_or("operator");
+    let ts = chrono::Utc::now().to_rfc3339();
+    let mut s = state.write().await;
+    let ok = s.alarm_manager.acknowledge(id, actor, &ts);
+    Json(serde_json::json!({ "acknowledged": ok, "id": id, "actor": actor }))
+}
+
+/// POST /api/v1/alarms/:id/silence?reason=<text> — silence-with-reason.
+async fn alarm_silence_endpoint(
+    Path(id): Path<u64>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    State(state): State<SharedState>,
+) -> Json<serde_json::Value> {
+    let reason = params.get("reason").map(|r| r.trim()).filter(|r| !r.is_empty()).unwrap_or("unspecified");
+    let ts = chrono::Utc::now().to_rfc3339();
+    let mut s = state.write().await;
+    let ok = s.alarm_manager.silence(id, reason, &ts);
+    Json(serde_json::json!({ "silenced": ok, "id": id, "reason": reason }))
+}
+
 /// GET /api/v1/export/hl7/:id — export a node's live vitals as an IHE PCD-01
 /// HL7 v2 ORU^R01 message (for hospital device-integration gateways / MDI
 /// engines that ingest via MLLP rather than FHIR). Only measured vitals are
@@ -4536,6 +4574,31 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
 
                     s.tick += 1;
                     let tick = s.tick;
+
+                    // ── IEC 60601-1-8 clinical alarms — raised from REAL
+                    // node detections only (fall flag / measured vital out of
+                    // clinical range). Never fabricated; the state machine
+                    // dedupes, latches High alarms, and escalates unacked ones.
+                    {
+                        use wifi_densepose_sensing_server::standards::alarm::AlarmPriority;
+                        let ats = chrono::Utc::now().to_rfc3339();
+                        let asrc = format!("node-{}", vitals.node_id);
+                        if vitals.fall_detected {
+                            s.alarm_manager.raise(&asrc, "fall", AlarmPriority::High, &ats);
+                        }
+                        if vitals.presence {
+                            let hr = vitals.heartrate_bpm;
+                            if hr > 0.0 && !(40.0..=130.0).contains(&hr) {
+                                s.alarm_manager.raise(&asrc, "hr-critical", AlarmPriority::High, &ats);
+                            }
+                            let br = vitals.breathing_rate_bpm;
+                            if br > 0.0 && !(6.0..=30.0).contains(&br) {
+                                s.alarm_manager.raise(&asrc, "rr-abnormal", AlarmPriority::Medium, &ats);
+                            }
+                        }
+                        // Escalate unacknowledged alarms (High > 30s, Medium > 120s).
+                        s.alarm_manager.escalate_due(&ats, 30, 120);
+                    }
 
                     let motion_level = if vitals.motion { "present_moving" }
                         else if vitals.presence { "present_still" }
@@ -5838,6 +5901,7 @@ async fn main() {
             m
         }),
         node_states: HashMap::new(),
+        alarm_manager: wifi_densepose_sensing_server::standards::alarm::AlarmManager::new(),
         // Accuracy sprint
         pose_tracker: PoseTracker::new(),
         last_tracker_instant: None,
@@ -5946,6 +6010,10 @@ async fn main() {
             get(security_events_dc09_endpoint),
         )
         .route("/api/v1/events/onvif", get(security_events_onvif_endpoint))
+        // Medical: IEC 60601-1-8 clinical alarm management
+        .route("/api/v1/alarms", get(alarms_endpoint))
+        .route("/api/v1/alarms/:id/ack", post(alarm_ack_endpoint))
+        .route("/api/v1/alarms/:id/silence", post(alarm_silence_endpoint))
         .route(
             "/api/v1/config/node-positions",
             get(get_node_positions).put(put_node_positions),
