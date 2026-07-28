@@ -9,10 +9,9 @@ const _up = new THREE.Vector3(0, 1, 0);
 const _vecTarget = new THREE.Vector3();
 
 export class FigurePool {
-  constructor(scene, settings, poseSystem) {
+  constructor(scene, settings) {
     this._scene = scene;
     this._settings = settings;
-    this._poseSystem = poseSystem;
     this._figures = [];
     this._maxFigures = MAX_FIGURES;
     this._modelLoaded = false;
@@ -97,11 +96,12 @@ export class FigurePool {
 
     for (let f = 0; f < this._figures.length; f++) {
       const fig = this._figures[f];
-      if (f < persons.length && isPresent) {
-        const p = persons[f];
-        // Real model keypoints (live-data-mapper) win over synthetic poses.
-        const kps = p.keypoints17 || this._poseSystem.generateKeypoints(p, elapsed, breathPulse);
-        this.applyKeypoints(fig, kps, breathPulse, p.position || [0, 0, 0], elapsed, p.pose);
+      const p = f < persons.length ? persons[f] : null;
+      // Only draw a skeleton when the person carries REAL model keypoints
+      // (keypoints17, set only when pose_source === "model_inference"). We never
+      // synthesize a pose — presence-without-model shows a HUD notice instead.
+      if (p && isPresent && Array.isArray(p.keypoints17) && p.keypoints17.length >= 17) {
+        this.applyKeypoints(fig, p.keypoints17, breathPulse, p.position || [0, 0, 0], elapsed, p.pose);
         fig.visible = true;
         fig.group.visible = true;
       } else {

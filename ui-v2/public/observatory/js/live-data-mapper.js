@@ -1,6 +1,6 @@
 /**
  * Live-data mapper — normalizes real sensing-server WebSocket frames into the
- * demo-data person shape the Observatory renderers consume.
+ * person shape the Observatory renderers consume.
  *
  * The Rust PersonDetection NEVER sends position / motion_score / pose. Its
  * real fields are: id, confidence, keypoints[{name,x,y,z,confidence}],
@@ -162,6 +162,12 @@ export function normalizeLiveFrame(raw) {
   const pose = poseFromPosture(raw.posture) || (ms > 40 ? 'walking' : 'standing');
   const hintPos = positionFromLocationHint(raw);
 
+  // Honest pose contract (backend, ADR-090): keypoints are only real when the
+  // frame carries pose_source === "model_inference". Anything else (presence
+  // only, no trained model, offline) must NOT produce a drawable skeleton —
+  // the renderer shows a warning overlay instead of a fabricated figure.
+  const hasModelPose = raw.pose_source === 'model_inference';
+
   const persons = [];
   const rawPersons = Array.isArray(raw.persons) ? raw.persons : [];
   if (rawPersons.length > 0) {
@@ -170,9 +176,11 @@ export function normalizeLiveFrame(raw) {
       // falls back to their bbox center, then the hint, then room center.
       const pos2 = (i === 0 ? hintPos : null) || positionFromBbox(p?.bbox) || hintPos || [0, 0];
       const position = [pos2[0], 0, pos2[1]];
-      const kpSource = (Array.isArray(p?.keypoints) && p.keypoints.length >= 17)
-        ? p.keypoints
-        : (i === 0 ? raw.pose_keypoints : null);
+      const kpSource = hasModelPose
+        ? ((Array.isArray(p?.keypoints) && p.keypoints.length >= 17)
+            ? p.keypoints
+            : (i === 0 ? raw.pose_keypoints : null))
+        : null;
       persons.push({
         id: p?.id ?? i,
         position,
@@ -181,22 +189,14 @@ export function normalizeLiveFrame(raw) {
         facing: 0,
         confidence: p?.confidence,
         zone: p?.zone,
-        keypoints17: keypointsToScene(kpSource, position[0], position[2]),
+        // null unless a real trained pose model produced keypoints this frame.
+        keypoints17: kpSource ? keypointsToScene(kpSource, position[0], position[2]) : null,
       });
     });
-  } else if (raw.classification?.presence) {
-    // Presence without person detections — synthesize a primary person so the
-    // scene still shows a figure at the estimated location.
-    const pos2 = hintPos || [0, 0];
-    persons.push({
-      id: 0,
-      position: [pos2[0], 0, pos2[1]],
-      motion_score: ms,
-      pose,
-      facing: 0,
-      keypoints17: keypointsToScene(raw.pose_keypoints, pos2[0], pos2[1]),
-    });
   }
+  // NOTE: presence WITHOUT real model keypoints intentionally produces NO
+  // person here — no synthetic skeleton. The HUD surfaces a "presence detected,
+  // no trained pose model" notice instead.
 
   return { ...raw, persons };
 }

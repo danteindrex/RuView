@@ -600,7 +600,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="set-source">Data Source</Label>
-                  <Input id="set-source" value={settings.server_source} onChange={(e) => setSettings((prev) => ({ ...prev, server_source: e.target.value }))} placeholder="auto | wifi | esp32 | nexmon | simulate" />
+                  <Input id="set-source" value={settings.server_source} onChange={(e) => setSettings((prev) => ({ ...prev, server_source: e.target.value }))} placeholder="auto | wifi | esp32 | nexmon" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="set-tick-ms">Tick (ms)</Label>
@@ -792,10 +792,6 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                 <div className="flex items-center gap-3 rounded-md border border-border/60 p-3">
                   <Switch checked={settings.pi_agent_enabled} onCheckedChange={(checked) => setSettings((prev) => ({ ...prev, pi_agent_enabled: checked }))} id="set-pi-enabled" />
                   <Label htmlFor="set-pi-enabled">Enable Pi agent profile</Label>
-                </div>
-                <div className="flex items-center gap-3 rounded-md border border-border/60 p-3">
-                  <Switch checked={settings.pi_agent_mmwave_mock} onCheckedChange={(checked) => setSettings((prev) => ({ ...prev, pi_agent_mmwave_mock: checked }))} id="set-pi-mmwave-mock" />
-                  <Label htmlFor="set-pi-mmwave-mock">Enable mmWave mock</Label>
                 </div>
                 <div className="flex items-center gap-3 rounded-md border border-border/60 p-3">
                   <Switch checked={settings.pi_agent_enable_wasm} onCheckedChange={(checked) => setSettings((prev) => ({ ...prev, pi_agent_enable_wasm: checked }))} id="set-pi-enable-wasm" />

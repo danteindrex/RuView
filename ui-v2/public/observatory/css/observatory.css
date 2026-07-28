@@ -134,12 +134,35 @@ body.wave-observatory-page,
   border-radius: 50%;
   display: inline-block;
 }
-.dot--demo { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+.dot--offline { background: var(--red-alert, #ff3040); box-shadow: 0 0 6px var(--red-alert, #ff3040); }
+.dot--loading { background: var(--amber); box-shadow: 0 0 6px var(--amber); animation: pulse-dot 1.2s infinite; }
 .dot--live { background: var(--green-glow); box-shadow: 0 0 6px var(--green-glow); animation: pulse-dot 2s infinite; }
 
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
+}
+
+/* Honest sensing notice — shown when node is offline or no trained pose model.
+   Replaces any frozen/fabricated skeleton with a clear warning. */
+#sensing-notice {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 420px;
+  padding: 14px 20px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--text-primary, #e8f0ea);
+  background: rgba(10, 16, 22, 0.82);
+  border: 1px solid var(--amber, #ffb020);
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  z-index: 20;
 }
 
 #scenario-area {

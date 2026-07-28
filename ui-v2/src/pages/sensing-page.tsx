@@ -354,7 +354,7 @@ export function SensingPage({ status, onStatusRefresh }: SensingPageProps) {
           </div>
           <div className="space-y-2">
             <Label htmlFor="server-source">Data Source</Label>
-            <Input id="server-source" value={config.source ?? ""} onChange={(e) => setConfig((prev) => ({ ...prev, source: e.target.value }))} placeholder="auto | wifi | esp32 | nexmon | simulate" />
+            <Input id="server-source" value={config.source ?? ""} onChange={(e) => setConfig((prev) => ({ ...prev, source: e.target.value }))} placeholder="auto | wifi | esp32 | nexmon" />
           </div>
           <div className="space-y-2">
             <Label htmlFor="server-bind">Bind Address</Label>

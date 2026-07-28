@@ -79,8 +79,9 @@ export function MedicalPage() {
   const planStore = usePlanStore();
   const isCloud = planStore.isCloud();
 
-  const [hrHistory, setHrHistory] = useState<number[]>(new Array(20).fill(0));
-  const [brHistory, setBrHistory] = useState<number[]>(new Array(20).fill(0));
+  // Start EMPTY — no fabricated flatline. Real readings are pushed as they arrive.
+  const [hrHistory, setHrHistory] = useState<number[]>([]);
+  const [brHistory, setBrHistory] = useState<number[]>([]);
   const [trendPoints, setTrendPoints] = useState<TrendPoint[]>([]);
   const [insightResult, setInsightResult] = useState<InsightResult | null>(null);
   const [insightLoading, setInsightLoading] = useState(false);
@@ -92,6 +93,10 @@ export function MedicalPage() {
     { label: "Critical", count: 0 },
   ]);
   const [deploymentId, setDeploymentId] = useState<string>("");
+  // Real sensing lifecycle events only — starts EMPTY, never seeded with fabricated entries.
+  const [events, setEvents] = useState<{ id: string; title: string; detail: string; ts: string; severity: "info" | "alert" }[]>([]);
+  const firstFrameSeen = React.useRef(false);
+  const fallActive = React.useRef(false);
 
   useEffect(() => { planStore.load(); }, []);
 
@@ -105,11 +110,29 @@ export function MedicalPage() {
     const hr = latestUpdate?.vital_signs?.heart_rate_bpm;
     const br = latestUpdate?.vital_signs?.breathing_rate_bpm;
     if (hr) {
-      setHrHistory(p => [...p.slice(1), hr]);
+      setHrHistory(p => [...p, hr].slice(-20));
       setTrendPoints(p => [...p.slice(-19), { label: new Date().toLocaleTimeString(), hr, br: br ?? 0 }]);
     }
-    if (br) setBrHistory(p => [...p.slice(1), br]);
+    if (br) setBrHistory(p => [...p, br].slice(-20));
   }, [latestUpdate]);
+
+  // Record REAL sensing lifecycle events only (first frame received, fall
+  // detection edges). No fabricated "boot"/"baseline" entries.
+  useEffect(() => {
+    if (!latestUpdate) return;
+    const now = new Date().toLocaleTimeString();
+    if (!firstFrameSeen.current) {
+      firstFrameSeen.current = true;
+      setEvents(p => [{ id: `frame-${Date.now()}`, title: "Live sensing started", detail: "First sensing frame received from a connected node.", ts: now, severity: "info" as const }, ...p].slice(0, 50));
+    }
+    const fallNow = latestUpdate.posture === "lying_down" || edgeVitals?.fall_detected === true;
+    if (fallNow && !fallActive.current) {
+      fallActive.current = true;
+      setEvents(p => [{ id: `fall-${Date.now()}`, title: "EMERGENCY: Fall Detected", detail: "Sensing engine recognized high-velocity vertical displacement.", ts: now, severity: "alert" as const }, ...p].slice(0, 50));
+    } else if (!fallNow && fallActive.current) {
+      fallActive.current = false;
+    }
+  }, [latestUpdate, edgeVitals]);
 
   const vitals = latestUpdate?.vital_signs;
   const isFallDetected = latestUpdate?.posture === "lying_down" || edgeVitals?.fall_detected === true;
@@ -225,8 +248,15 @@ export function MedicalPage() {
           <Badge variant="outline" className={synced ? "text-emerald-600 border-emerald-400" : "text-muted-foreground"}>
             {synced ? "Synced to Cloud" : "Local Only"}
           </Badge>
-          <Badge variant={isFallDetected ? "danger" : "outline"} className="px-4 py-1 text-sm animate-pulse">
-            {isFallDetected ? "EMERGENCY: FALL DETECTED" : "SYSTEM NORMAL"}
+          <Badge
+            variant={isFallDetected ? "danger" : "outline"}
+            className={`px-4 py-1 text-sm ${isFallDetected ? "animate-pulse" : ""} ${latestUpdate === null ? "text-muted-foreground" : ""}`}
+          >
+            {isFallDetected
+              ? "EMERGENCY: FALL DETECTED"
+              : latestUpdate === null
+                ? "OFFLINE — NO SENSING DATA"
+                : "MONITORING"}
           </Badge>
         </div>
       </div>
@@ -238,7 +268,11 @@ export function MedicalPage() {
           <CardContent>
             <div className="text-4xl font-bold">{vitals?.heart_rate_bpm?.toFixed(0) ?? "--"}</div>
             <p className="text-xs text-muted-foreground mt-1">BPM</p>
-            <div className="mt-4"><Sparkline data={hrHistory} color="#f43f5e" /></div>
+            <div className="mt-4 h-12 flex items-center">
+              {hrHistory.length >= 2
+                ? <Sparkline data={hrHistory} color="#f43f5e" />
+                : <span className="text-xs text-muted-foreground">No data yet</span>}
+            </div>
             <div className="mt-2 h-1.5 w-full bg-secondary rounded-full overflow-hidden">
               <div className="h-full bg-rose-500 transition-all duration-500" style={{ width: `${Math.min(100, vitals?.heart_rate_bpm ?? 0)}%` }} />
             </div>
@@ -249,7 +283,11 @@ export function MedicalPage() {
           <CardContent>
             <div className="text-4xl font-bold">{vitals?.breathing_rate_bpm?.toFixed(1) ?? "--"}</div>
             <p className="text-xs text-muted-foreground mt-1">RPM</p>
-            <div className="mt-4"><Sparkline data={brHistory} color="#3b82f6" /></div>
+            <div className="mt-4 h-12 flex items-center">
+              {brHistory.length >= 2
+                ? <Sparkline data={brHistory} color="#3b82f6" />
+                : <span className="text-xs text-muted-foreground">No data yet</span>}
+            </div>
             <div className="mt-2 h-1.5 w-full bg-secondary rounded-full overflow-hidden">
               <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${Math.min(100, (vitals?.breathing_rate_bpm ?? 0) * 3)}%` }} />
             </div>
@@ -258,9 +296,19 @@ export function MedicalPage() {
         <Card className="bg-gradient-to-br from-background to-emerald-50/10 border-emerald-500/20">
           <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Posture / Activity</CardTitle></CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold capitalize">{latestUpdate?.posture ?? "Stationary"}</div>
-            <p className="text-xs text-muted-foreground mt-1">WiFi Pose Estimation active</p>
-            <div className="mt-4"><span className="text-xs font-medium text-emerald-500 uppercase tracking-tighter">Continuous Monitoring</span></div>
+            {latestUpdate !== null ? (
+              <>
+                <div className="text-2xl font-bold capitalize">{latestUpdate.posture ?? "--"}</div>
+                <p className="text-xs text-muted-foreground mt-1">WiFi Pose Estimation active</p>
+                <div className="mt-4"><span className="text-xs font-medium text-emerald-500 uppercase tracking-tighter">Continuous Monitoring</span></div>
+              </>
+            ) : (
+              <>
+                <div className="text-2xl font-bold">Offline</div>
+                <p className="text-xs text-muted-foreground mt-1">No sensing data — connect a node</p>
+                <div className="mt-4"><span className="text-xs font-medium text-muted-foreground uppercase tracking-tighter">Not monitoring</span></div>
+              </>
+            )}
           </CardContent>
         </Card>
         <Card className="bg-gradient-to-br from-background to-violet-50/10 border-violet-500/20">
@@ -297,23 +345,24 @@ export function MedicalPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4 max-h-[400px] overflow-auto pr-2">
-                {isFallDetected && (
-                  <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg animate-pulse">
-                    <p className="text-sm font-bold text-destructive">EMERGENCY: Fall Detected</p>
-                    <p className="text-xs text-muted-foreground">Sensing engine recognized high-velocity vertical displacement.</p>
-                    <p className="text-[10px] font-mono text-muted-foreground mt-1 opacity-70">{new Date().toLocaleTimeString()}</p>
-                  </div>
+                {events.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-8 text-center">No events yet — connect a sensing node to begin.</p>
+                ) : (
+                  events.map((ev) => (
+                    <div
+                      key={ev.id}
+                      className={
+                        ev.severity === "alert"
+                          ? "p-3 bg-destructive/10 border border-destructive/20 rounded-lg"
+                          : "p-3 bg-secondary/30 rounded-lg border border-border/40"
+                      }
+                    >
+                      <p className={ev.severity === "alert" ? "text-sm font-bold text-destructive" : "text-sm font-semibold"}>{ev.title}</p>
+                      <p className="text-xs text-muted-foreground">{ev.detail}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground mt-1 opacity-70">{ev.ts}</p>
+                    </div>
+                  ))
                 )}
-                <div className="p-3 bg-secondary/30 rounded-lg border border-border/40">
-                  <p className="text-sm font-semibold">Continuous Vitals Monitor</p>
-                  <p className="text-xs text-muted-foreground">WiFi CSI subcarrier analysis is extracting sub-millimeter chest wall movement.</p>
-                  <p className="text-[10px] font-mono text-muted-foreground mt-1 opacity-70">{new Date().toLocaleTimeString()}</p>
-                </div>
-                <div className="p-3 bg-secondary/20 rounded-lg border border-border/40 opacity-70">
-                  <p className="text-sm font-semibold">Baseline Established</p>
-                  <p className="text-xs text-muted-foreground">Environmental noise floor calibrated. Sensitivity set to medical mode.</p>
-                  <p className="text-[10px] font-mono text-muted-foreground mt-1 opacity-70">System Boot</p>
-                </div>
               </div>
             </CardContent>
           </Card>

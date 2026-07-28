@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { useSensingStore } from '@/lib/sensing-store'
 
 interface VisionState {
   currentImage: string | null
@@ -18,15 +19,28 @@ export default function CsiVisionPage() {
   // TODO: replace with usePlanStore().isCloud() from feature/cloud-tier-gating
   const isCloudPlan = false
 
+  // Real CSI amplitudes from a live sensing node. No fabricated data — when a
+  // node is streaming, csiAmplitudes is a real vector; otherwise it's null and
+  // generation is disabled.
+  const latestUpdate = useSensingStore((s) => s.latestUpdate)
+  const csiAmplitudes =
+    latestUpdate?.nodes?.[0]?.amplitude && latestUpdate.nodes[0].amplitude.length > 0
+      ? latestUpdate.nodes[0].amplitude
+      : null
+  const hasCsi = csiAmplitudes !== null
+
   const generate = useCallback(async () => {
     if (!isCloudPlan) return
+    if (!csiAmplitudes) {
+      setState(s => ({ ...s, error: 'No CSI data available from a live node.' }))
+      return
+    }
     setState(s => ({ ...s, isGenerating: true, error: null }))
     try {
-      const stubCsi = Array.from({ length: 342 }, () => Math.random())
       const resp = await fetch('http://localhost:8001/vision/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ csi_amplitudes: stubCsi, prompt: state.prompt, strength: state.strength }),
+        body: JSON.stringify({ csi_amplitudes: csiAmplitudes, prompt: state.prompt, strength: state.strength }),
       })
       if (!resp.ok) throw new Error(`Vision API ${resp.status}`)
       const data = await resp.json()
@@ -35,7 +49,7 @@ export default function CsiVisionPage() {
     } catch (e) {
       setState(s => ({ ...s, isGenerating: false, error: String(e) }))
     }
-  }, [state.prompt, state.strength, isCloudPlan])
+  }, [state.prompt, state.strength, isCloudPlan, csiAmplitudes])
 
   if (!isCloudPlan) {
     return (
@@ -96,10 +110,11 @@ export default function CsiVisionPage() {
               className="w-full" />
             <p className="text-xs text-gray-400 mt-1">Lower = closer to CSI · Higher = more creative</p>
           </div>
-          <button onClick={generate} disabled={state.isGenerating}
+          <button onClick={generate} disabled={state.isGenerating || !hasCsi}
             className="w-full bg-blue-600 text-white py-2 rounded-md hover:bg-blue-700 disabled:opacity-50">
             {state.isGenerating ? 'Generating...' : 'Generate from Live CSI'}
           </button>
+          {!hasCsi && <p className="text-amber-500 text-sm">No CSI data available from a live node.</p>}
           {state.error && <p className="text-red-500 text-sm">{state.error}</p>}
         </div>
       </div>

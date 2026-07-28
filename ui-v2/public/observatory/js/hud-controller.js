@@ -216,7 +216,6 @@ export class HudController {
       obs._camera.updateProjectionMatrix();
     });
     this._bindRange('opt-orbit-speed', 'orbitSpeed');
-    this._bindRange('opt-cycle', 'cycle', v => { obs._demoData.setCycleDuration(v); });
 
     // Color pickers
     document.getElementById('opt-wire-color').value = s.wireColor;
@@ -238,36 +237,20 @@ export class HudController {
       s.room = e.target.checked; obs._roomWire.visible = e.target.checked; this.saveSettings();
     });
 
-    // Scenario select
-    const scenarioSel = document.getElementById('opt-scenario');
-    scenarioSel.value = s.scenario;
-    scenarioSel.addEventListener('change', (e) => {
-      s.scenario = e.target.value;
-      obs._demoData.setScenario(e.target.value);
-      this.saveSettings();
-    });
-
-    // Data source
-    const dsSel = document.getElementById('opt-data-source');
-    dsSel.value = s.dataSource || 'demo';
-    dsSel.addEventListener('change', (e) => {
-      s.dataSource = e.target.value;
-      obs._currentData = null;
-      document.getElementById('ws-url-row').style.display = s.dataSource === 'ws' ? 'flex' : 'none';
-      if (s.dataSource === 'ws') obs._connectWS(s.wsUrl || obs._forcedWsUrl);
-      if (s.dataSource === 'demo') obs._disconnectWS();
-      this.updateSourceBadge(s.dataSource, obs._ws);
-      this.saveSettings();
-    });
-    document.getElementById('ws-url-row').style.display = s.dataSource === 'ws' ? 'flex' : 'none';
+    // Data source is always live WebSocket — no demo/scenario selection. Only
+    // the WS URL is user-configurable (guarded: element may be absent).
+    const wsUrlRow = document.getElementById('ws-url-row');
+    if (wsUrlRow) wsUrlRow.style.display = 'flex';
 
     const wsInput = document.getElementById('opt-ws-url');
-    wsInput.value = s.wsUrl;
-    wsInput.addEventListener('change', (e) => {
-      s.wsUrl = e.target.value;
-      if (s.dataSource === 'ws') obs._connectWS(e.target.value);
-      this.saveSettings();
-    });
+    if (wsInput) {
+      wsInput.value = s.wsUrl;
+      wsInput.addEventListener('change', (e) => {
+        s.wsUrl = e.target.value;
+        obs._connectWS(e.target.value);
+        this.saveSettings();
+      });
+    }
 
     // Buttons
     document.getElementById('btn-reset-camera').addEventListener('click', () => {
@@ -301,15 +284,11 @@ export class HudController {
   // ============================================================
 
   initQuickSelect() {
-    const sel = document.getElementById('scenario-quick-select');
-    if (!sel) return;
-    sel.addEventListener('change', (e) => {
-      this._obs._demoData.setScenario(e.target.value);
-      const settingsSel = document.getElementById('opt-scenario');
-      if (settingsSel) settingsSel.value = e.target.value;
-      this._obs.settings.scenario = e.target.value;
-      this.saveSettings();
-    });
+    // Scenario is derived from live data only — there is no user-selectable
+    // scenario anymore. The quick-select dropdown and auto-play icon are removed
+    // from the markup; guard in case a stale element exists.
+    const autoIcon = document.getElementById('autoplay-icon');
+    if (autoIcon) autoIcon.style.display = 'none';
   }
 
   // ============================================================
@@ -388,7 +367,6 @@ export class HudController {
     obs._floorMat.metalness = obs.settings.reflect * 0.5;
     obs._camera.fov = obs.settings.fov;
     obs._camera.updateProjectionMatrix();
-    obs._demoData.setCycleDuration(obs.settings.cycle);
     obs._applyColors();
   }
 
@@ -399,12 +377,40 @@ export class HudController {
   updateSourceBadge(dataSource, ws) {
     const dot = document.querySelector('#data-source-badge .dot');
     const label = document.getElementById('data-source-label');
-    if (dataSource === 'demo') {
-      dot.className = 'dot dot--demo'; label.textContent = 'DEMO';
-    } else if (dataSource === 'ws' && ws?.readyState === WebSocket.OPEN) {
+    if (!dot || !label) return;
+    if (dataSource === 'ws' && ws?.readyState === WebSocket.OPEN) {
       dot.className = 'dot dot--live'; label.textContent = 'LIVE';
     } else {
-      dot.className = 'dot dot--demo'; label.textContent = 'WAITING';
+      // No live stream — honest "waiting/offline" state, never labeled demo.
+      dot.className = 'dot dot--offline'; label.textContent = 'WAITING';
+    }
+  }
+
+  // ============================================================
+  // Sensing notice overlay (offline / presence-without-model)
+  // ============================================================
+
+  updateSensingNotice(data, hasLive) {
+    const el = document.getElementById('sensing-notice');
+    if (!el) return;
+    const source = (data && typeof data.source === 'string') ? data.source : '';
+    const offline = !hasLive || data?.offline === true || source.endsWith(':offline');
+    const presence = data?.classification?.presence === true;
+    const hasModelPose = data?.pose_source === 'model_inference';
+
+    let msg = '';
+    if (offline) {
+      msg = 'No sensing data — node offline. Connect a node to see live pose.';
+    } else if (presence && !hasModelPose) {
+      msg = 'Presence detected — no trained pose model loaded. 3D skeleton unavailable.';
+    }
+
+    if (msg) {
+      el.textContent = msg;
+      el.style.display = 'block';
+    } else {
+      el.textContent = '';
+      el.style.display = 'none';
     }
   }
 
@@ -412,18 +418,11 @@ export class HudController {
   // HUD update (called every frame)
   // ============================================================
 
-  updateHUD(data, demoData) {
+  updateHUD(data) {
     if (!data) return;
     const vs = data.vital_signs || {};
     const feat = data.features || {};
     const cls = data.classification || {};
-
-    // Sync scenario dropdown
-    const quickSel = document.getElementById('scenario-quick-select');
-    const cur = demoData._autoMode ? 'auto' : demoData.currentScenario;
-    if (quickSel && quickSel.value !== cur) quickSel.value = cur;
-    const autoIcon = document.getElementById('autoplay-icon');
-    if (autoIcon) autoIcon.className = demoData._autoMode ? '' : 'hidden';
 
     const targetHr = vs.heart_rate_bpm || 0;
     const targetBr = vs.breathing_rate_bpm || 0;
@@ -456,9 +455,11 @@ export class HudController {
     this._setBarColor('br-bar', vitalColor('br', this._lerpBr));
     this._setBarColor('conf-bar', vitalColor('conf', this._lerpConf));
 
-    this._setText('rssi-value', `${Math.round(feat.mean_rssi || 0)} dBm`);
-    this._setText('var-value', (feat.variance || 0).toFixed(2));
-    this._setText('motion-value', (feat.motion_band_power || 0).toFixed(3));
+    // Honest signal readouts — "--" when the value is absent (offline frame),
+    // never a fabricated 0 dBm / 0.00 that reads like a real measurement.
+    this._setText('rssi-value', Number.isFinite(feat.mean_rssi) ? `${Math.round(feat.mean_rssi)} dBm` : '-- dBm');
+    this._setText('var-value', Number.isFinite(feat.variance) ? feat.variance.toFixed(2) : '--');
+    this._setText('motion-value', Number.isFinite(feat.motion_band_power) ? feat.motion_band_power.toFixed(3) : '--');
 
     // Mini person-count dots
     const personCount = data.estimated_persons || 0;
@@ -477,20 +478,13 @@ export class HudController {
     const fallEl = document.getElementById('fall-alert');
     if (fallEl) fallEl.style.display = (cls.fall_detected || data.posture === 'lying_down') ? 'block' : 'none';
 
-    // Scenario description and edge modules.
-    // With live sensor data, derive the scenario from what the data actually
-    // shows — never from the demo generator's selected scenario, which would
-    // display fabricated context (e.g. "Fall Event" badges) over real readings.
-    const isLive = data.source && data.source !== 'demo';
+    // Scenario description and edge modules are derived ONLY from what the live
+    // data actually shows — never from a fabricated/selected scenario.
     let scenarioKey;
-    if (isLive) {
-      if (cls.fall_detected || data.posture === 'lying_down') scenarioKey = 'fall';
-      else if ((cls.motion_level || '') === 'active' || (cls.motion_level || '').includes('moving')) scenarioKey = 'walking';
-      else if (cls.presence) scenarioKey = 'breathing';
-      else scenarioKey = 'empty';
-    } else {
-      scenarioKey = demoData.currentScenario || 'auto';
-    }
+    if (cls.fall_detected || data.posture === 'lying_down') scenarioKey = 'fall';
+    else if ((cls.motion_level || '') === 'active' || (cls.motion_level || '').includes('moving')) scenarioKey = 'walking';
+    else if (cls.presence) scenarioKey = 'breathing';
+    else scenarioKey = 'empty';
     if (scenarioKey !== this._currentScenarioKey) {
       this._currentScenarioKey = scenarioKey;
       this._updateScenarioDescription(scenarioKey);

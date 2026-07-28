@@ -245,10 +245,6 @@ export function PiNodesPage() {
             />
           </div>
           <div className="flex items-center gap-3 rounded-md border border-border/60 p-3">
-            <Switch checked={config.mmwave_mock} onCheckedChange={(checked) => setConfig((prev) => ({ ...prev, mmwave_mock: checked }))} id="agent-mmwave" />
-            <Label htmlFor="agent-mmwave">mmWave mock</Label>
-          </div>
-          <div className="flex items-center gap-3 rounded-md border border-border/60 p-3">
             <Switch checked={config.enable_wasm} onCheckedChange={(checked) => setConfig((prev) => ({ ...prev, enable_wasm: checked }))} id="agent-wasm" />
             <Label htmlFor="agent-wasm">WASM events</Label>
           </div>

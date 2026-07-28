@@ -5,6 +5,9 @@ export function ObservatoryMarkup() {
     <>
       <canvas id="observatory-canvas" />
 
+      {/* Honest offline / no-pose-model notice (hidden until needed) */}
+      <div id="sensing-notice" style={{ display: "none" }} />
+
       <div id="hud">
         <div id="brand">
           <div id="brand-logo">
@@ -15,26 +18,8 @@ export function ObservatoryMarkup() {
 
         <div id="status-bar">
           <div id="data-source-badge">
-            <span className="dot dot--demo" />
+            <span className="dot dot--offline" />
             <span id="data-source-label">WAITING</span>
-          </div>
-          <div id="scenario-area">
-            <span id="autoplay-icon" title="Auto-cycling"></span>
-            <select id="scenario-quick-select" title="Change scenario" defaultValue="auto">
-              <option value="auto">Auto-Cycle</option>
-              <option value="empty_room">Empty Room</option>
-              <option value="single_breathing">Vital Signs</option>
-              <option value="two_walking">Multi-Person</option>
-              <option value="fall_event">Fall Detect</option>
-              <option value="sleep_monitoring">Sleep Monitor</option>
-              <option value="intrusion_detect">Intrusion</option>
-              <option value="gesture_control">Gesture Ctrl</option>
-              <option value="crowd_occupancy">Crowd (4 ppl)</option>
-              <option value="search_rescue">Search Rescue</option>
-              <option value="elderly_care">Elderly Care</option>
-              <option value="fitness_tracking">Fitness</option>
-              <option value="security_patrol">Security Patrol</option>
-            </select>
           </div>
           <div id="scenario-description" />
           <div id="fps-counter" style={{ display: "none" }}>
@@ -164,7 +149,6 @@ export function ObservatoryMarkup() {
 
         <div id="key-hints">
           <span className="key-hint">[A] Orbit</span>
-          <span className="key-hint">[D] Scenario</span>
           <span className="key-hint">[F] FPS</span>
           <span className="key-hint">[S] Settings</span>
           <span className="key-hint">[Space] Pause</span>
@@ -218,35 +202,6 @@ export function ObservatoryMarkup() {
 
           <div className="stab-content" id="stab-data">
             <div className="setting-row">
-              <span>Scenario</span>
-              <select id="opt-scenario" defaultValue="auto">
-                <option value="auto">Auto-Cycle (30s)</option>
-                <optgroup label="Core Sensing">
-                  <option value="empty_room">Empty Room</option>
-                  <option value="single_breathing">Vital Signs (Breathing)</option>
-                  <option value="two_walking">Multi-Person Tracking</option>
-                  <option value="fall_event">Fall Detection</option>
-                </optgroup>
-                <optgroup label="Medical / Health">
-                  <option value="sleep_monitoring">Sleep Monitoring (Apnea)</option>
-                  <option value="elderly_care">Elderly Care (Gait)</option>
-                  <option value="fitness_tracking">Fitness Tracking</option>
-                </optgroup>
-                <optgroup label="Security">
-                  <option value="intrusion_detect">Intrusion Detection</option>
-                  <option value="security_patrol">Security Patrol</option>
-                </optgroup>
-                <optgroup label="Building / Retail">
-                  <option value="crowd_occupancy">Crowd Occupancy (4 ppl)</option>
-                  <option value="gesture_control">Gesture Control (DTW)</option>
-                </optgroup>
-                <optgroup label="Disaster / Tactical">
-                  <option value="search_rescue">Search &amp; Rescue (WiFi-MAT)</option>
-                </optgroup>
-              </select>
-            </div>
-            <SettingRange id="opt-cycle" label="Cycle Speed (s)" min="10" max="120" step="5" value="30" />
-            <div className="setting-row">
               <span>Style Preset</span>
               <select id="opt-preset" defaultValue="custom">
                 <option value="custom">Custom</option>
@@ -258,15 +213,8 @@ export function ObservatoryMarkup() {
                 <option value="medical">Medical Monitor</option>
               </select>
             </div>
-            <div className="setting-row">
-              <span>Data Source</span>
-              <select id="opt-data-source" defaultValue="ws">
-                <option value="ws">Live WebSocket</option>
-                <option value="demo">Demo Scenario</option>
-              </select>
-            </div>
-            <div className="setting-row" id="ws-url-row" style={{ display: "none" }}>
-              <span>WS URL</span>
+            <div className="setting-row" id="ws-url-row">
+              <span>WS URL (Live Source)</span>
               <input type="text" id="opt-ws-url" defaultValue="" placeholder="ws://localhost:3000/ws/sensing" />
             </div>
             <button id="btn-reset-camera" className="settings-btn">Reset Camera</button>

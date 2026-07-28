@@ -11,11 +11,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-import { DemoDataGenerator } from './demo-data.js';
 import { NebulaBackground } from './nebula-background.js';
 import { PostProcessing } from './post-processing.js';
 import { FigurePool, SKELETON_PAIRS } from './figure-pool.js';
-import { PoseSystem } from './pose-system.js';
 import { ScenarioProps } from './scenario-props.js';
 import { HudController, DEFAULTS, SETTINGS_VERSION, PRESETS, SCENARIO_NAMES } from './hud-controller.js';
 import { normalizeLiveFrame } from './live-data-mapper.js';
@@ -128,22 +126,14 @@ class Observatory {
 
     this._clock = new THREE.Clock();
 
-    // Data
-    this._demoData = new DemoDataGenerator();
-    this._demoData.setCycleDuration(this.settings.cycle || 30);
-    if (this.settings.scenario && this.settings.scenario !== 'auto') {
-      this._demoData.setScenario(this.settings.scenario);
-    }
+    // Data — live WebSocket is the ONLY source. When no node is streaming we
+    // render the honest empty frame (_emptyLiveFrame) and a warning overlay;
+    // there is no demo/synthetic data path.
     if (this._forcedWsUrl) {
       this.settings.wsUrl = this._forcedWsUrl;
     }
-    if (this._forcedMode === 'demo') {
-      this.settings.dataSource = 'demo';
-    } else if (this._forcedMode === 'live') {
-      this.settings.dataSource = 'ws';
-    } else if (this._forcedWsUrl) {
-      this.settings.dataSource = 'ws';
-    } else if (!this.settings.wsUrl) {
+    this.settings.dataSource = 'ws';
+    if (!this.settings.wsUrl) {
       const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       this.settings.wsUrl = `${wsProto}//${window.location.host}/ws/sensing`;
     }
@@ -155,8 +145,7 @@ class Observatory {
     this._nebula = new NebulaBackground(this._scene);
     this._buildRoom();
     this._buildRouter();
-    this._poseSystem = new PoseSystem();
-    this._figurePool = new FigurePool(this._scene, this.settings, this._poseSystem);
+    this._figurePool = new FigurePool(this._scene, this.settings);
     this._scenarioProps = new ScenarioProps(this._scene);
     this._buildDotMatrixMist();
     this._buildParticleTrail();
@@ -195,12 +184,10 @@ class Observatory {
 
     this._ws = null;
     this._liveData = null;
-    if (this.settings.dataSource === 'ws' && this._forcedWsUrl) {
+    if (this._forcedWsUrl) {
       this._connectWS(this._forcedWsUrl);
-    } else if (this.settings.dataSource === 'ws') {
-      this._autoDetectLive();
     } else {
-      this._hud?.updateSourceBadge?.('demo', null);
+      this._autoDetectLive();
     }
 
     // Input
@@ -699,17 +686,21 @@ class Observatory {
   }
 
   _emptyLiveFrame() {
+    // Honest offline frame — no node is streaming. Nulls, not zeros-that-look-
+    // like-readings; no persons, no pose. The HUD renders an offline warning.
     return {
-      source: 'esp32',
+      source: 'wifi:offline',
+      pose_source: 'none',
       tick: 0,
       timestamp: Date.now() / 1000,
       classification: { presence: false, motion_level: 'absent', confidence: 0 },
       vital_signs: { breathing_rate_bpm: null, heart_rate_bpm: null, signal_quality: 0 },
-      features: { mean_rssi: -80, variance: 0, motion_band_power: 0 },
+      features: { mean_rssi: null, variance: null, motion_band_power: null },
       estimated_persons: 0,
       persons: [],
       nodes: [],
       signal_field: { values: [] },
+      offline: true,
     };
   }
 
@@ -723,25 +714,27 @@ class Observatory {
     const dt = Math.min(this._clock.getDelta(), 0.1);
     const elapsed = this._clock.getElapsedTime();
 
-    // Data source
-    if (this.settings.dataSource === 'demo') {
-      this._currentData = this._demoData.update(dt);
-    } else if (this.settings.dataSource === 'ws' && this._liveData) {
+    // Data source — live WebSocket only. No live frame => honest empty frame.
+    const hasLive = !!this._liveData;
+    if (hasLive) {
       this._currentData = this._liveData;
-    } else if (this.settings.dataSource === 'ws' || !this._currentData) {
+    } else {
       this._currentData = this._emptyLiveFrame();
     }
     const data = this._currentData;
 
+    // Honest pose/offline notice: never a frozen/fabricated skeleton.
+    this._hud.updateSensingNotice(data, hasLive);
+
     // Updates
     this._nebula.update(dt, elapsed);
     this._figurePool.update(data, elapsed);
-    this._scenarioProps.update(data, this._demoData.currentScenario);
+    this._scenarioProps.update(data, null);
     this._updateDotMatrixMist(data, elapsed);
     this._updateParticleTrail(data, dt, elapsed);
     this._updateWifiWaves(elapsed);
     this._updateSignalField(data);
-    this._hud.updateHUD(data, this._demoData);
+    this._hud.updateHUD(data);
     this._hud.updateSparkline(data);
     this._nodePlacement.update(data, dt, elapsed);
 
