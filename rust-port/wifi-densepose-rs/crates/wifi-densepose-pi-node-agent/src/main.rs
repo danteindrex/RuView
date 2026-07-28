@@ -10,12 +10,10 @@ use wifi_densepose_pi_node_agent::config::AgentConfig;
 use wifi_densepose_pi_node_agent::edge_dsp::{process_frame, EdgeDspState};
 use wifi_densepose_pi_node_agent::frame_encoder::{
     encode_feature_packet, encode_fused_vitals_packet, encode_inference_packet, encode_raw_frame,
-    encode_vitals_packet, encode_wasm_v2_packet, EdgeVitals,
+    encode_vitals_packet, encode_wasm_v2_packet,
 };
 use wifi_densepose_pi_node_agent::inference;
-use wifi_densepose_pi_node_agent::mmwave::{
-    fuse_with_mmwave, MmwaveReader, MmwaveState, MockMmwaveReader,
-};
+use wifi_densepose_pi_node_agent::mmwave::{fuse_with_mmwave, MmwaveReader};
 use wifi_densepose_pi_node_agent::nexmon_capture::{nexmon_to_raw_frame, parse_nexmon_payload};
 use wifi_densepose_pi_node_agent::wasm_runtime::{EdgeFrameContext, WasmRuntime};
 
@@ -105,16 +103,6 @@ fn build_wasm_runtime(config: &AgentConfig) -> Result<WasmRuntime> {
     }
 }
 
-fn mmwave_state_from_vitals(vitals: &EdgeVitals) -> MmwaveState {
-    MmwaveState {
-        presence_score: vitals.presence_score.max(0.35),
-        motion_energy: vitals.motion_energy,
-        distance_m: 1.5,
-        fall_detected: vitals.fall_detected,
-        n_persons: vitals.n_persons.max(1),
-    }
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
@@ -139,11 +127,13 @@ async fn run(config: AgentConfig) -> Result<()> {
     let uplink = UdpSocket::bind("0.0.0.0:0").await?;
     let mut dsp = EdgeDspState::new(config.tier);
     let mut wasm = build_wasm_runtime(&config)?;
-    let mut mmwave = if config.enable_mmwave_mock {
-        Some(MockMmwaveReader::default())
-    } else {
-        None
-    };
+    // mmWave fusion requires a REAL sensor reader (LD2410 / MR60BHA2). This build
+    // never uses a synthetic/mock reader — a node emits fused vitals only from a
+    // genuine mmWave device, never fabricated data.
+    let mut mmwave: Option<Box<dyn MmwaveReader>> = None;
+    if config.enable_mmwave_mock {
+        warn!("mmwave_mock requested but is DISABLED — this build never fabricates mmWave/presence data");
+    }
 
     let mut buf = vec![0u8; 8192];
     loop {
@@ -196,8 +186,9 @@ async fn run(config: AgentConfig) -> Result<()> {
                         uplink.send_to(&packet, config.aggregator_addr).await?;
                     }
 
+                    // Fused vitals are emitted only from a real mmWave reader's
+                    // measurements — never synthesized from CSI vitals.
                     if let Some(reader) = mmwave.as_mut() {
-                        reader.push(mmwave_state_from_vitals(&vitals));
                         if let Some(mmwave_state) = reader.poll() {
                             let fused = fuse_with_mmwave(&vitals, &mmwave_state);
                             let packet = encode_fused_vitals_packet(&fused);
