@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     image: mariadb:10.6
@@ -15,6 +13,10 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --skip-character-set-client-handshake
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      retries: 12
 
   redis-cache:
     image: redis:7-alpine
@@ -31,24 +33,37 @@ services:
   frappe:
     image: frappe/bench:latest
     restart: unless-stopped
-    depends_on: [db, redis-cache, redis-queue, redis-socketio]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis-cache:
+        condition: service_started
+      redis-queue:
+        condition: service_started
+      redis-socketio:
+        condition: service_started
     ports:
-      # Host 4080 (8080 is reserved by another app on this machine — do not use it).
-      - "4080:8080"
+      # Host 4080 -> container 8000 (bench start dev server).
+      # 8080 is reserved by another app on this machine — do not use it.
+      - "4080:8000"
     environment:
-      FRAPPE_SITE_NAME: ${FRAPPE_SITE:-wave.localhost}
+      FRAPPE_SITE: ${FRAPPE_SITE:-wave.localhost}
+      FRAPPE_ADMIN_PASSWORD: ${FRAPPE_ADMIN_PASSWORD:-Admin@2025}
       DB_HOST: db
-      DB_PORT: "3306"
-      DB_NAME: ${DB_NAME:-wave_frappe}
-      DB_USER: ${DB_USER:-wave}
-      DB_PASSWORD: ${DB_PASSWORD:-wave_pass}
+      DB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-wave_root}
       REDIS_CACHE: redis-cache:6379
       REDIS_QUEUE: redis-queue:6379
       REDIS_SOCKETIO: redis-socketio:6379
+    # Self-provisioning entrypoint (bench init + site + apps on first boot,
+    # then bench start). Replaces the old manual setup.sh.
+    command: ["bash", "/home/frappe/provision.sh"]
     volumes:
-      - frappe_sites:/home/frappe/frappe-bench/sites
-      - ./apps/wave_care:/home/frappe/frappe-bench/apps/wave_care
+      # NOTE: the bench lives in the container's writable layer (survives
+      # restarts). We deliberately do NOT mount a named volume at frappe-bench
+      # because it would be root-owned and `bench` runs as uid 1000 (frappe).
+      - ./provision.sh:/home/frappe/provision.sh:ro
+      # wave_care app staged read-only; provision.sh copies it into the bench.
+      - ./apps/wave_care:/home/frappe/apps-src/wave_care:ro
 
 volumes:
   db_data:
-  frappe_sites:
