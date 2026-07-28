@@ -6,8 +6,10 @@ app_email = "admin@ruview.io"
 app_license = "Proprietary"
 app_version = "0.1.0"
 
-# Required apps
-required_apps = ["erpnext"]
+# Required apps. `healthcare` provides the Patient / Patient Encounter /
+# Vital Signs DocTypes we reuse for the clinical record (we do not reinvent
+# patient identity or vitals storage).
+required_apps = ["erpnext", "healthcare"]
 
 # Roles created on install
 roles = [

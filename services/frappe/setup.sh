@@ -15,9 +15,11 @@ docker compose exec frappe bench new-site "$SITE" \
   --admin-password "$ADMIN_PASS" \
   --no-mariadb-socket
 
-echo "[2/5] Installing ERPNext..."
+echo "[2/5] Installing ERPNext + Healthcare (Patient / Vital Signs DocTypes)..."
 docker compose exec frappe bench get-app erpnext
 docker compose exec frappe bench --site "$SITE" install-app erpnext
+docker compose exec frappe bench get-app healthcare
+docker compose exec frappe bench --site "$SITE" install-app healthcare
 
 echo "[3/5] Installing ruview_care app..."
 docker compose exec frappe bench --site "$SITE" install-app ruview_care

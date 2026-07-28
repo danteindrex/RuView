@@ -46,6 +46,49 @@ def register_deployment(deployment_id, deployment_name, location_name,
     return {"status": "ok", "name": doc.name}
 
 @frappe.whitelist(allow_guest=False)
+def bind_patient(node_ip, patient, deployment_id=None):
+    """Bind a sensing node to an ERPNext Healthcare Patient so its vitals are
+    written to that patient's clinical record. Reuses the ERPNext `Patient`
+    DocType — we do not reinvent patient identity."""
+    if not frappe.db.exists("Patient", patient):
+        frappe.throw(_("Patient {0} not found").format(patient))
+    node = frappe.db.get_value("Sensing Node", {"node_ip": node_ip})
+    if not node:
+        frappe.throw(_("Sensing Node {0} not found").format(node_ip))
+    doc = frappe.get_doc("Sensing Node", node)
+    doc.patient = patient
+    doc.save(ignore_permissions=True)
+    frappe.db.commit()
+    return {"status": "ok", "node": node, "patient": patient}
+
+
+@frappe.whitelist(allow_guest=False)
+def ingest_vitals(patient, heart_rate=None, respiratory_rate=None,
+                  temperature=None, source="RuView WiFi-CSI"):
+    """Write a vitals reading into ERPNext Healthcare's **Vital Signs** DocType
+    for a Patient — the standard clinical record. Reuses the ERPNext Healthcare
+    module instead of a bespoke store. Only real measured values are written."""
+    if not frappe.db.exists("Patient", patient):
+        frappe.throw(_("Patient {0} not found").format(patient))
+    doc = frappe.get_doc({
+        "doctype": "Vital Signs",
+        "patient": patient,
+        "signs_date": frappe.utils.today(),
+        "signs_time": frappe.utils.nowtime(),
+    })
+    # Only set vitals that were actually measured (> 0) — never a fabricated 0.
+    if heart_rate and float(heart_rate) > 0:
+        doc.pulse = float(heart_rate)
+    if respiratory_rate and float(respiratory_rate) > 0:
+        doc.respiratory_rate = float(respiratory_rate)
+    if temperature and float(temperature) > 0:
+        doc.temperature = float(temperature)
+    doc.insert(ignore_permissions=True)
+    frappe.db.commit()
+    return {"status": "ok", "vital_signs": doc.name, "patient": patient}
+
+
+@frappe.whitelist(allow_guest=False)
 def ingest_session(session_id, deployment_id, vital_summary=None,
                    pose_anomalies=None, duration_seconds=0, csi_snr_db=0):
     """Create a CSI Session record from the insight-api ingest endpoint."""
