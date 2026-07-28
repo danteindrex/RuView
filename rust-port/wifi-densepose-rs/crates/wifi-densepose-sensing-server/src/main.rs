@@ -17,7 +17,8 @@ mod field_bridge;
 mod ftm_orchestrator;
 pub mod middleware;
 mod multistatic_bridge;
-pub mod pose;
+// `mod pose` (a dead duplicate of the synthetic skeleton generator) has been
+// removed — pose comes only from real trained-model inference now.
 mod pose_inference;
 mod inference;
 mod rvf_container;
@@ -690,10 +691,11 @@ impl AppStateInner {
 
     fn effective_source(&self) -> String {
         if self.source == "esp32" || self.source == "nexmon" {
-            if let Some(last) = self.last_csi_frame {
-                if last.elapsed() > CSI_OFFLINE_TIMEOUT {
-                    return format!("{}:offline", self.source);
-                }
+            // Offline when no frame has ever arrived, or the last one is stale.
+            // This keeps the UI/CLI honest instead of implying a live node.
+            match self.last_csi_frame {
+                Some(last) if last.elapsed() <= CSI_OFFLINE_TIMEOUT => {}
+                _ => return format!("{}:offline", self.source),
             }
         }
         self.source.clone()
@@ -2123,18 +2125,19 @@ async fn handle_ws_pose_client(mut socket: WebSocket, state: SharedState) {
                         // Parse the sensing update and convert to pose format
                         if let Ok(sensing) = serde_json::from_str::<SensingUpdate>(&json) {
                             if sensing.msg_type == "sensing_update" {
-                                // Determine pose estimation mode for the UI indicator.
-                                // "model_inference"    — a trained RVF model is loaded.
-                                // "signal_derived"     — keypoints estimated from raw CSI features.
+                                // Pose estimation mode for the UI indicator.
+                                // "model_inference" — real trained-model keypoints this frame.
+                                // "none"            — no real keypoints; UI shows a "no pose
+                                //                     model" warning instead of a skeleton
+                                //                     (no synthesized fallback exists).
                                 let model_loaded = {
                                     let s = state.read().await;
                                     s.model_loaded
                                 };
-                                let pose_source = if model_loaded {
-                                    "model_inference"
-                                } else {
-                                    "signal_derived"
-                                };
+                                let has_model_kps = sensing.pose_keypoints.as_ref()
+                                    .map(|k| k.len() == pose_inference::N_KEYPOINTS)
+                                    .unwrap_or(false);
+                                let pose_source = if has_model_kps { "model_inference" } else { "none" };
 
                                 let persons = if model_loaded {
                                     // When a trained model is loaded, prefer its keypoints if present.
@@ -2182,7 +2185,8 @@ async fn handle_ws_pose_client(mut socket: WebSocket, state: SharedState) {
                                         "pose_source": pose_source,
                                         "metadata": {
                                             "frame_id": format!("rust_frame_{}", sensing.tick),
-                                            "processing_time_ms": 1,
+                                            // Not measured here — null rather than a fake constant.
+                                            "processing_time_ms": serde_json::Value::Null,
                                             "source": sensing.source,
                                             "tick": sensing.tick,
                                             "signal_strength": sensing.features.mean_rssi,
@@ -2499,209 +2503,11 @@ fn score_to_person_count(smoothed_score: f64, prev_count: usize) -> usize {
     }
 }
 
-/// Generate a single person's skeleton with per-person spatial offset and phase stagger.
-///
-/// `person_idx`: 0-based index of this person.
-/// `total_persons`: total number of detected persons (for spacing calculation).
-fn derive_single_person_pose(
-    update: &SensingUpdate,
-    person_idx: usize,
-    total_persons: usize,
-) -> PersonDetection {
-    let cls = &update.classification;
-    let feat = &update.features;
-
-    // Per-person phase offset: ~120 degrees apart so they don't move in sync.
-    let phase_offset = person_idx as f64 * 2.094;
-
-    // Spatial spread: persons distributed symmetrically around center.
-    let half = (total_persons as f64 - 1.0) / 2.0;
-    let person_x_offset = (person_idx as f64 - half) * 120.0; // 120px spacing
-
-    // Confidence decays for additional persons (less certain about person 2, 3).
-    let conf_decay = 1.0 - person_idx as f64 * 0.15;
-
-    // ── Signal-derived scalars ────────────────────────────────────────────────
-
-    let motion_score = (feat.motion_band_power / 15.0).clamp(0.0, 1.0);
-    let is_walking = motion_score > 0.55;
-    let breath_amp = (feat.breathing_band_power * 4.0).clamp(0.0, 12.0);
-
-    let breath_phase = if let Some(ref vs) = update.vital_signs {
-        let bpm = vs.breathing_rate_bpm.unwrap_or(15.0);
-        let freq = (bpm / 60.0).clamp(0.1, 0.5);
-        // Slow tick rate (0.02) for gentle breathing, not jerky oscillation.
-        (update.tick as f64 * freq * 0.02 * std::f64::consts::TAU + phase_offset).sin()
-    } else {
-        (update.tick as f64 * 0.02 + phase_offset).sin()
-    };
-
-    let lean_x = (feat.dominant_freq_hz / 5.0 - 1.0).clamp(-1.0, 1.0) * 18.0;
-
-    let stride_x = if is_walking {
-        let stride_phase = (feat.motion_band_power * 0.7 + update.tick as f64 * 0.06 + phase_offset).sin();
-        stride_phase * 20.0 * motion_score
-    } else {
-        0.0
-    };
-
-    // Dampen burst and noise to reduce jitter.  The original used
-    // tick*17.3 which changed wildly every frame.  Now use slow tick
-    // rate and minimal burst scaling for a stable skeleton.
-    let burst = (feat.change_points as f64 / 20.0).clamp(0.0, 0.3);
-
-    let noise_seed = person_idx as f64 * 97.1; // stable per-person, no tick
-    let noise_val = (noise_seed.sin() * 43758.545).fract();
-
-    let snr_factor = ((feat.variance - 0.5) / 10.0).clamp(0.0, 1.0);
-    let base_confidence = cls.confidence * (0.6 + 0.4 * snr_factor) * conf_decay;
-
-    // ── Skeleton base position ────────────────────────────────────────────────
-
-    // Map the room-coordinate location hint onto the 640x480 canvas. Canvas
-    // bounds cover the node mesh plus a margin, so any mesh size fits. Without
-    // a hint (single node / no --node-positions) fall back to canvas center.
-    let located = update.location_hint.and_then(|loc| {
-        if update.nodes.len() < 2 {
-            return None;
-        }
-        let (mut min_x, mut max_x) = (f64::INFINITY, f64::NEG_INFINITY);
-        let (mut min_y, mut max_y) = (f64::INFINITY, f64::NEG_INFINITY);
-        for n in &update.nodes {
-            min_x = min_x.min(n.position[0]);
-            max_x = max_x.max(n.position[0]);
-            min_y = min_y.min(n.position[1]);
-            max_y = max_y.max(n.position[1]);
-        }
-        const MARGIN_M: f64 = 1.5;
-        let (min_x, max_x) = (min_x - MARGIN_M, max_x + MARGIN_M);
-        let (min_y, max_y) = (min_y - MARGIN_M, max_y + MARGIN_M);
-        let nx = ((loc[0] - min_x) / (max_x - min_x)).clamp(0.0, 1.0);
-        let ny = ((loc[1] - min_y) / (max_y - min_y)).clamp(0.0, 1.0);
-        Some((80.0 + nx * 480.0, 120.0 + ny * 240.0))
-    });
-    let (center_x, center_y) = located.unwrap_or((320.0, 240.0));
-
-    let base_x = center_x + stride_x + lean_x * 0.5 + person_x_offset;
-    let base_y = center_y - motion_score * 8.0;
-
-    // ── COCO 17-keypoint offsets from hip-center ──────────────────────────────
-
-    let kp_names = [
-        "nose", "left_eye", "right_eye", "left_ear", "right_ear",
-        "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
-        "left_wrist", "right_wrist", "left_hip", "right_hip",
-        "left_knee", "right_knee", "left_ankle", "right_ankle",
-    ];
-
-    let kp_offsets: [(f64, f64); 17] = [
-        (  0.0,  -80.0), // 0  nose
-        ( -8.0,  -88.0), // 1  left_eye
-        (  8.0,  -88.0), // 2  right_eye
-        (-16.0,  -82.0), // 3  left_ear
-        ( 16.0,  -82.0), // 4  right_ear
-        (-30.0,  -50.0), // 5  left_shoulder
-        ( 30.0,  -50.0), // 6  right_shoulder
-        (-45.0,  -15.0), // 7  left_elbow
-        ( 45.0,  -15.0), // 8  right_elbow
-        (-50.0,   20.0), // 9  left_wrist
-        ( 50.0,   20.0), // 10 right_wrist
-        (-20.0,   20.0), // 11 left_hip
-        ( 20.0,   20.0), // 12 right_hip
-        (-22.0,   70.0), // 13 left_knee
-        ( 22.0,   70.0), // 14 right_knee
-        (-24.0,  120.0), // 15 left_ankle
-        ( 24.0,  120.0), // 16 right_ankle
-    ];
-
-    const TORSO_KP: [usize; 4] = [5, 6, 11, 12];
-    const EXTREMITY_KP: [usize; 4] = [9, 10, 15, 16];
-
-    let keypoints: Vec<PoseKeypoint> = kp_names.iter().zip(kp_offsets.iter())
-        .enumerate()
-        .map(|(i, (name, (dx, dy)))| {
-            let breath_dx = if TORSO_KP.contains(&i) {
-                let sign = if *dx < 0.0 { -1.0 } else { 1.0 };
-                sign * breath_amp * breath_phase * 0.5
-            } else {
-                0.0
-            };
-            let breath_dy = if TORSO_KP.contains(&i) {
-                let sign = if *dy < 0.0 { -1.0 } else { 1.0 };
-                sign * breath_amp * breath_phase * 0.3
-            } else {
-                0.0
-            };
-
-            let extremity_jitter = if EXTREMITY_KP.contains(&i) {
-                let phase = noise_seed + i as f64 * 2.399;
-                // Dampened from 12/8 to 4/3 to reduce visual jumping.
-                (
-                    phase.sin() * burst * motion_score * 4.0,
-                    (phase * 1.31).cos() * burst * motion_score * 3.0,
-                )
-            } else {
-                (0.0, 0.0)
-            };
-
-            let kp_noise_x = ((noise_seed + i as f64 * 1.618).sin() * 43758.545).fract()
-                * feat.variance.sqrt().clamp(0.0, 3.0) * motion_score;
-            let kp_noise_y = ((noise_seed + i as f64 * 2.718).cos() * 31415.926).fract()
-                * feat.variance.sqrt().clamp(0.0, 3.0) * motion_score * 0.6;
-
-            let swing_dy = if is_walking {
-                let stride_phase =
-                    (feat.motion_band_power * 0.7 + update.tick as f64 * 0.12 + phase_offset).sin();
-                match i {
-                    7 | 9  => -stride_phase * 20.0 * motion_score,
-                    8 | 10 =>  stride_phase * 20.0 * motion_score,
-                    13 | 15 =>  stride_phase * 25.0 * motion_score,
-                    14 | 16 => -stride_phase * 25.0 * motion_score,
-                    _ => 0.0,
-                }
-            } else {
-                0.0
-            };
-
-            let final_x = base_x + dx + breath_dx + extremity_jitter.0 + kp_noise_x;
-            let final_y = base_y + dy + breath_dy + extremity_jitter.1 + kp_noise_y + swing_dy;
-
-            let kp_conf = if EXTREMITY_KP.contains(&i) {
-                base_confidence * (0.7 + 0.3 * snr_factor) * (0.85 + 0.15 * noise_val)
-            } else {
-                base_confidence * (0.88 + 0.12 * ((i as f64 * 0.7 + noise_seed).cos()))
-            };
-
-            PoseKeypoint {
-                name: name.to_string(),
-                x: final_x,
-                y: final_y,
-                z: lean_x * 0.02,
-                confidence: kp_conf.clamp(0.1, 1.0),
-            }
-        })
-        .collect();
-
-    let xs: Vec<f64> = keypoints.iter().map(|k| k.x).collect();
-    let ys: Vec<f64> = keypoints.iter().map(|k| k.y).collect();
-    let min_x = xs.iter().cloned().fold(f64::MAX, f64::min) - 10.0;
-    let min_y = ys.iter().cloned().fold(f64::MAX, f64::min) - 10.0;
-    let max_x = xs.iter().cloned().fold(f64::MIN, f64::max) + 10.0;
-    let max_y = ys.iter().cloned().fold(f64::MIN, f64::max) + 10.0;
-
-    PersonDetection {
-        id: (person_idx + 1) as u32,
-        confidence: cls.confidence * conf_decay,
-        keypoints,
-        bbox: BoundingBox {
-            x: min_x,
-            y: min_y,
-            width: (max_x - min_x).max(80.0),
-            height: (max_y - min_y).max(160.0),
-        },
-        zone: format!("zone_{}", person_idx + 1),
-    }
-}
+// NOTE: `derive_single_person_pose` (a synthetic COCO-17 skeleton generator that
+// fabricated keypoint geometry from signal features + tick oscillation + hash
+// noise) has been REMOVED. Skeletons now come only from a real trained pose
+// model; without one the UI shows a "no pose model" warning. See
+// `derive_pose_from_sensing` and `person_from_model_keypoints`.
 
 /// Warn only once per node id (avoids per-frame log spam).
 fn warn_once_for_node(node_id: u8, msg: &str) {
@@ -2805,21 +2611,15 @@ fn derive_pose_from_sensing(update: &SensingUpdate) -> Vec<PersonDetection> {
         return vec![];
     }
 
-    // Use estimated_persons if set by the tick loop; otherwise default to 1.
-    let person_count = update.estimated_persons.unwrap_or(1).max(1);
-
-    let mut persons: Vec<PersonDetection> = Vec::with_capacity(person_count);
-
-    // Prefer real trained-model keypoints for the primary person; the
-    // signal-derived template is the fallback, never a replacement.
+    // Skeletons come ONLY from a real trained pose-keypoint model. There is no
+    // signal-derived/synthesized fallback: without model keypoints we return no
+    // persons, and the UI shows "presence detected — no pose model loaded"
+    // rather than a fabricated skeleton. (User requirement: no unreal data.)
+    let mut persons: Vec<PersonDetection> = Vec::new();
     if let Some(ref kps) = update.pose_keypoints {
         if kps.len() == pose_inference::N_KEYPOINTS {
             persons.push(person_from_model_keypoints(kps, cls.confidence));
         }
-    }
-    let start = persons.len();
-    for idx in start..person_count {
-        persons.push(derive_single_person_pose(update, idx, person_count));
     }
     persons
 }
@@ -3052,9 +2852,19 @@ async fn pose_current(State(state): State<SharedState>) -> Json<serde_json::Valu
 
 async fn pose_stats(State(state): State<SharedState>) -> Json<serde_json::Value> {
     let s = state.read().await;
+    // Real mean keypoint confidence over the latest detected persons; null when
+    // there are no detections (never a fabricated constant).
+    let average_confidence: Option<f64> = s.latest_update.as_ref()
+        .and_then(|u| u.persons.as_ref())
+        .and_then(|persons| {
+            let confs: Vec<f64> = persons.iter()
+                .flat_map(|p| p.keypoints.iter().map(|k| k.confidence))
+                .collect();
+            if confs.is_empty() { None } else { Some(confs.iter().sum::<f64>() / confs.len() as f64) }
+        });
     Json(serde_json::json!({
         "total_detections": s.total_detections,
-        "average_confidence": 0.87,
+        "average_confidence": average_confidence,
         "frames_processed": s.tick,
         "source": s.effective_source(),
     }))
@@ -3076,10 +2886,19 @@ async fn pose_zones_summary(State(state): State<SharedState>) -> Json<serde_json
 
 async fn stream_status(State(state): State<SharedState>) -> Json<serde_json::Value> {
     let s = state.read().await;
+    let now = std::time::Instant::now();
+    // Real aggregate FPS: sum of the measured frame rates of nodes that streamed
+    // within the last 5s. null (and active=false) when nothing is live — never a
+    // hardcoded rate.
+    let live_fps: Vec<f64> = s.node_states.values()
+        .filter(|ns| ns.last_frame_time.map_or(false, |t| now.duration_since(t).as_secs() < 5))
+        .filter_map(node_fps)
+        .collect();
+    let fps: Option<f64> = if live_fps.is_empty() { None } else { Some(live_fps.iter().sum()) };
     Json(serde_json::json!({
-        "active": true,
+        "active": fps.is_some(),
         "clients": s.tx.receiver_count(),
-        "fps": if s.tick > 1 { 10u64 } else { 0u64 },
+        "fps": fps,
         "source": s.effective_source(),
     }))
 }
@@ -4552,8 +4371,17 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                         vital_signs: Some(VitalSigns {
                             breathing_rate_bpm: if vitals.breathing_rate_bpm > 0.0 { Some(vitals.breathing_rate_bpm) } else { None },
                             heart_rate_bpm: if vitals.heartrate_bpm > 0.0 { Some(vitals.heartrate_bpm) } else { None },
-                            breathing_confidence: if vitals.presence { 0.7 } else { 0.0 },
-                            heartbeat_confidence: if vitals.presence { 0.7 } else { 0.0 },
+                            // Real node-reported quality — never a fabricated constant. Confidence is
+                            // 0 unless a rate was actually produced; otherwise the node's presence_score
+                            // (0-1), or the fused/mmWave confidence (0-100) for HR when present.
+                            breathing_confidence: if vitals.breathing_rate_bpm > 0.0 {
+                                (vitals.presence_score as f64).clamp(0.0, 1.0)
+                            } else { 0.0 },
+                            heartbeat_confidence: if vitals.heartrate_bpm > 0.0 {
+                                vitals.fusion_confidence.or(vitals.mmwave_confidence)
+                                    .map(|c| (c as f64 / 100.0).clamp(0.0, 1.0))
+                                    .unwrap_or((vitals.presence_score as f64).clamp(0.0, 1.0))
+                            } else { 0.0 },
                             signal_quality: vitals.presence_score as f64,
                         }),
                         enhanced_motion: None,
@@ -4978,139 +4806,11 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
 
 // ── Simulated data task ──────────────────────────────────────────────────────
 
-async fn simulated_data_task(state: SharedState, tick_ms: u64) {
-    let mut interval = tokio::time::interval(Duration::from_millis(tick_ms));
-    info!("Simulated data source active (tick={}ms)", tick_ms);
-
-    loop {
-        interval.tick().await;
-
-        // A live ESP32/Pi node has taken over (the always-on UDP listeners
-        // flipped the source) — yield until it goes offline again.
-        if matches!(
-            state.read().await.effective_source().as_str(),
-            "esp32" | "nexmon"
-        ) {
-            continue;
-        }
-
-        let mut s = state.write().await;
-        // Resuming after a hardware node went offline: reclaim the source so
-        // /health stops reporting "<hw>:offline" while simulated data streams.
-        if s.source != "simulated" {
-            s.source = "simulated".to_string();
-        }
-        s.tick += 1;
-        let tick = s.tick;
-
-        let frame = generate_simulated_frame(tick);
-
-        // Append current amplitudes to history before feature extraction.
-        s.frame_history.push_back(frame.amplitudes.clone());
-        if s.frame_history.len() > FRAME_HISTORY_CAPACITY {
-            s.frame_history.pop_front();
-        }
-
-        let sample_rate_hz = 1000.0 / tick_ms as f64;
-        let (features, mut classification, breathing_rate_hz, sub_variances, raw_motion) =
-            extract_features_from_frame(&frame, &s.frame_history, sample_rate_hz);
-        smooth_and_classify(&mut s, &mut classification, raw_motion);
-    adaptive_override(&s, &features, &mut classification);
-
-        s.rssi_history.push_back(features.mean_rssi);
-        if s.rssi_history.len() > 60 {
-            s.rssi_history.pop_front();
-        }
-
-        let motion_score = if classification.motion_level == "active" { 0.8 }
-            else if classification.motion_level == "present_still" { 0.3 }
-            else { 0.05 };
-
-        let raw_vitals = s.vital_detector.process_frame(
-            &frame.amplitudes,
-            &frame.phases,
-        );
-        let vitals = smooth_vitals(&mut s, &raw_vitals);
-        s.latest_vitals = vitals.clone();
-
-        let frame_amplitudes = frame.amplitudes.clone();
-        let frame_n_sub = frame.n_subcarriers;
-
-        // Multi-person estimation with temporal smoothing (EMA α=0.10).
-        let raw_score = compute_person_score(&features);
-        s.smoothed_person_score = s.smoothed_person_score * 0.90 + raw_score * 0.10;
-        let est_persons = if classification.presence {
-            let count = s.person_count();
-            s.prev_person_count = count;
-            count
-        } else {
-            s.prev_person_count = 0;
-            0
-        };
-
-        let mut update = SensingUpdate {
-            msg_type: "sensing_update".to_string(),
-            timestamp: chrono::Utc::now().timestamp_millis() as f64 / 1000.0,
-            source: "simulated".to_string(),
-            tick,
-            nodes: vec![NodeInfo {
-                node_id: 1,
-                rssi_dbm: features.mean_rssi,
-                position: [2.0, 0.0, 1.5],
-                amplitude: frame_amplitudes,
-                subcarrier_count: frame_n_sub as usize,
-            }],
-            features: features.clone(),
-            classification,
-            signal_field: generate_signal_field(
-                features.mean_rssi, motion_score, breathing_rate_hz,
-                features.variance.min(1.0), &sub_variances,
-            ),
-            vital_signs: Some(vitals),
-            enhanced_motion: None,
-            enhanced_breathing: None,
-            posture: None,
-            signal_quality_score: None,
-            quality_verdict: None,
-            bssid_count: None,
-            pose_keypoints: None,
-            model_status: if s.model_loaded {
-                Some(serde_json::json!({
-                    "loaded": true,
-                    "layers": s.progressive_loader.as_ref()
-                        .map(|l| { let (a,b,c) = l.layer_status(); a as u8 + b as u8 + c as u8 })
-                        .unwrap_or(0),
-                    "sona_profile": s.active_sona_profile.as_deref().unwrap_or("default"),
-                }))
-            } else {
-                None
-            },
-            persons: None,
-            estimated_persons: if est_persons > 0 { Some(est_persons) } else { None },
-            node_features: None,
-            location_hint: None,
-        };
-
-        // Populate persons from the sensing update (Kalman-smoothed via tracker).
-        let raw_persons = derive_pose_from_sensing(&update);
-        let mut last_tracker_instant = s.last_tracker_instant.take();
-        let tracked = tracker_bridge::tracker_update(
-            &mut s.pose_tracker, &mut last_tracker_instant, raw_persons,
-        );
-        s.last_tracker_instant = last_tracker_instant;
-        if !tracked.is_empty() {
-            update.persons = Some(tracked);
-        }
-
-        if update.classification.presence {
-            s.total_detections += 1;
-        }
-        if let Ok(json) = serde_json::to_string(&update) {
-            let _ = s.tx.send(json);
-        }
-        s.latest_update = Some(update);
-    }
-}
+// NOTE: the former `simulated_data_task` has been removed. This build never
+// fabricates sensing measurements at runtime — with no live node the server
+// stays offline and reports no data (the frontend/CLI show an offline warning).
+// The low-level `generate_simulated_frame` helper is retained only for the
+// offline `--train`/`--pretrain`/`--benchmark` tooling paths, never for serving.
 
 // ── Broadcast tick task (for ESP32 mode, sends buffered state) ───────────────
 
@@ -5622,9 +5322,17 @@ async fn main() {
                 info!("  Linux WiFi detected");
                 "wifi"
             } else {
-                info!("  No hardware detected, using simulation");
-                "simulate"
+                // No hardware. Do NOT synthesize data — wait passively on the
+                // always-on UDP listeners so a node can hot-plug. Until a real
+                // frame arrives the server reports offline (no fabricated data).
+                warn!("  No sensing hardware detected — starting OFFLINE. No data will be shown until a real node streams CSI.");
+                "esp32"
             }
+        }
+        // Explicit simulate is disabled: this build never fabricates measurements.
+        "simulate" | "simulated" | "demo" | "mock" => {
+            warn!("Data source '{}' is disabled — this build shows only real node data. Starting OFFLINE.", args.source);
+            "esp32"
         }
         other => other,
     };
@@ -5745,7 +5453,7 @@ async fn main() {
             }
         }
         if pose_models.is_empty() && !candidates.is_empty() {
-            warn!("No compatible trained pose model found — pose stays signal-derived");
+            warn!("No compatible trained pose model found — 3D pose will be UNAVAILABLE (no skeleton is shown without a real model; the UI displays a 'no pose model' notice)");
         }
     }
 
@@ -5877,13 +5585,14 @@ async fn main() {
     tokio::spawn(broadcast_tick_task(state.clone(), args.tick_ms));
     tokio::spawn(ftm_orchestrator::orchestrator_task(state.clone(), ranging_channels));
     match source {
-        "esp32" | "nexmon" => {}
+        // "wifi" uses real Windows/Linux RSSI — coarse but genuine signal.
         "wifi" => {
             tokio::spawn(windows_wifi_task(state.clone(), args.tick_ms));
         }
-        _ => {
-            tokio::spawn(simulated_data_task(state.clone(), args.tick_ms));
-        }
+        // esp32/nexmon (and the offline default) rely solely on the always-on
+        // UDP listeners. No synthetic/simulated fallback is ever spawned — when
+        // no node streams, the server stays offline and reports no data.
+        _ => {}
     }
 
     // ADR-050: Parse bind address once, use for all listeners
