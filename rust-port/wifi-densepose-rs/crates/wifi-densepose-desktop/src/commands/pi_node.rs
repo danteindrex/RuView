@@ -265,7 +265,13 @@ fn agent_env(config: &PiAgentConfig) -> String {
     env.push_str(&env_line("RUVIEW_PI_AGENT_TIER", config.tier));
     env.push_str(&env_line("RUVIEW_PI_AGENT_DEFAULT_RSSI", config.default_rssi));
     env.push_str(&env_line("RUVIEW_PI_AGENT_NOISE_FLOOR", config.noise_floor));
-    env.push_str(&env_line("RUVIEW_PI_AGENT_MMWAVE_MOCK", config.mmwave_mock));
+    // Never deploy a node in mmWave mock mode — this build ships only real
+    // sensor data. Force the flag off regardless of the persisted setting so a
+    // node can't be brought up fabricating presence/mmWave readings.
+    if config.mmwave_mock {
+        tracing::warn!("pi-agent mmwave_mock was requested but is force-disabled (no fabricated data)");
+    }
+    env.push_str(&env_line("RUVIEW_PI_AGENT_MMWAVE_MOCK", false));
     env.push_str(&env_line("RUVIEW_PI_AGENT_ENABLE_WASM", config.enable_wasm));
     env.push_str(&env_line(
         "RUVIEW_PI_AGENT_WASM_PATH",

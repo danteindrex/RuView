@@ -339,8 +339,14 @@ pub async fn start_server_impl(
         }
     }
 
-    // Set data source (default to "auto" if not specified).
-    let source = config.source.as_deref().unwrap_or("auto");
+    // Set data source (default to "auto" if not specified). Simulation/demo
+    // sources are never launched — coerce any such value to "auto" so a stale
+    // persisted setting can't start the server in a data-fabricating mode.
+    let raw_source = config.source.as_deref().unwrap_or("auto");
+    let source = match raw_source {
+        "simulate" | "simulated" | "demo" | "mock" => "auto",
+        other => other,
+    };
     cmd.args(["--source", source]);
     if config.pi_diag.unwrap_or(false) {
         cmd.arg("--pi-diag");
@@ -759,7 +765,8 @@ pub struct ServerConfig {
     pub tick_ms: Option<u64>,
     pub bind_address: Option<String>,
     pub server_path: Option<String>,
-    /// Data source: "auto", "wifi", "esp32", "nexmon", "simulate"
+    /// Data source: "auto", "wifi", "esp32", "nexmon". (Simulation sources are
+    /// coerced to "auto" — this build never fabricates sensing data.)
     pub source: Option<String>,
     pub pi_diag: Option<bool>,
     pub benchmark: Option<bool>,
