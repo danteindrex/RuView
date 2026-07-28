@@ -52,6 +52,7 @@ use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Path,
+        Query,
         State,
     },
     response::{Html, IntoResponse, Json},
@@ -2142,26 +2143,16 @@ async fn handle_ws_pose_client(mut socket: WebSocket, state: SharedState) {
                                 let persons = if model_loaded {
                                     // When a trained model is loaded, prefer its keypoints if present.
                                     sensing.pose_keypoints.as_ref().map(|kps| {
-                                        let kp_names = [
-                                            "nose","left_eye","right_eye","left_ear","right_ear",
-                                            "left_shoulder","right_shoulder","left_elbow","right_elbow",
-                                            "left_wrist","right_wrist","left_hip","right_hip",
-                                            "left_knee","right_knee","left_ankle","right_ankle",
-                                        ];
-                                        let keypoints: Vec<PoseKeypoint> = kps.iter()
-                                            .enumerate()
-                                            .map(|(i, kp)| PoseKeypoint {
-                                                name: kp_names.get(i).unwrap_or(&"unknown").to_string(),
-                                                x: kp[0], y: kp[1], z: kp[2], confidence: kp[3],
-                                            })
-                                            .collect();
-                                        vec![PersonDetection {
-                                            id: 1,
-                                            confidence: sensing.classification.confidence,
-                                            bbox: BoundingBox { x: 260.0, y: 150.0, width: 120.0, height: 220.0 },
-                                            keypoints,
-                                            zone: "zone_1".into(),
-                                        }]
+                                        // Derive the bbox and confidence from the REAL keypoints
+                                        // (min/max + mean keypoint confidence) — never a fixed
+                                        // constant. Reuses the same helper as the broadcast path.
+                                        let mut person = person_from_model_keypoints(
+                                            kps, sensing.classification.confidence,
+                                        );
+                                        // Preserve the /ws/pose client contract (id/zone).
+                                        person.id = 1;
+                                        person.zone = "zone_1".into();
+                                        vec![person]
                                     }).unwrap_or_else(|| {
                                         // Prefer tracked persons from broadcast if available
                                         sensing.persons.clone().unwrap_or_else(|| derive_pose_from_sensing(&sensing))
@@ -3856,17 +3847,25 @@ async fn node_stats_endpoint(
 
 /// Build a FHIR R4 `Observation` (vital-signs) resource. Returns `None` when the
 /// value is not actually measured (<= 0) — we never emit a fabricated vital.
+///
+/// `unit` is the human-readable UCUM display (e.g. "beats/minute" for HR,
+/// "breaths/minute" for RR); the machine-readable UCUM code is always "/min".
+/// `subject` is the Patient reference (e.g. "Patient/MRN123"); when present the
+/// Observation satisfies the FHIR R4 vital-signs profile's mandatory 1..1
+/// `subject`, so a profile-validating EHR (Epic/Oracle Health) will accept it.
 fn fhir_vital_observation(
     node_id: u8,
     loinc: &str,
     display: &str,
     value: f64,
+    unit: &str,
+    subject: Option<&str>,
     now: &str,
 ) -> Option<serde_json::Value> {
     if !(value.is_finite() && value > 0.0) {
         return None;
     }
-    Some(serde_json::json!({
+    let mut obs = serde_json::json!({
         "resourceType": "Observation",
         "status": "final",
         "category": [{
@@ -3879,12 +3878,18 @@ fn fhir_vital_observation(
         "effectiveDateTime": now,
         "valueQuantity": {
             "value": (value * 10.0).round() / 10.0,
-            "unit": "beats/minute",
+            "unit": unit,
             "system": "http://unitsofmeasure.org",
             "code": "/min"
         },
         "device": { "reference": format!("Device/node-{node_id}") }
-    }))
+    });
+    // Mandatory 1..1 subject for the vital-signs profile — only when a patient is
+    // actually bound to the node (never a placeholder).
+    if let Some(subj) = subject {
+        obs["subject"] = serde_json::json!({ "reference": subj });
+    }
+    Some(obs)
 }
 
 /// GET /api/v1/export/fhir/:id — export a node's live vitals as a FHIR R4
@@ -3893,6 +3898,7 @@ fn fhir_vital_observation(
 /// This is the EHR-facing surface (Epic / Oracle Health / Meditech via FHIR).
 async fn node_fhir_endpoint(
     Path(id): Path<u8>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
     State(state): State<SharedState>,
 ) -> Json<serde_json::Value> {
     let s = state.read().await;
@@ -3906,6 +3912,12 @@ async fn node_fhir_endpoint(
     let mac = ns.mac.map(|m| {
         format!("{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}", m[0], m[1], m[2], m[3], m[4], m[5])
     });
+    // Optional patient binding (?patient=<MRN>&patient_name=<name>). When present
+    // the vitals are filed to that patient's chart and the Observations become
+    // vital-signs-profile conformant. Sourced from the Frappe "Sensing Node.patient"
+    // field — never fabricated when absent.
+    let patient_id = params.get("patient").map(|p| p.trim()).filter(|p| !p.is_empty());
+    let subject_ref = patient_id.map(|p| format!("Patient/{p}"));
     let mut entries = vec![serde_json::json!({
         "resource": {
             "resourceType": "Device",
@@ -3916,6 +3928,18 @@ async fn node_fhir_endpoint(
             "type": { "text": "WiFi Channel-State-Information human-sensing node" }
         }
     })];
+    // Include the Patient resource so subject references resolve within the Bundle.
+    if let Some(pid) = patient_id {
+        let mut patient = serde_json::json!({
+            "resourceType": "Patient",
+            "id": pid,
+            "identifier": [{ "system": "urn:wave:mrn", "value": pid }],
+        });
+        if let Some(name) = params.get("patient_name").map(|n| n.trim()).filter(|n| !n.is_empty()) {
+            patient["name"] = serde_json::json!([{ "text": name }]);
+        }
+        entries.push(serde_json::json!({ "resource": patient }));
+    }
     // Prefer the hub's CSI vital detector; fall back to the node's edge vitals.
     // Both are real measurements — never fabricated.
     let hr = if ns.smoothed_hr > 0.0 {
@@ -3928,9 +3952,10 @@ async fn node_fhir_endpoint(
     } else {
         ns.edge_vitals.as_ref().map(|v| v.breathing_rate_bpm).unwrap_or(0.0)
     };
+    let subj = subject_ref.as_deref();
     for obs in [
-        fhir_vital_observation(id, "8867-4", "Heart rate", hr, &now),
-        fhir_vital_observation(id, "9279-1", "Respiratory rate", br, &now),
+        fhir_vital_observation(id, "8867-4", "Heart rate", hr, "beats/minute", subj, &now),
+        fhir_vital_observation(id, "9279-1", "Respiratory rate", br, "breaths/minute", subj, &now),
     ]
     .into_iter()
     .flatten()
