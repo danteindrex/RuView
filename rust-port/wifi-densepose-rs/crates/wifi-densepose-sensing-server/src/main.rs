@@ -40,6 +40,7 @@ mod vital_signs;
 
 // Training pipeline modules (exposed via lib.rs)
 use wifi_densepose_sensing_server::{graph_transformer, trainer, dataset, embedding};
+use wifi_densepose_sensing_server::standards::{dc09, hl7v2, onvif};
 
 use std::collections::{HashMap, VecDeque};
 use ruvector_mincut::{DynamicMinCut, MinCutBuilder};
@@ -4057,6 +4058,87 @@ async fn security_events_cef_endpoint(State(state): State<SharedState>) -> Strin
         .join("\n")
 }
 
+/// GET /api/v1/export/hl7/:id — export a node's live vitals as an IHE PCD-01
+/// HL7 v2 ORU^R01 message (for hospital device-integration gateways / MDI
+/// engines that ingest via MLLP rather than FHIR). Only measured vitals are
+/// included — never fabricated. `?patient=<MRN>&patient_name=<Family Given>`
+/// binds the observation to a patient (sourced from Frappe Sensing Node.patient).
+async fn node_hl7_endpoint(
+    Path(id): Path<u8>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    State(state): State<SharedState>,
+) -> impl IntoResponse {
+    let s = state.read().await;
+    let Some(ns) = s.node_states.get(&id) else {
+        return (axum::http::StatusCode::NOT_FOUND, format!("node {id} not found"));
+    };
+    let hr = if ns.smoothed_hr > 0.0 {
+        Some(ns.smoothed_hr)
+    } else {
+        ns.edge_vitals.as_ref().map(|v| v.heartrate_bpm)
+    };
+    let br = if ns.smoothed_br > 0.0 {
+        Some(ns.smoothed_br)
+    } else {
+        ns.edge_vitals.as_ref().map(|v| v.breathing_rate_bpm)
+    };
+    let mrn = params.get("patient").map(|p| p.trim()).filter(|p| !p.is_empty()).unwrap_or("UNKNOWN");
+    // Split an optional "Family Given" display name into HL7 XPN components.
+    let (family, given) = params
+        .get("patient_name")
+        .map(|n| n.trim())
+        .filter(|n| !n.is_empty())
+        .map(|n| {
+            let mut it = n.splitn(2, ' ');
+            let f = it.next().unwrap_or("").to_string();
+            let g = it.next().unwrap_or("").to_string();
+            (f, g)
+        })
+        .unwrap_or_else(|| (String::new(), String::new()));
+    let ts_hl7 = chrono::Utc::now().format("%Y%m%d%H%M%S").to_string();
+    let msg = hl7v2::generate_oru_r01(
+        "WAVE", mrn, &family, &given, id, hr, br, &ts_hl7,
+    );
+    (axum::http::StatusCode::OK, msg)
+}
+
+/// GET /api/v1/events/security/dc09 — active security events as ANSI/SIA DC-09
+/// messages for delivery to a central-station alarm receiver. One message per
+/// line. Derived only from live node state (never fabricated).
+async fn security_events_dc09_endpoint(State(state): State<SharedState>) -> String {
+    let s = state.read().await;
+    let now = std::time::Instant::now();
+    collect_security_events(&s, now)
+        .into_iter()
+        .enumerate()
+        .map(|(i, e)| {
+            let kind = if e.motion_level.contains("moving") { "intrusion" } else { "presence" };
+            let body = dc09::sia_event_for(kind, e.node_id as u16);
+            // account = node id; sequence per message.
+            dc09::encode_dcs((i as u16) + 1, "0", "0", &format!("{:04}", e.node_id), &body)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// GET /api/v1/events/onvif — active security events as an ONVIF
+/// WS-BaseNotification document so RF presence/intrusion appears on a VMS
+/// (Genetec/Milestone) timeline. Derived only from live node state.
+async fn security_events_onvif_endpoint(State(state): State<SharedState>) -> impl IntoResponse {
+    let s = state.read().await;
+    let now = std::time::Instant::now();
+    let ts = chrono::Utc::now().to_rfc3339();
+    let fragments: Vec<String> = collect_security_events(&s, now)
+        .into_iter()
+        .map(|e| {
+            let kind = if e.motion_level.contains("moving") { "motion" } else { "presence" };
+            onvif::presence_event_xml(&format!("node-{}", e.node_id), onvif::topic_for(kind), true, &ts)
+        })
+        .collect();
+    let doc = onvif::presence_events_document(&fragments);
+    ([(axum::http::header::CONTENT_TYPE, "application/xml")], doc)
+}
+
 /// GET /api/v1/nodes — per-node health and feature info.
 async fn nodes_endpoint(State(state): State<SharedState>) -> Json<serde_json::Value> {
     let s = state.read().await;
@@ -5850,12 +5932,20 @@ async fn main() {
         .route("/api/v1/nodes/:id/inference", get(node_inference_endpoint))
         .route("/api/v1/nodes/:id/stats", get(node_stats_endpoint))
         .route("/api/v1/export/fhir/:id", get(node_fhir_endpoint))
+        // Medical: IHE PCD-01 HL7 v2 ORU^R01 vitals export (MLLP/MDI engines)
+        .route("/api/v1/export/hl7/:id", get(node_hl7_endpoint))
         // Security event export (SIEM: JSON + ArcSight CEF)
         .route("/api/v1/events/security", get(security_events_endpoint))
         .route(
             "/api/v1/events/security/cef",
             get(security_events_cef_endpoint),
         )
+        // Security: SIA DC-09 (central station) + ONVIF (VMS timeline)
+        .route(
+            "/api/v1/events/security/dc09",
+            get(security_events_dc09_endpoint),
+        )
+        .route("/api/v1/events/onvif", get(security_events_onvif_endpoint))
         .route(
             "/api/v1/config/node-positions",
             get(get_node_positions).put(put_node_positions),

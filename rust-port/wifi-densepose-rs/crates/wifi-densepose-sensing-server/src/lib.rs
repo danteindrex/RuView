@@ -20,3 +20,6 @@ pub mod types;
 pub mod adaptive_classifier;
 pub mod csi;
 pub mod field_bridge;
+/// Interoperability standards adapters (medical + physical security):
+/// IEC 60601-1-8 alarms, HL7 v2 / IHE PCD-01, SIA DC-09, ONVIF.
+pub mod standards;
