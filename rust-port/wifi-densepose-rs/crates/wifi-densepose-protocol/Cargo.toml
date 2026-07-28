@@ -3,7 +3,7 @@ name = "wifi-densepose-protocol"
 version = "0.3.0"
 edition = "2021"
 authors = ["rUv <ruv@ruv.net>", "WiFi-DensePose Contributors"]
-description = "Shared protocol definitions for RuView sensing nodes and hubs"
+description = "Shared protocol definitions for Wave sensing nodes and hubs"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

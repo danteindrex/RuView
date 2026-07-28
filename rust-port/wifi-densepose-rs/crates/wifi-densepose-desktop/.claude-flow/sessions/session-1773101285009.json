@@ -1,7 +1,7 @@
 {
   "id": "session-1773101285009",
   "startedAt": "2026-03-10T00:08:05.009Z",
-  "cwd": "/Users/cohen/GitHub/ruvnet/RuView/rust-port/wifi-densepose-rs/crates/wifi-densepose-desktop",
+  "cwd": "/Users/cohen/GitHub/ruvnet/Wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-desktop",
   "context": {},
   "metrics": {
     "edits": 19,

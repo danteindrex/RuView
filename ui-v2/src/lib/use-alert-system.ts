@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useAuthStore } from "./auth-store";
 
 /**
- * useAlertSystem — The "Active Logic Engine" for RuView Enterprise.
+ * useAlertSystem — The "Active Logic Engine" for Wave Enterprise.
  * 
  * Monitors the real-time sensing stream and dispatches WhatsApp notifications
  * based on tenant-specific thresholds (Fall, Vitals, Intrusion, Crowd).

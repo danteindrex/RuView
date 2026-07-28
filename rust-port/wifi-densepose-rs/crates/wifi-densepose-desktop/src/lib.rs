@@ -96,10 +96,10 @@ pub fn run() {
                     Err(_) => return,
                 };
                 let info = crate::deployment::load_or_create(&dir);
-                let frappe_url = std::env::var("RUVIEW_FRAPPE_URL")
+                let frappe_url = std::env::var("WAVE_FRAPPE_URL")
                     .unwrap_or_else(|_| "http://localhost:8080".to_string());
-                let api_key = std::env::var("RUVIEW_FRAPPE_API_KEY").unwrap_or_default();
-                let api_secret = std::env::var("RUVIEW_FRAPPE_API_SECRET").unwrap_or_default();
+                let api_key = std::env::var("WAVE_FRAPPE_API_KEY").unwrap_or_default();
+                let api_secret = std::env::var("WAVE_FRAPPE_API_SECRET").unwrap_or_default();
                 if api_key.is_empty() {
                     return; // Not configured yet — skip heartbeat
                 }
@@ -113,7 +113,7 @@ pub fn run() {
                 });
                 let _ = reqwest::Client::new()
                     .post(format!(
-                        "{}/api/method/ruview_care.ruview_care.api.register_deployment",
+                        "{}/api/method/wave_care.wave_care.api.register_deployment",
                         frappe_url
                     ))
                     .header("Authorization", format!("token {}:{}", api_key, api_secret))

@@ -2,12 +2,12 @@ use reqwest::{Client, RequestBuilder};
 use serde_json::Value;
 
 fn frappe_url() -> String {
-    std::env::var("RUVIEW_FRAPPE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string())
+    std::env::var("WAVE_FRAPPE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string())
 }
 
 fn auth_header() -> Option<String> {
-    let key = std::env::var("RUVIEW_FRAPPE_API_KEY").ok()?;
-    let secret = std::env::var("RUVIEW_FRAPPE_API_SECRET").ok()?;
+    let key = std::env::var("WAVE_FRAPPE_API_KEY").ok()?;
+    let secret = std::env::var("WAVE_FRAPPE_API_SECRET").ok()?;
     if key.is_empty() || secret.is_empty() {
         return None;
     }

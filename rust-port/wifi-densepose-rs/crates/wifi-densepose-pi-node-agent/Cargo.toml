@@ -3,7 +3,7 @@ name = "wifi-densepose-pi-node-agent"
 version = "0.3.0"
 edition = "2021"
 authors = ["rUv <ruv@ruv.net>", "WiFi-DensePose Contributors"]
-description = "Native Raspberry Pi Node Agent for RuView sensing platform"
+description = "Native Raspberry Pi Node Agent for Wave sensing platform"
 
 [features]
 default = []

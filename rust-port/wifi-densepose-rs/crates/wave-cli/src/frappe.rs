@@ -1,6 +1,6 @@
 //! Frappe / cloud-backend commands (backend "E") — the enterprise tier the
 //! desktop's medical / multi-location pages talk to. All additive: credentials
-//! live in the same OS keychain service the desktop uses (`ruview-frappe`), and
+//! live in the same OS keychain service the desktop uses (`wave-frappe`), and
 //! the deployment identity is the same `deployment.json` in the app data dir, so
 //! anything configured here is picked up by the app and vice-versa.
 //!
@@ -14,7 +14,7 @@ use reqwest::{Client, RequestBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-const SERVICE: &str = "ruview-frappe";
+const SERVICE: &str = "wave-frappe";
 const KEY_URL: &str = "frappe-url";
 const KEY_API_KEY: &str = "frappe-api-key";
 const KEY_API_SECRET: &str = "frappe-api-secret";
@@ -36,9 +36,9 @@ fn app_data_dir() -> Result<std::path::PathBuf> {
 /// `load_frappe_config_into_env`) so the REST client below can auth.
 fn load_env() {
     for (k, var) in [
-        (KEY_URL, "RUVIEW_FRAPPE_URL"),
-        (KEY_API_KEY, "RUVIEW_FRAPPE_API_KEY"),
-        (KEY_API_SECRET, "RUVIEW_FRAPPE_API_SECRET"),
+        (KEY_URL, "WAVE_FRAPPE_URL"),
+        (KEY_API_KEY, "WAVE_FRAPPE_API_KEY"),
+        (KEY_API_SECRET, "WAVE_FRAPPE_API_SECRET"),
     ] {
         if std::env::var(var).is_err() {
             if let Ok(val) = Entry::new(SERVICE, k).and_then(|e| e.get_password()) {
@@ -55,11 +55,11 @@ pub fn config_get() -> Result<Value> {
     let url = Entry::new(SERVICE, KEY_URL)
         .and_then(|e| e.get_password())
         .unwrap_or_else(|_| {
-            std::env::var("RUVIEW_FRAPPE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string())
+            std::env::var("WAVE_FRAPPE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string())
         });
     let api_key = Entry::new(SERVICE, KEY_API_KEY)
         .and_then(|e| e.get_password())
-        .unwrap_or_else(|_| std::env::var("RUVIEW_FRAPPE_API_KEY").unwrap_or_default());
+        .unwrap_or_else(|_| std::env::var("WAVE_FRAPPE_API_KEY").unwrap_or_default());
     let configured = !api_key.is_empty();
     let hint = if api_key.len() > 6 {
         format!("{}…", &api_key[..6])
@@ -92,12 +92,12 @@ pub fn config_set(url: &str, api_key: Option<&str>, api_secret: Option<&str>) ->
 // ── Frappe REST client (matches desktop `frappe_client.rs`) ───────────────────
 
 fn frappe_url() -> String {
-    std::env::var("RUVIEW_FRAPPE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string())
+    std::env::var("WAVE_FRAPPE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string())
 }
 
 fn auth_header() -> Option<String> {
-    let key = std::env::var("RUVIEW_FRAPPE_API_KEY").ok()?;
-    let secret = std::env::var("RUVIEW_FRAPPE_API_SECRET").ok()?;
+    let key = std::env::var("WAVE_FRAPPE_API_KEY").ok()?;
+    let secret = std::env::var("WAVE_FRAPPE_API_SECRET").ok()?;
     (!key.is_empty() && !secret.is_empty()).then(|| format!("token {key}:{secret}"))
 }
 
@@ -166,7 +166,7 @@ pub async fn insight_run(
         "duration_seconds": duration_seconds,
         "csi_snr_db": csi_snr_db,
     });
-    let resp = post_method("ruview_care.ruview_care.api.ingest_csi_session")
+    let resp = post_method("wave_care.wave_care.api.ingest_csi_session")
         .json(&body)
         .send()
         .await
@@ -176,7 +176,7 @@ pub async fn insight_run(
 
 pub async fn insight_get(session_id: &str) -> Result<Value> {
     load_env();
-    let resp = get_method("ruview_care.ruview_care.api.get_insight_by_session_id")
+    let resp = get_method("wave_care.wave_care.api.get_insight_by_session_id")
         .query(&[("session_id", session_id)])
         .send()
         .await
@@ -186,7 +186,7 @@ pub async fn insight_get(session_id: &str) -> Result<Value> {
 
 pub async fn insight_trends() -> Result<Value> {
     load_env();
-    let resp = get_method("ruview_care.ruview_care.api.get_analytics_trends")
+    let resp = get_method("wave_care.wave_care.api.get_analytics_trends")
         .send()
         .await
         .context("GET get_analytics_trends")?;
@@ -195,7 +195,7 @@ pub async fn insight_trends() -> Result<Value> {
 
 pub async fn insight_risk() -> Result<Value> {
     load_env();
-    let resp = get_method("ruview_care.ruview_care.api.get_risk_distribution")
+    let resp = get_method("wave_care.wave_care.api.get_risk_distribution")
         .send()
         .await
         .context("GET get_risk_distribution")?;
@@ -282,7 +282,7 @@ pub async fn deployment_register() -> Result<Value> {
         "longitude": info.longitude,
         "tenant_id": info.tenant_id,
     });
-    let resp = post_method("ruview_care.ruview_care.api.register_deployment")
+    let resp = post_method("wave_care.wave_care.api.register_deployment")
         .json(&body)
         .send()
         .await
@@ -298,18 +298,18 @@ pub async fn deployment_list(tenant_id: &str) -> Result<Value> {
         "tenant_id", "last_seen", "node_count", "active_risk_level", "status"
     ])
     .to_string();
-    let resp = get_resource("RuView Deployment")
+    let resp = get_resource("Wave Deployment")
         .query(&[("filters", filters.as_str()), ("fields", fields.as_str()), ("limit", "500")])
         .send()
         .await
-        .context("GET RuView Deployment")?;
+        .context("GET Wave Deployment")?;
     let data = unwrap_data(resp).await?;
     Ok(json!({ "deployments": data }))
 }
 
 pub async fn deployment_aggregate(tenant_id: &str) -> Result<Value> {
     load_env();
-    let resp = get_method("ruview_care.ruview_care.api.get_deployments_summary")
+    let resp = get_method("wave_care.wave_care.api.get_deployments_summary")
         .query(&[("tenant_id", tenant_id)])
         .send()
         .await
@@ -323,8 +323,8 @@ pub async fn deployment_aggregate(tenant_id: &str) -> Result<Value> {
 /// are desktop-only: the desktop's `set_consent` is a no-op stub and upload is
 /// bound to the app's deployment identity + HMAC signing key — see `coverage`.)
 pub fn cloud_config() -> Value {
-    let endpoint = std::env::var("RUVIEW_CLOUD_ENDPOINT").unwrap_or_default();
-    let has_signing_key = std::env::var("RUVIEW_SIGNING_KEY")
+    let endpoint = std::env::var("WAVE_CLOUD_ENDPOINT").unwrap_or_default();
+    let has_signing_key = std::env::var("WAVE_SIGNING_KEY")
         .map(|k| !k.is_empty())
         .unwrap_or(false);
     json!({

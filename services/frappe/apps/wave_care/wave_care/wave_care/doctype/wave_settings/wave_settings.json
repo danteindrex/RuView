@@ -1,0 +1,19 @@
+{
+  "name": "Wave Settings",
+  "module": "Wave Care",
+  "doctype": "DocType",
+  "issingle": 1,
+  "track_changes": 0,
+  "fields": [
+    {"fieldname": "openai_section", "fieldtype": "Section Break", "label": "AI Pipeline"},
+    {"fieldname": "openai_api_key", "label": "OpenAI API Key", "fieldtype": "Password"},
+    {"fieldname": "insight_model", "label": "LLM Model", "fieldtype": "Data", "default": "gpt-4o-mini"},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "enable_insight_pipeline", "label": "Enable AI Insight Pipeline", "fieldtype": "Check", "default": "1"},
+    {"fieldname": "security_section", "fieldtype": "Section Break", "label": "Security"},
+    {"fieldname": "ingest_signing_key", "label": "Ingest HMAC Signing Key", "fieldtype": "Password"},
+    {"fieldname": "column_break_2", "fieldtype": "Column Break"},
+    {"fieldname": "api_rate_limit", "label": "API Rate Limit (req/min)", "fieldtype": "Int", "default": "60"}
+  ],
+  "permissions": [{"role": "Wave Enterprise Admin", "read": 1, "write": 1}]
+}

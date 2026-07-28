@@ -1,4 +1,4 @@
-# setup-esp32-node.ps1 -- One-shot ESP32-S3 CSI node setup for RuView.
+# setup-esp32-node.ps1 -- One-shot ESP32-S3 CSI node setup for Wave.
 #
 # Flashes the latest released firmware, provisions WiFi from the PC's current
 # connection, and verifies the node comes online. Run from the repo root:
@@ -99,7 +99,7 @@ if ($LASTEXITCODE -ne 0) { python -m pip install --quiet esptool pyserial esp-id
 # -- 4. Firmware download (cached) ---------------------------------------------
 if (-not $SkipFlash) {
     Step "Fetching firmware $Release"
-    $fwDir = Join-Path $env:LOCALAPPDATA "RuView\firmware\$Release"
+    $fwDir = Join-Path $env:LOCALAPPDATA "Wave\firmware\$Release"
     if (-not (Test-Path (Join-Path $fwDir 'esp32-csi-node-s3-8mb.bin'))) {
         New-Item -ItemType Directory -Force $fwDir | Out-Null
         gh release download $Release --dir $fwDir --clobber
@@ -133,13 +133,13 @@ if ($LASTEXITCODE -ne 0) { Fail "Provisioning failed." }
 
 Write-Host ""
 Write-Host "  NOTE: the node streams CSI to $TargetIp and re-resolves it only at" -ForegroundColor Yellow
-Write-Host "  boot (or on a RUVIEW_HUB re-announcement). If your router hands this" -ForegroundColor Yellow
+Write-Host "  boot (or on a WAVE_HUB re-announcement). If your router hands this" -ForegroundColor Yellow
 Write-Host "  PC a different DHCP address later, the node goes silent. Set a DHCP" -ForegroundColor Yellow
 Write-Host "  reservation for $TargetIp in your router's admin page." -ForegroundColor Yellow
 
 # -- 7. Verify: watch serial for WiFi connection --------------------------------
 Step "Verifying node comes online (30 s)"
-$verifyPy = Join-Path $env:TEMP 'ruview-verify-node.py'
+$verifyPy = Join-Path $env:TEMP 'wave-verify-node.py'
 @(
     'import serial, sys, time',
     "s = serial.Serial('$ComPort', 115200, timeout=1)",

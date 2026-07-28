@@ -1,4 +1,4 @@
-# RuView Troubleshooting Guide
+# Wave Troubleshooting Guide
 
 Known issues and fixes from the rebase-to-upstream branch (upstream #301).
 
@@ -108,4 +108,4 @@ ssh thyhack@100.90.238.87
 
 **Symptom:** Plugging into the right USB-C port (when facing the board with USB-C toward you) shows no serial device on the host.
 
-**Fix:** Use the left USB-C port. On most ESP32-S3-DevKitC boards, the left port is the USB-to-UART bridge (CP2102/CH340) used for flashing and serial monitor. The right port is the native USB (USB-JTAG) which requires different drivers and isn't used by the RuView firmware.
+**Fix:** Use the left USB-C port. On most ESP32-S3-DevKitC boards, the left port is the USB-to-UART bridge (CP2102/CH340) used for flashing and serial monitor. The right port is the native USB (USB-JTAG) which requires different drivers and isn't used by the Wave firmware.

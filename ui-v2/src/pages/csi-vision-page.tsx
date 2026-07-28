@@ -60,7 +60,7 @@ export default function CsiVisionPage() {
           Real-time environment image generation from WiFi CSI uses Stable Diffusion v1.5
           running on cloud infrastructure.
         </p>
-        <a href="mailto:sales@ruview.io"
+        <a href="mailto:sales@wave.io"
            className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700">
           Upgrade to Cloud Plan
         </a>

@@ -84,7 +84,7 @@ export function Sidebar({ items, activeId, onNavigate }: SidebarProps) {
           letterSpacing: "-0.02em",
         }}
       >
-        RuView
+        Wave
       </div>
 
       {/* Nav items */}

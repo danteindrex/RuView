@@ -117,7 +117,7 @@ pub async fn serve(bind: &str, _brain: Option<&str>) -> anyhow::Result<()> {
         .with_state(state);
 
     println!("╔══════════════════════════════════════════════╗");
-    println!("║  RuView Dense Point Cloud — ALL SENSORS      ║");
+    println!("║  Wave Dense Point Cloud — ALL SENSORS      ║");
     println!("╚══════════════════════════════════════════════╝");
     println!("  Viewer: http://{bind}/");
     if bind.starts_with("0.0.0.0") || bind.starts_with("::") {

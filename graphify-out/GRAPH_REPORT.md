@@ -1,4 +1,4 @@
-# RuView WiFi-DensePose Knowledge Graph Report
+# Wave WiFi-DensePose Knowledge Graph Report
 
 ## Graph Statistics
 - **Nodes**: 49 concepts

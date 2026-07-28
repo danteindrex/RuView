@@ -17,7 +17,7 @@ const DEFAULT_FIRMWARE_TAG: &str = "v0.8.3-esp32";
 
 /// GitHub repository that publishes the ESP32 firmware releases (public,
 /// upstream project — the fork does not cut its own firmware releases).
-const FIRMWARE_REPO: &str = "ruvnet/RuView";
+const FIRMWARE_REPO: &str = "ruvnet/Wave";
 
 /// The four release assets and their flash offsets for the 8 MB S3 layout,
 /// mirroring the proven offsets in `scripts/setup-esp32-node.ps1`:
@@ -296,7 +296,7 @@ pub async fn supported_chips(
 /// [`flash_firmware_bundle`].
 ///
 /// # Note
-/// This assumes the `ruvnet/RuView` release assets are publicly
+/// This assumes the `ruvnet/Wave` release assets are publicly
 /// downloadable. If the repository is private the direct URLs return 404 and
 /// the operator would need an authenticated `gh release download` instead —
 /// that fallback is intentionally out of scope for the sealed-box onboarding

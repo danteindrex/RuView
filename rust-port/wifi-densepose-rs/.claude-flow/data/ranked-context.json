@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "computedAt": 1784438907140,
+  "computedAt": 1785225804856,
   "entries": [
     {
       "id": "mem-esp32-s3-node-setup----",
@@ -8,7 +8,7 @@
       "summary": "---",
       "category": "esp32-s3-node-setup",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -71,7 +71,7 @@
       "summary": "Memory Index",
       "category": "core",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "esp32-s3",
@@ -98,7 +98,7 @@
       "summary": "---",
       "category": "ai-unavailable-messaging",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -155,7 +155,7 @@
       "summary": "---",
       "category": "llm-only-extraction-policy",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -215,7 +215,7 @@
       "summary": "Memory Index",
       "category": "core",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "llm-only",
@@ -251,7 +251,7 @@
       "summary": "---",
       "category": "aws-cli-gitbash-slash-mangling",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -313,7 +313,7 @@
       "summary": "---",
       "category": "cross-tenant-push-notification-leak",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -371,7 +371,7 @@
       "summary": "---",
       "category": "dev-env-monolith-migration",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -426,7 +426,7 @@
       "summary": "---",
       "category": "dev-login-broken-unseeded-db",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -492,7 +492,7 @@
       "summary": "---",
       "category": "director-settings-missing-read-grant",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -552,7 +552,7 @@
       "summary": "---",
       "category": "frontend-dev-deploy-s3",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -610,7 +610,7 @@
       "summary": "---",
       "category": "kb-openai-migration",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -671,7 +671,7 @@
       "summary": "---",
       "category": "legacy-folder-sole-backend-source",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -726,7 +726,7 @@
       "summary": "---",
       "category": "main-dev-cluster-plan",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -794,7 +794,7 @@
       "summary": "Memory index",
       "category": "core",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "dev",
@@ -853,7 +853,7 @@
       "summary": "---",
       "category": "pii-masking-spreads-mongoose-doc",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -916,7 +916,7 @@
       "summary": "---",
       "category": "prod-docdb-cutover",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -977,7 +977,7 @@
       "summary": "---",
       "category": "prod-runs-legacy-compose-on-ec2",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -1036,7 +1036,7 @@
       "summary": "---",
       "category": "role-edit-500-access-matrix-migration",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -1100,7 +1100,7 @@
       "summary": "---",
       "category": "store-orphaned-module-tenant-strip",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -1158,7 +1158,7 @@
       "summary": "---",
       "category": "taha-api-testing-gotchas",
       "confidence": 0.5,
-      "pageRank": 0.052631578947368404,
+      "pageRank": 0.05000000000000001,
       "accessCount": 0,
       "words": [
         "name",
@@ -1217,6 +1217,32 @@
         "yields",
         "bea",
         "---"
+      ]
+    },
+    {
+      "id": "insight-1785225662050-vxin",
+      "content": "File unknown was edited 108 times this session — likely a hot path worth monitoring.",
+      "summary": "Frequently edited: unknown (108x)",
+      "category": "insights",
+      "confidence": 0.5,
+      "pageRank": 0.05000000000000001,
+      "accessCount": 0,
+      "words": [
+        "file",
+        "unknown",
+        "edited",
+        "108",
+        "times",
+        "session",
+        "likely",
+        "hot",
+        "path",
+        "worth",
+        "monitoring",
+        "frequently",
+        "edited",
+        "unknown",
+        "108x"
       ]
     }
   ]

@@ -756,38 +756,38 @@ The following patterns were checked and found to be well-implemented:
 ## Appendix A: File Paths Analyzed
 
 ### Rust Signal Processing
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/mod.rs`
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/tomography.rs`
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/multistatic.rs`
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/pose_tracker.rs`
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/field_model.rs`
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/gesture.rs`
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/coherence.rs`
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/coherence_gate.rs`
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/multiband.rs`
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/phase_align.rs`
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/adversarial.rs`
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/intention.rs`
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/longitudinal.rs`
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/cross_room.rs`
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/temporal_gesture.rs`
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/attractor_drift.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/mod.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/tomography.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/multistatic.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/pose_tracker.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/field_model.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/gesture.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/coherence.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/coherence_gate.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/multiband.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/phase_align.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/adversarial.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/intention.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/longitudinal.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/cross_room.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/temporal_gesture.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-signal/src/ruvsense/attractor_drift.rs`
 
 ### Rust Neural Network
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-nn/src/inference.rs`
-- `/workspaces/ruview/rust-port/wifi-densepose-rs/crates/wifi-densepose-nn/src/tensor.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-nn/src/inference.rs`
+- `/workspaces/wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-nn/src/tensor.rs`
 
 ### Python Pipeline
-- `/workspaces/ruview/v1/src/core/csi_processor.py`
-- `/workspaces/ruview/v1/src/services/pose_service.py`
-- `/workspaces/ruview/v1/src/api/websocket/connection_manager.py`
-- `/workspaces/ruview/v1/src/api/websocket/pose_stream.py`
-- `/workspaces/ruview/v1/src/sensing/feature_extractor.py`
+- `/workspaces/wave/v1/src/core/csi_processor.py`
+- `/workspaces/wave/v1/src/services/pose_service.py`
+- `/workspaces/wave/v1/src/api/websocket/connection_manager.py`
+- `/workspaces/wave/v1/src/api/websocket/pose_stream.py`
+- `/workspaces/wave/v1/src/sensing/feature_extractor.py`
 
 ### ESP32 Firmware
-- `/workspaces/ruview/firmware/esp32-csi-node/main/csi_collector.c`
-- `/workspaces/ruview/firmware/esp32-csi-node/main/edge_processing.c`
-- `/workspaces/ruview/firmware/esp32-csi-node/main/edge_processing.h`
+- `/workspaces/wave/firmware/esp32-csi-node/main/csi_collector.c`
+- `/workspaces/wave/firmware/esp32-csi-node/main/edge_processing.c`
+- `/workspaces/wave/firmware/esp32-csi-node/main/edge_processing.h`
 
 ---
 

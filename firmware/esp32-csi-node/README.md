@@ -157,16 +157,16 @@ All packets are sent over UDP to the configured aggregator. The magic number in 
 
 The node also listens on UDP port 5006 for these plain-text datagrams:
 
-- `RUVIEW_DISCOVER` -- replies to the sender with
-  `RUVIEW_BEACON|<mac>|<node_id>|<version>|<chip>|<role>|<tdm_slot>|<tdm_total>`
+- `WAVE_DISCOVER` -- replies to the sender with
+  `WAVE_BEACON|<mac>|<node_id>|<version>|<chip>|<role>|<tdm_slot>|<tdm_total>`
   so the Wave desktop console can register the node.
-- `RUVIEW_HUB|<ip>|<port>` -- re-targets the CSI UDP stream at runtime and
+- `WAVE_HUB|<ip>|<port>` -- re-targets the CSI UDP stream at runtime and
   persists the new target to NVS (heals nodes after the hub PC's DHCP
   address changes).
-- `RUVIEW_RANGE|AA:BB:CC:DD:EE:FF` -- starts an 802.11 FTM ranging session
+- `WAVE_RANGE|AA:BB:CC:DD:EE:FF` -- starts an 802.11 FTM ranging session
   to the peer MAC (ADR-091). No reply on :5006; the result goes to the
   aggregator as a 24-byte `0xC5110008` range report.
-- `RUVIEW_FTM_RESPONDER|on` / `RUVIEW_FTM_RESPONDER|off` -- toggles FTM
+- `WAVE_FTM_RESPONDER|on` / `WAVE_FTM_RESPONDER|off` -- toggles FTM
   responder mode (hidden SoftAP `RV-FTM-<node_id>`; default off, persisted
   to NVS key `ftm_resp`).
 

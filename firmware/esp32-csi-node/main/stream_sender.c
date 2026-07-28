@@ -22,7 +22,7 @@ static int s_sock = -1;
 static struct sockaddr_in s_dest_addr;
 
 /* Guards s_dest_addr: the discovery responder task may re-target the
- * destination at runtime (RUVIEW_HUB re-announcement, ADR item 2.12) while
+ * destination at runtime (WAVE_HUB re-announcement, ADR item 2.12) while
  * the CSI path is sending.  A spinlock keeps the copy race-free without
  * blocking the WiFi task. */
 static portMUX_TYPE s_addr_lock = portMUX_INITIALIZER_UNLOCKED;

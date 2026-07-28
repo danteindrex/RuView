@@ -115,7 +115,7 @@ async fn main() -> Result<()> {
 }
 
 async fn run(config: AgentConfig) -> Result<()> {
-    info!("RuView Pi Node Agent starting");
+    info!("Wave Pi Node Agent starting");
     info!("  listen: {}", config.listen_addr);
     info!("  aggregator: {}", config.aggregator_addr);
     info!("  node_base: {}", config.node_base);
@@ -227,6 +227,6 @@ async fn run(config: AgentConfig) -> Result<()> {
         }
     }
 
-    info!("RuView Pi Node Agent stopped");
+    info!("Wave Pi Node Agent stopped");
     Ok(())
 }

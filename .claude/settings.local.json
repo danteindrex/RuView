@@ -3,10 +3,10 @@
     "allow": [
       "Bash(python -c \"import graphify\")",
       "Bash(echo \"EXIT:$?\")",
-      "Bash(git -C \"C:/Users/dante/OneDrive/Documents/RuView\" check-ignore vendor ven)",
-      "Bash(git -C \"C:/Users/dante/OneDrive/Documents/RuView\" ls-files vendor ven)",
-      "Bash(git -C \"C:/Users/dante/OneDrive/Documents/RuView\" ls-files --error-unmatch vendor)",
-      "Bash(git -C \"C:/Users/dante/OneDrive/Documents/RuView\" ls-files --error-unmatch ven)",
+      "Bash(git -C \"C:/Users/dante/OneDrive/Documents/Wave\" check-ignore vendor ven)",
+      "Bash(git -C \"C:/Users/dante/OneDrive/Documents/Wave\" ls-files vendor ven)",
+      "Bash(git -C \"C:/Users/dante/OneDrive/Documents/Wave\" ls-files --error-unmatch vendor)",
+      "Bash(git -C \"C:/Users/dante/OneDrive/Documents/Wave\" ls-files --error-unmatch ven)",
       "Bash(git *)",
       "WebSearch"
     ]

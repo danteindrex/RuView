@@ -6,11 +6,11 @@ die() { printf '[setup] ERROR: %s\n' "$*" >&2; exit 1; }
 need_cmd() { command -v "$1" >/dev/null 2>&1 || die "missing command: $1"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RUVIEW_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+WAVE_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 NEXMON_ROOT="${NEXMON_ROOT:-$HOME/nexmon}"
 PATCH_ROOT="${NEXMON_ROOT}/patches/bcm43455c0/7_45_189"
 NEXMON_CSI_DST="${PATCH_ROOT}/nexmon_csi"
-NEXMON_CSI_SRC="${NEXMON_CSI_SRC:-${RUVIEW_ROOT}/nexmon_csi}"
+NEXMON_CSI_SRC="${NEXMON_CSI_SRC:-${WAVE_ROOT}/nexmon_csi}"
 
 install_base_packages() {
   log "Installing build dependencies..."
@@ -134,7 +134,7 @@ main() {
   need_cmd sudo
   need_cmd apt-get
 
-  log "RuView root: ${RUVIEW_ROOT}"
+  log "Wave root: ${WAVE_ROOT}"
   log "Nexmon root: ${NEXMON_ROOT}"
 
   install_base_packages

@@ -1,7 +1,7 @@
 //! Raspberry Pi node management over SSH (backend "C"). Shells out to the system
 //! `ssh` client. Covers probe / service control / CSI health. The full Nexmon
 //! install (a long, reboot-driven, 400-line embedded-script flow) stays in the
-//! desktop wizard / `ruview_pi_files/nexmon_setup_auto.sh` — not duplicated here.
+//! desktop wizard / `wave_pi_files/nexmon_setup_auto.sh` — not duplicated here.
 
 use anyhow::{Context, Result};
 use serde_json::{json, Value};

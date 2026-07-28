@@ -1,4 +1,4 @@
-# Wave Desktop / RuView — Full System Capabilities
+# Wave Desktop / Wave — Full System Capabilities
 
 > WiFi Channel-State-Information (CSI) human sensing platform. A Tauri v2 desktop
 > app ("Wave Desktop") drives a local sensing server, provisions ESP32-S3 and
@@ -25,7 +25,7 @@
 | **Sensing server** | Rust / Axum (`sensing-server.exe`, bundled sidecar) | Ingests CSI over UDP, runs the signal-processing pipeline, serves REST + WebSocket, hosts the legacy Observatory 3D UI. |
 | **ESP32-S3 nodes** | C firmware (ESP-IDF) | WiFi CSI capture, edge DSP, TDM mesh, WASM runtime; stream UDP to the hub. |
 | **Raspberry Pi nodes** | Nexmon CSI + native agent | BCM43455 CSI capture (primary production path, ADR-090). |
-| **Frappe/ERPNext backend** | Python (`ruview_care` app) | Optional cloud: management DocTypes, RBAC, LangGraph AI-insight RQ pipeline, deployment registry. |
+| **Frappe/ERPNext backend** | Python (`wave_care` app) | Optional cloud: management DocTypes, RBAC, LangGraph AI-insight RQ pipeline, deployment registry. |
 
 **Ports (defaults):** HTTP `4000` · WebSocket `4001` · ESP32 UDP `5005` · Nexmon UDP `5500`.
 
@@ -269,7 +269,7 @@ Modules: `commands/deployment.rs`, `commands/cloud.rs`, `commands/frappe_config.
 | `get_cloud_config` / `set_consent` / `upload_sensing_session` | Cloud sync: consent gate + upload of a sensing session (deployment_id tagged), HMAC-signed. |
 | `get_frappe_config` / `set_frappe_config` | Frappe/ERPNext connection (stored via keyring); startup heartbeat to the Frappe API. |
 
-**Frappe/ERPNext backend** (`ruview_care` app): 5 DocTypes, RBAC roles, REST bridge, scheduled tasks, dashboard workspace, and the LangGraph insight RQ pipeline (`ingest_csi_session` + `run_insight`). Replaces the earlier FastAPI bridge. Docker Compose provided.
+**Frappe/ERPNext backend** (`wave_care` app): 5 DocTypes, RBAC roles, REST bridge, scheduled tasks, dashboard workspace, and the LangGraph insight RQ pipeline (`ingest_csi_session` + `run_insight`). Replaces the earlier FastAPI bridge. Docker Compose provided.
 
 ---
 

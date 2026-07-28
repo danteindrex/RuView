@@ -426,7 +426,7 @@ pub const RANGE_STATUS_UNSUPPORTED: u8 = 2;
 pub const RANGE_STATUS_BUSY: u8 = 3;
 
 /// Decoded FTM range report sent by an initiator node after a
-/// `RUVIEW_RANGE|<peer_mac>` control command.
+/// `WAVE_RANGE|<peer_mac>` control command.
 ///
 /// Wire layout (little-endian, 24 bytes):
 /// magic u32 @0, node_id u8 @4, status u8 @5 (0=ok,1=fail,2=unsupported,

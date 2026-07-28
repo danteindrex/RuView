@@ -6,11 +6,11 @@ die() { printf '[start] ERROR: %s\n' "$*" >&2; exit 1; }
 need_cmd() { command -v "$1" >/dev/null 2>&1 || die "missing command: $1"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RUVIEW_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+WAVE_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 NEXMON_ROOT="${NEXMON_ROOT:-$HOME/nexmon}"
 NEXMON_CSI_DIR="${NEXMON_CSI_DIR:-${NEXMON_ROOT}/patches/bcm43455c0/7_45_189/nexmon_csi}"
-BRIDGE_SCRIPT="${BRIDGE_SCRIPT:-${RUVIEW_ROOT}/scripts/nexmon_to_ruview_bridge.py}"
+BRIDGE_SCRIPT="${BRIDGE_SCRIPT:-${WAVE_ROOT}/scripts/nexmon_to_wave_bridge.py}"
 
 WIFI_IFACE="wlan0"
 CHANNEL="1/20"

@@ -1,4 +1,4 @@
-//! wave-cli — Wave / RuView management CLI.
+//! wave-cli — Wave / Wave management CLI.
 //!
 //! Manages the sensing system from the command line. This foundation covers the
 //! read/monitor surface over the sensing-server REST API (backend "A") plus a
@@ -35,8 +35,8 @@ mod exit {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "wave-cli", version, about = "Wave / RuView management CLI", propagate_version = true)]
-#[command(long_about = "Manage the Wave/RuView sensing system: nodes, live sensing, \
+#[command(name = "wave-cli", version, about = "Wave / Wave management CLI", propagate_version = true)]
+#[command(long_about = "Manage the Wave/Wave sensing system: nodes, live sensing, \
 calibration, models, and (soon) hardware provisioning — scriptable and headless.")]
 struct Cli {
     /// Output format. `auto` = table on a terminal, JSON when piped.
@@ -239,14 +239,14 @@ enum PiAction {
         host: String,
         #[arg(long)]
         action: String,
-        #[arg(long, default_value = "ruview-node")]
+        #[arg(long, default_value = "wave-node")]
         name: String,
     },
     /// Check CSI health (agent active + monitor mode).
     Health {
         #[arg(long)]
         host: String,
-        #[arg(long, default_value = "ruview-node")]
+        #[arg(long, default_value = "wave-node")]
         service: String,
     },
 }
@@ -899,7 +899,7 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
                     output::note("aborted");
                     return Ok(());
                 }
-                enterprise::send(tenant, "🚨 RuView Enterprise: Test notification successful.").await.map_err(net)?;
+                enterprise::send(tenant, "🚨 Wave Enterprise: Test notification successful.").await.map_err(net)?;
                 output::note("test alert sent");
                 Ok(())
             }

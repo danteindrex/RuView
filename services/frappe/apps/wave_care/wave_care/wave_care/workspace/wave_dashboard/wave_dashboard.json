@@ -1,0 +1,31 @@
+{
+  "name": "Wave Dashboard",
+  "module": "Wave Care",
+  "category": "Modules",
+  "icon": "wifi",
+  "color": "#0ea5e9",
+  "label": "Wave Care",
+  "shortcuts": [
+    {"type": "DocType", "doc_type": "Wave Deployment", "label": "Deployments"},
+    {"type": "DocType", "doc_type": "Risk Alert", "label": "Risk Alerts"},
+    {"type": "DocType", "doc_type": "CSI Session", "label": "Sessions"},
+    {"type": "DocType", "doc_type": "Insight Report", "label": "Insights"},
+    {"type": "DocType", "doc_type": "Sensing Node", "label": "Nodes"}
+  ],
+  "charts": [
+    {
+      "chart_name": "Deployments by Risk Level",
+      "chart_type": "Count",
+      "document_type": "Wave Deployment",
+      "based_on": "active_risk_level",
+      "label": "Deployments by Risk Level"
+    },
+    {
+      "chart_name": "Open Risk Alerts",
+      "chart_type": "Count",
+      "document_type": "Risk Alert",
+      "based_on": "risk_level",
+      "label": "Open Risk Alerts by Severity"
+    }
+  ]
+}

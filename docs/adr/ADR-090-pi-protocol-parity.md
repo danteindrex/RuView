@@ -5,7 +5,7 @@
 
 ## Context
 
-RuView previously assumed ESP32-origin packets for end-to-end sensing. We now need full feature parity from Raspberry Pi 4 nodes running Nexmon CSI while keeping existing UI/API contracts stable.
+Wave previously assumed ESP32-origin packets for end-to-end sensing. We now need full feature parity from Raspberry Pi 4 nodes running Nexmon CSI while keeping existing UI/API contracts stable.
 
 ## Decision
 

@@ -1,6 +1,6 @@
 key,type,encoding,value
 csi_cfg,namespace,,
-ssid,data,string,RuViewTest
+ssid,data,string,WaveTest
 password,data,string,test1234
 target_ip,data,string,192.168.1.20
 target_port,data,u16,5005

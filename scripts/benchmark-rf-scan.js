@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * RuView RF Scan Benchmark
+ * Wave RF Scan Benchmark
  *
  * Collects CSI frames from ESP32 nodes and computes quantitative metrics
  * for single-channel and multi-channel scanning performance:
@@ -376,7 +376,7 @@ function computeMetrics() {
 
 function printReport(metrics) {
   console.log('');
-  console.log('=== RUVIEW RF SCAN BENCHMARK ===');
+  console.log('=== WAVE RF SCAN BENCHMARK ===');
   console.log(`Duration: ${metrics.duration_s}s | Total frames: ${metrics.totalFrames}`);
   console.log('');
 
@@ -479,7 +479,7 @@ function main() {
   server.on('listening', () => {
     const addr = server.address();
     if (!JSON_OUTPUT) {
-      console.log(`RuView RF Scan Benchmark`);
+      console.log(`Wave RF Scan Benchmark`);
       console.log(`Listening on ${addr.address}:${addr.port} for ${DURATION_S}s...`);
       console.log('Collecting CSI frames from ESP32 nodes...\n');
     }

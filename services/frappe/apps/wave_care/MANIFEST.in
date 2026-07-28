@@ -1,0 +1,3 @@
+include wave_care/modules.txt
+recursive-include wave_care *.json *.js *.css *.html *.py *.md
+recursive-exclude wave_care/public/node_modules *

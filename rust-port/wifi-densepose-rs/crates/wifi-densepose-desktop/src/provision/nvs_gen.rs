@@ -447,7 +447,7 @@ mod tests {
     /// by ESP-IDF's `esp_idf_nvs_partition_gen`.
     fn golden_config() -> Esp32NvsConfig {
         Esp32NvsConfig {
-            ssid: "RuViewTest".into(),
+            ssid: "WaveTest".into(),
             password: "test1234".into(),
             target_ip: "192.168.1.20".into(),
             target_port: 5005,
@@ -515,7 +515,7 @@ mod tests {
     fn generate_matches_esp_idf_golden_multislot_and_tdm() {
         let golden: &[u8] = include_bytes!("../../tests/fixtures/nvs_csi_cfg_long.bin");
         let cfg = Esp32NvsConfig {
-            ssid: "RuViewTest".into(),
+            ssid: "WaveTest".into(),
             password: "correcthorsebatterystaple-verylongpassphrase12".into(),
             target_ip: "192.168.1.20".into(),
             target_port: 5005,

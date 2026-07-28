@@ -163,8 +163,8 @@ void app_main(void)
     }
 
     /* Start the discovery responder (:5006) so the desktop console can
-     * find this node (RUVIEW_DISCOVER -> RUVIEW_BEACON) and the hub can
-     * re-announce its address after a DHCP change (RUVIEW_HUB). */
+     * find this node (WAVE_DISCOVER -> WAVE_BEACON) and the hub can
+     * re-announce its address after a DHCP change (WAVE_HUB). */
     esp_err_t disc_ret = discovery_responder_start();
     if (disc_ret != ESP_OK) {
         ESP_LOGW(TAG, "Discovery responder start failed: %s", esp_err_to_name(disc_ret));
@@ -197,7 +197,7 @@ void app_main(void)
 
 #ifndef CONFIG_CSI_MOCK_SKIP_WIFI_CONNECT
     /* ADR-091: FTM ranging (initiator always ready; responder per NVS
-     * ftm_resp / RUVIEW_FTM_RESPONDER control message, default off).
+     * ftm_resp / WAVE_FTM_RESPONDER control message, default off).
      * Runs after csi_collector_init() so csi_collector_get_node_id()
      * reflects the NVS node_id in reports and the responder SSID. */
     esp_err_t ftm_ret = ftm_ranging_init();

@@ -13,7 +13,7 @@
  * The SoftAP shares the single radio and therefore sits on the STA's
  * channel. Coexistence with the continuous CSI capture path has NOT yet
  * been validated on hardware, so the responder defaults to OFF and is
- * enabled on demand ("RUVIEW_FTM_RESPONDER|on") or via NVS "ftm_resp"=1.
+ * enabled on demand ("WAVE_FTM_RESPONDER|on") or via NVS "ftm_resp"=1.
  *
  * Concurrency: session state is guarded by a FreeRTOS mutex taken from
  * three task contexts — the discovery task (session start), the esp_timer

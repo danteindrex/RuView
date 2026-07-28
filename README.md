@@ -1,8 +1,8 @@
-# π RuView
+# π Wave
 
 <p align="center">
   <a href="https://x.com/rUv/status/2037556932802761004">
-    <img src="assets/ruview-small-gemini.jpg" alt="RuView - WiFi DensePose" width="100%">
+    <img src="assets/wave-small-gemini.jpg" alt="Wave - WiFi DensePose" width="100%">
   </a>
 </p>
 
@@ -11,15 +11,15 @@
 > - Single ESP32 deployments have limited spatial resolution — use 2+ nodes or add a [Cognitum Seed](https://cognitum.one) for best results
 > - Camera-free pose accuracy is limited — use [camera ground-truth training](docs/adr/ADR-079-camera-ground-truth-training.md) for 92.9% PCK@20
 >
-> Contributions and bug reports welcome at [Issues](https://github.com/ruvnet/RuView/issues).
+> Contributions and bug reports welcome at [Issues](https://github.com/ruvnet/Wave/issues).
 
 ## **See through walls with WiFi** ##
 
 **Turn ordinary WiFi into a sensing system.** Detect people, measure breathing and heart rate, track movement, and monitor rooms — through walls, in the dark, with no cameras or wearables. Just physics.
 
-### π RuView is a WiFi sensing platform that turns radio signals into spatial intelligence.
+### π Wave is a WiFi sensing platform that turns radio signals into spatial intelligence.
 
-Every WiFi router already fills your space with radio waves. When people move, breathe, or even sit still, they disturb those waves in measurable ways. RuView captures these disturbances using Channel State Information (CSI) from low-cost ESP32 sensors and turns them into actionable data: who's there, what they're doing, and whether they're okay.
+Every WiFi router already fills your space with radio waves. When people move, breathe, or even sit still, they disturb those waves in measurable ways. Wave captures these disturbances using Channel State Information (CSI) from low-cost ESP32 sensors and turns them into actionable data: who's there, what they're doing, and whether they're okay.
 
 **What it senses:**
 - **Presence and occupancy** — detect people through walls, count them, track entries and exits
@@ -28,11 +28,11 @@ Every WiFi router already fills your space with radio waves. When people move, b
 - **Environment mapping** — RF fingerprinting identifies rooms, detects moved furniture, spots new objects
 - **Sleep quality** — overnight monitoring with sleep stage classification and apnea screening
 
-Built on [RuVector](https://github.com/ruvnet/ruvector/) and [Cognitum Seed](https://cognitum.one), RuView runs entirely on edge hardware — an ESP32 mesh (as low as $9 per node) paired with a Cognitum Seed for persistent memory, cryptographic attestation, and AI integration. No cloud, no cameras, no internet required.
+Built on [RuVector](https://github.com/ruvnet/ruvector/) and [Cognitum Seed](https://cognitum.one), Wave runs entirely on edge hardware — an ESP32 mesh (as low as $9 per node) paired with a Cognitum Seed for persistent memory, cryptographic attestation, and AI integration. No cloud, no cameras, no internet required.
 
 The system learns each environment locally using spiking neural networks that adapt in under 30 seconds, with multi-frequency mesh scanning across 6 WiFi channels that uses your neighbors' routers as free radar illuminators. Every measurement is cryptographically attested via an Ed25519 witness chain.
 
-RuView also supports pose estimation (17 COCO keypoints via the WiFlow architecture), trained entirely without cameras using 10 sensor signals — a technique pioneered from the original *DensePose From WiFi* research at Carnegie Mellon University.
+Wave also supports pose estimation (17 COCO keypoints via the WiFlow architecture), trained entirely without cameras using 10 sensor signals — a technique pioneered from the original *DensePose From WiFi* research at Carnegie Mellon University.
 
 ### Built for low-power edge applications
 
@@ -40,7 +40,7 @@ RuView also supports pose estimation (17 COCO keypoints via the WiFlow architect
 
 [![Rust 1.85+](https://img.shields.io/badge/rust-1.85+-orange.svg)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests: 1463](https://img.shields.io/badge/tests-1463%20passed-brightgreen.svg)](https://github.com/ruvnet/RuView)
+[![Tests: 1463](https://img.shields.io/badge/tests-1463%20passed-brightgreen.svg)](https://github.com/ruvnet/Wave)
 [![Docker: multi-arch](https://img.shields.io/badge/docker-amd64%20%2B%20arm64-blue.svg)](https://hub.docker.com/r/ruvnet/wifi-densepose)
 [![Vital Signs](https://img.shields.io/badge/vital%20signs-breathing%20%2B%20heartbeat-red.svg)](#vital-sign-detection)
 [![ESP32 Ready](https://img.shields.io/badge/ESP32--S3-CSI%20streaming-purple.svg)](#esp32-s3-hardware-pipeline)
@@ -98,7 +98,7 @@ node scripts/mincut-person-counter.js --port 5006  # Correct person counting
 
 ### Real-Time Dense Point Cloud (NEW)
 
-RuView now generates **real-time 3D point clouds** by fusing camera depth + WiFi CSI + mmWave radar. All sensors stream simultaneously into a unified spatial model.
+Wave now generates **real-time 3D point clouds** by fusing camera depth + WiFi CSI + mmWave radar. All sensors stream simultaneously into a unified spatial model.
 
 | Sensor | Data | Integration |
 |--------|------|-------------|
@@ -112,22 +112,22 @@ RuView now generates **real-time 3D point clouds** by fusing camera depth + WiFi
 ```bash
 cd rust-port/wifi-densepose-rs
 cargo build --release -p wifi-densepose-pointcloud
-./target/release/ruview-pointcloud serve --bind 127.0.0.1:9880
+./target/release/wave-pointcloud serve --bind 127.0.0.1:9880
 # Open http://localhost:9880 for live 3D viewer
 ```
 
 **CLI commands:**
 ```bash
-ruview-pointcloud demo                            # synthetic demo
-ruview-pointcloud serve --bind 127.0.0.1:9880     # live server + Three.js viewer
-ruview-pointcloud capture --output room.ply       # capture to PLY
-ruview-pointcloud train                           # depth calibration + DPO pairs
-ruview-pointcloud cameras                         # list available cameras
-ruview-pointcloud csi-test --count 100            # send test CSI frames
-ruview-pointcloud fingerprint office --seconds 5  # record named CSI room fingerprint
+wave-pointcloud demo                            # synthetic demo
+wave-pointcloud serve --bind 127.0.0.1:9880     # live server + Three.js viewer
+wave-pointcloud capture --output room.ply       # capture to PLY
+wave-pointcloud train                           # depth calibration + DPO pairs
+wave-pointcloud cameras                         # list available cameras
+wave-pointcloud csi-test --count 100            # send test CSI frames
+wave-pointcloud fingerprint office --seconds 5  # record named CSI room fingerprint
 ```
 
-The HTTP/viewer server defaults to **loopback (`127.0.0.1`)** — exposing live camera/CSI/vitals on `0.0.0.0` is an explicit opt-in. Brain URL defaults to `http://127.0.0.1:9876` and is overridable via `RUVIEW_BRAIN_URL` env var or the `--brain` flag on `serve`/`train`.
+The HTTP/viewer server defaults to **loopback (`127.0.0.1`)** — exposing live camera/CSI/vitals on `0.0.0.0` is an explicit opt-in. Brain URL defaults to `http://127.0.0.1:9876` and is overridable via `WAVE_BRAIN_URL` env var or the `--brain` flag on `serve`/`train`.
 
 The pose overlay currently uses an **amplitude-energy heuristic** (`heuristic_pose_from_amplitude`) rather than trained WiFlow inference — real ONNX/Candle inference is tracked as a follow-up.
 
@@ -135,7 +135,7 @@ The pose overlay currently uses an **amplitude-energy heuristic** (`heuristic_po
 
 **Brain integration:** Spatial observations (motion, vitals, skeleton, occupancy) sync to the ruOS brain every 60 seconds for agent reasoning.
 
-See [PR #405](https://github.com/ruvnet/RuView/pull/405) for full details.
+See [PR #405](https://github.com/ruvnet/Wave/pull/405) for full details.
 
 ### What's New in v0.7.0
 
@@ -176,7 +176,7 @@ node scripts/eval-wiflow.js --model models/wiflow-real/wiflow-v1.json --data dat
 | Training time | N/A | **19 minutes** |
 | Model size | N/A | **974 KB** |
 
-Pre-trained model: [HuggingFace ruv/ruview/wiflow-v1](https://huggingface.co/ruv/ruview)
+Pre-trained model: [HuggingFace ruv/wave/wiflow-v1](https://huggingface.co/ruv/wave)
 
 </details>
 
@@ -186,7 +186,7 @@ Pre-trained model: [HuggingFace ruv/ruview/wiflow-v1](https://huggingface.co/ruv
 <summary><strong>Download from HuggingFace and start sensing immediately</strong></summary>
 
 Pre-trained models are available on HuggingFace:
-> **https://huggingface.co/ruv/ruview** (primary) | [mirror](https://huggingface.co/ruvnet/wifi-densepose-pretrained)
+> **https://huggingface.co/ruv/wave** (primary) | [mirror](https://huggingface.co/ruvnet/wifi-densepose-pretrained)
 
 Trained on 60,630 real-world samples from an 8-hour overnight collection. Just download and run — no datasets, no GPU, no training needed.
 
@@ -201,7 +201,7 @@ Trained on 60,630 real-world samples from an 8-hour overnight collection. Just d
 ```bash
 # Download and use (Python)
 pip install huggingface_hub
-huggingface-cli download ruv/ruview --local-dir models/
+huggingface-cli download ruv/wave --local-dir models/
 
 # Or use directly with the sensing pipeline
 node scripts/train-ruvllm.js --data data/recordings/*.csi.jsonl  # retrain on your own data
@@ -315,7 +315,7 @@ python firmware/esp32-csi-node/provision.py --port COM9 --hop-channels "1,6,11"
 <details>
 <summary><strong>Cognitum Seed Integration + Camera-Free Pose Training</strong></summary>
 
-**v0.5.4 transforms RuView from a real-time sensing tool into a persistent edge AI system.** Your ESP32 now remembers what it senses, learns without cameras, and proves its data cryptographically.
+**v0.5.4 transforms Wave from a real-time sensing tool into a persistent edge AI system.** Your ESP32 now remembers what it senses, learns without cameras, and proves its data cryptographically.
 
 | Capability | Details | Hardware |
 |-----------|---------|----------|
@@ -387,19 +387,19 @@ See [ADR-069](docs/adr/ADR-069-cognitum-seed-csi-pipeline.md), [ADR-071](docs/ad
 ---
 
 
-  <a href="https://ruvnet.github.io/RuView/">
+  <a href="https://ruvnet.github.io/Wave/">
     <img src="assets/v2-screen.png" alt="WiFi DensePose — Live pose detection with setup guide" width="800">
   </a>
   <br>
   <em>Real-time pose skeleton from WiFi CSI signals — no cameras, no wearables</em>
   <br><br>
-  <a href="https://ruvnet.github.io/RuView/"><strong>▶ Live Observatory Demo</strong></a>
+  <a href="https://ruvnet.github.io/Wave/"><strong>▶ Live Observatory Demo</strong></a>
   &nbsp;|&nbsp;
-  <a href="https://ruvnet.github.io/RuView/pose-fusion.html"><strong>▶ Dual-Modal Pose Fusion Demo</strong></a>
+  <a href="https://ruvnet.github.io/Wave/pose-fusion.html"><strong>▶ Dual-Modal Pose Fusion Demo</strong></a>
 
 > The [server](#-quick-start) is optional for visualization and aggregation — the ESP32 [runs independently](#esp32-s3-hardware-pipeline) for presence detection, vital signs, and fall alerts.
 >
-> **Live ESP32 pipeline**: Connect an ESP32-S3 node → run the [sensing server](#sensing-server) → open the [pose fusion demo](https://ruvnet.github.io/RuView/pose-fusion.html) for real-time dual-modal pose estimation (webcam + WiFi CSI). See [ADR-059](docs/adr/ADR-059-live-esp32-csi-pipeline.md).
+> **Live ESP32 pipeline**: Connect an ESP32-S3 node → run the [sensing server](#sensing-server) → open the [pose fusion demo](https://ruvnet.github.io/Wave/pose-fusion.html) for real-time dual-modal pose estimation (webcam + WiFi CSI). See [ADR-059](docs/adr/ADR-059-live-esp32-csi-pipeline.md).
 
 
 ## 🚀 Key Features
@@ -427,7 +427,7 @@ The system learns on its own and gets smarter over time — no hand-tuning, no l
 | 🧠 | **Self-Learning** | Teaches itself from raw WiFi data — no labeled training sets, no cameras needed to bootstrap ([ADR-024](docs/adr/ADR-024-contrastive-csi-embedding-model.md)) |
 | 🎯 | **AI Signal Processing** | Attention networks, graph algorithms, and smart compression replace hand-tuned thresholds — adapts to each room automatically ([RuVector](https://github.com/ruvnet/ruvector)) |
 | 🌍 | **Works Everywhere** | Train once, deploy in any room — adversarial domain generalization strips environment bias so models transfer across rooms, buildings, and hardware ([ADR-027](docs/adr/ADR-027-cross-environment-domain-generalization.md)) |
-| 👁️ | **Cross-Viewpoint Fusion** | AI combines what each sensor sees from its own angle — fills in blind spots and depth ambiguity that no single viewpoint can resolve on its own ([ADR-031](docs/adr/ADR-031-ruview-sensing-first-rf-mode.md)) |
+| 👁️ | **Cross-Viewpoint Fusion** | AI combines what each sensor sees from its own angle — fills in blind spots and depth ambiguity that no single viewpoint can resolve on its own ([ADR-031](docs/adr/ADR-031-wave-sensing-first-rf-mode.md)) |
 | 🔮 | **Signal-Line Protocol** | A 6-stage processing pipeline transforms raw WiFi signals into structured body representations — from signal cleanup through graph-based spatial reasoning to final pose output ([ADR-033](docs/adr/ADR-033-crv-signal-line-sensing-integration.md)) |
 | 🔒 | **QUIC Mesh Security** | All sensor-to-sensor communication is encrypted end-to-end with tamper detection, replay protection, and seamless reconnection if a node moves or drops offline ([ADR-032](docs/adr/ADR-032-multistatic-mesh-security-hardening.md)) |
 | 🎯 | **Adaptive Classifier** | Records labeled CSI sessions, trains a 15-feature logistic regression model in pure Rust, and learns your room's unique signal characteristics — replaces hand-tuned thresholds with data-driven classification ([ADR-048](docs/adr/ADR-048-adaptive-csi-classifier.md)) |
@@ -851,8 +851,8 @@ The installer walks through 7 steps: system detection, toolchain check, WiFi har
 <summary><strong>From Source</strong> — Rust (primary) or Python</summary>
 
 ```bash
-git clone https://github.com/ruvnet/RuView.git
-cd RuView
+git clone https://github.com/ruvnet/Wave.git
+cd Wave
 
 # Rust (primary — 810x faster)
 cd rust-port/wifi-densepose-rs
@@ -1032,9 +1032,9 @@ The signal processing stack transforms raw WiFi Channel State Information into a
 |---------|-------------|------|
 | [Key Features](#key-features) | Sensing, Intelligence, and Performance & Deployment capabilities | — |
 | [How It Works](#how-it-works) | End-to-end pipeline: radio waves → CSI capture → signal processing → AI → pose + vitals | — |
-| [ESP32-S3 Hardware Pipeline](#esp32-s3-hardware-pipeline) | 20 Hz CSI streaming, binary frame parsing, flash & provision | [ADR-018](docs/adr/ADR-018-esp32-dev-implementation.md) · [Tutorial #34](https://github.com/ruvnet/RuView/issues/34) |
+| [ESP32-S3 Hardware Pipeline](#esp32-s3-hardware-pipeline) | 20 Hz CSI streaming, binary frame parsing, flash & provision | [ADR-018](docs/adr/ADR-018-esp32-dev-implementation.md) · [Tutorial #34](https://github.com/ruvnet/Wave/issues/34) |
 | [Vital Sign Detection](#vital-sign-detection) | Breathing 6-30 BPM, heartbeat 40-120 BPM, FFT peak detection | [ADR-021](docs/adr/ADR-021-vital-sign-detection-rvdna-pipeline.md) |
-| [WiFi Scan Domain Layer](#wifi-scan-domain-layer) | 8-stage RSSI pipeline, multi-BSSID fingerprinting, Windows WiFi | [ADR-022](docs/adr/ADR-022-windows-wifi-enhanced-fidelity-ruvector.md) · [Tutorial #36](https://github.com/ruvnet/RuView/issues/36) |
+| [WiFi Scan Domain Layer](#wifi-scan-domain-layer) | 8-stage RSSI pipeline, multi-BSSID fingerprinting, Windows WiFi | [ADR-022](docs/adr/ADR-022-windows-wifi-enhanced-fidelity-ruvector.md) · [Tutorial #36](https://github.com/ruvnet/Wave/issues/36) |
 | [WiFi-Mat Disaster Response](#wifi-mat-disaster-response) | Search & rescue, START triage, 3D localization through debris | [ADR-001](docs/adr/ADR-001-wifi-mat-disaster-detection.md) · [User Guide](docs/wifi-mat-user-guide.md) |
 | [SOTA Signal Processing](#sota-signal-processing) | SpotFi, Hampel, Fresnel, STFT spectrogram, subcarrier selection, BVP | [ADR-014](docs/adr/ADR-014-sota-signal-processing.md) |
 
@@ -1104,7 +1104,7 @@ WiFi DensePose is MIT-licensed open source, developed by [ruvnet](https://github
 |---------|-------------|------|
 | [Changelog](#changelog) | v3.0.0 (AETHER AI + Docker), v2.0.0 (Rust port + SOTA + WiFi-Mat) | [CHANGELOG.md](CHANGELOG.md) |
 | [License](#license) | MIT License | [LICENSE](LICENSE) |
-| [Support](#support) | Bug reports, feature requests, community discussion | [Issues](https://github.com/ruvnet/RuView/issues) · [Discussions](https://github.com/ruvnet/RuView/discussions) |
+| [Support](#support) | Bug reports, feature requests, community discussion | [Issues](https://github.com/ruvnet/Wave/issues) · [Discussions](https://github.com/ruvnet/Wave/discussions) |
 
 </details>
 
@@ -1187,7 +1187,7 @@ cd dist/witness-bundle-ADR028-*/ && bash VERIFY.sh
 </details>
 
 <details>
-<summary><strong>📡 Multistatic Sensing (ADR-029/030/031 — Project RuvSense + RuView)</strong> — Multiple ESP32 nodes fuse viewpoints for production-grade pose, tracking, and exotic sensing</summary>
+<summary><strong>📡 Multistatic Sensing (ADR-029/030/031 — Project RuvSense + Wave)</strong> — Multiple ESP32 nodes fuse viewpoints for production-grade pose, tracking, and exotic sensing</summary>
 
 A single WiFi receiver can track people, but has blind spots — limbs behind the torso are invisible, depth is ambiguous, and two people at similar range create overlapping signals. RuvSense solves this by coordinating multiple ESP32 nodes into a **multistatic mesh** where every node acts as both transmitter and receiver, creating N×(N-1) measurement links from N devices.
 
@@ -1204,7 +1204,7 @@ A single WiFi receiver can track people, but has blind spots — limbs behind th
 |-----|----------|-------------|
 | [ADR-029](docs/adr/ADR-029-ruvsense-multistatic-sensing-mode.md) | **RuvSense** | Channel hopping, TDM protocol, multi-node fusion, coherence gating, 17-keypoint Kalman tracker |
 | [ADR-030](docs/adr/ADR-030-ruvsense-persistent-field-model.md) | **RuvSense Field** | Room electromagnetic eigenstructure (SVD), RF tomography, longitudinal drift detection, intention prediction, gesture recognition, adversarial detection |
-| [ADR-031](docs/adr/ADR-031-ruview-sensing-first-rf-mode.md) | **RuView** | Cross-viewpoint attention with geometric bias, viewpoint diversity optimization, embedding-level fusion |
+| [ADR-031](docs/adr/ADR-031-wave-sensing-first-rf-mode.md) | **Wave** | Cross-viewpoint attention with geometric bias, viewpoint diversity optimization, embedding-level fusion |
 
 **Architecture**
 
@@ -1354,15 +1354,15 @@ Download a pre-built binary — no build toolchain needed:
 
 | Release | What's included | Tag |
 |---------|-----------------|-----|
-| [v0.7.0](https://github.com/ruvnet/RuView/releases/tag/v0.7.0) | **Latest** — Camera-supervised WiFlow model (92.9% PCK@20), ground-truth training pipeline, ruvector optimizations | `v0.7.0` |
-| [v0.6.0](https://github.com/ruvnet/RuView/releases/tag/v0.6.0-esp32) | [Pre-trained models on HuggingFace](https://huggingface.co/ruv/ruview), 17 sensing apps, 51.6% contrastive improvement, 0.008ms inference | `v0.6.0-esp32` |
-| [v0.5.5](https://github.com/ruvnet/RuView/releases/tag/v0.5.5-esp32) | SNN + MinCut (#348 fix) + CNN spectrogram + WiFlow + multi-freq mesh + graph transformer | `v0.5.5-esp32` |
-| [v0.5.4](https://github.com/ruvnet/RuView/releases/tag/v0.5.4-esp32) | Cognitum Seed integration ([ADR-069](docs/adr/ADR-069-cognitum-seed-csi-pipeline.md)), 8-dim feature vectors, RVF store, witness chain, security hardening | `v0.5.4-esp32` |
-| [v0.5.0](https://github.com/ruvnet/RuView/releases/tag/v0.5.0-esp32) | mmWave sensor fusion ([ADR-063](docs/adr/ADR-063-mmwave-sensor-fusion.md)), auto-detect MR60BHA2/LD2410, 48-byte fused vitals, all v0.4.3.1 fixes | `v0.5.0-esp32` |
-| [v0.4.3.1](https://github.com/ruvnet/RuView/releases/tag/v0.4.3.1-esp32) | Fall detection fix ([#263](https://github.com/ruvnet/RuView/issues/263)), 4MB flash ([#265](https://github.com/ruvnet/RuView/issues/265)), watchdog fix ([#266](https://github.com/ruvnet/RuView/issues/266)) | `v0.4.3.1-esp32` |
-| [v0.4.1](https://github.com/ruvnet/RuView/releases/tag/v0.4.1-esp32) | CSI build fix, compile guard, AMOLED display, edge intelligence ([ADR-057](docs/adr/ADR-057-firmware-csi-build-guard.md)) | `v0.4.1-esp32` |
-| [v0.3.0-alpha](https://github.com/ruvnet/RuView/releases/tag/v0.3.0-alpha-esp32) | Alpha — adds on-device edge intelligence and WASM modules ([ADR-039](docs/adr/ADR-039-esp32-edge-intelligence.md), [ADR-040](docs/adr/ADR-040-wasm-programmable-sensing.md)) | `v0.3.0-alpha-esp32` |
-| [v0.2.0](https://github.com/ruvnet/RuView/releases/tag/v0.2.0-esp32) | Raw CSI streaming, multi-node TDM, channel hopping | `v0.2.0-esp32` |
+| [v0.7.0](https://github.com/ruvnet/Wave/releases/tag/v0.7.0) | **Latest** — Camera-supervised WiFlow model (92.9% PCK@20), ground-truth training pipeline, ruvector optimizations | `v0.7.0` |
+| [v0.6.0](https://github.com/ruvnet/Wave/releases/tag/v0.6.0-esp32) | [Pre-trained models on HuggingFace](https://huggingface.co/ruv/wave), 17 sensing apps, 51.6% contrastive improvement, 0.008ms inference | `v0.6.0-esp32` |
+| [v0.5.5](https://github.com/ruvnet/Wave/releases/tag/v0.5.5-esp32) | SNN + MinCut (#348 fix) + CNN spectrogram + WiFlow + multi-freq mesh + graph transformer | `v0.5.5-esp32` |
+| [v0.5.4](https://github.com/ruvnet/Wave/releases/tag/v0.5.4-esp32) | Cognitum Seed integration ([ADR-069](docs/adr/ADR-069-cognitum-seed-csi-pipeline.md)), 8-dim feature vectors, RVF store, witness chain, security hardening | `v0.5.4-esp32` |
+| [v0.5.0](https://github.com/ruvnet/Wave/releases/tag/v0.5.0-esp32) | mmWave sensor fusion ([ADR-063](docs/adr/ADR-063-mmwave-sensor-fusion.md)), auto-detect MR60BHA2/LD2410, 48-byte fused vitals, all v0.4.3.1 fixes | `v0.5.0-esp32` |
+| [v0.4.3.1](https://github.com/ruvnet/Wave/releases/tag/v0.4.3.1-esp32) | Fall detection fix ([#263](https://github.com/ruvnet/Wave/issues/263)), 4MB flash ([#265](https://github.com/ruvnet/Wave/issues/265)), watchdog fix ([#266](https://github.com/ruvnet/Wave/issues/266)) | `v0.4.3.1-esp32` |
+| [v0.4.1](https://github.com/ruvnet/Wave/releases/tag/v0.4.1-esp32) | CSI build fix, compile guard, AMOLED display, edge intelligence ([ADR-057](docs/adr/ADR-057-firmware-csi-build-guard.md)) | `v0.4.1-esp32` |
+| [v0.3.0-alpha](https://github.com/ruvnet/Wave/releases/tag/v0.3.0-alpha-esp32) | Alpha — adds on-device edge intelligence and WASM modules ([ADR-039](docs/adr/ADR-039-esp32-edge-intelligence.md), [ADR-040](docs/adr/ADR-040-wasm-programmable-sensing.md)) | `v0.3.0-alpha-esp32` |
+| [v0.2.0](https://github.com/ruvnet/Wave/releases/tag/v0.2.0-esp32) | Raw CSI streaming, multi-node TDM, channel hopping | `v0.2.0-esp32` |
 
 ```bash
 # 1. Flash the firmware to your ESP32-S3 (8MB flash — most boards)
@@ -1458,7 +1458,7 @@ python firmware/esp32-csi-node/provision.py --port COM7 \
 
 When Tier 2 is active, the node sends a 32-byte vitals packet once per second containing: presence, motion level, breathing BPM, heart rate BPM, confidence scores, fall alert flag, and occupancy count.
 
-See [firmware/esp32-csi-node/README.md](firmware/esp32-csi-node/README.md), [ADR-039](docs/adr/ADR-039-esp32-edge-intelligence.md), [ADR-044](docs/adr/ADR-044-provisioning-tool-enhancements.md), and [Tutorial #34](https://github.com/ruvnet/RuView/issues/34).
+See [firmware/esp32-csi-node/README.md](firmware/esp32-csi-node/README.md), [ADR-039](docs/adr/ADR-039-esp32-edge-intelligence.md), [ADR-044](docs/adr/ADR-044-provisioning-tool-enhancements.md), and [Tutorial #34](https://github.com/ruvnet/Wave/issues/34).
 
 </details>
 
@@ -1529,7 +1529,7 @@ See [ADR-021](docs/adr/ADR-021-vital-sign-detection-rvdna-pipeline.md).
 cargo test -p wifi-densepose-wifiscan
 ```
 
-See [ADR-022](docs/adr/ADR-022-windows-wifi-enhanced-fidelity-ruvector.md) and [Tutorial #36](https://github.com/ruvnet/RuView/issues/36).
+See [ADR-022](docs/adr/ADR-022-windows-wifi-enhanced-fidelity-ruvector.md) and [Tutorial #36](https://github.com/ruvnet/Wave/issues/36).
 
 </details>
 
@@ -1633,7 +1633,7 @@ The [`wifi-densepose-ruvector`](https://crates.io/crates/wifi-densepose-ruvector
 | **O(1) survivor triangulation** | O(N^3) matrix inversion | `ruvector-solver` | Neumann series linearization for instant position updates |
 | **75% memory compression** | 13.4 MB breathing buffers that overflow edge devices | `ruvector-temporal-tensor` | Tiered 3-8 bit quantization fits 60s of vitals in 3.4 MB |
 
-See [issue #67](https://github.com/ruvnet/RuView/issues/67) for a deep dive with code examples, or [`cargo add wifi-densepose-ruvector`](https://crates.io/crates/wifi-densepose-ruvector) to use it directly.
+See [issue #67](https://github.com/ruvnet/Wave/issues/67) for a deep dive with code examples, or [`cargo add wifi-densepose-ruvector`](https://crates.io/crates/wifi-densepose-ruvector) to use it directly.
 
 </details>
 
@@ -1781,7 +1781,7 @@ The full RuVector ecosystem includes 90+ crates. See [github.com/ruvnet/ruvector
 <details>
 <summary><a id="ruv-neural"></a><strong>🧠 rUv Neural</strong> — Brain topology analysis ecosystem for neural decoding and medical sensing</summary>
 
-[**rUv Neural**](rust-port/wifi-densepose-rs/crates/ruv-neural/README.md) is a 12-crate Rust ecosystem that extends RuView's signal processing into brain network topology analysis. It transforms neural magnetic field measurements from quantum sensors (NV diamond magnetometers, optically pumped magnetometers) into dynamic connectivity graphs, using minimum cut algorithms to detect cognitive state transitions in real time. The ecosystem includes crates for signal processing (`ruv-neural-signal`), graph construction (`ruv-neural-graph`), HNSW-indexed pattern memory (`ruv-neural-memory`), graph embeddings (`ruv-neural-embed`), cognitive state decoding (`ruv-neural-decoder`), and ESP32/WASM edge targets. Medical and research applications include early neurological disease detection via topology signatures, brain-computer interfaces, clinical neurofeedback, and non-invasive biomedical sensing -- bridging RuView's RF sensing architecture with the emerging field of quantum biomedical diagnostics.
+[**rUv Neural**](rust-port/wifi-densepose-rs/crates/ruv-neural/README.md) is a 12-crate Rust ecosystem that extends Wave's signal processing into brain network topology analysis. It transforms neural magnetic field measurements from quantum sensors (NV diamond magnetometers, optically pumped magnetometers) into dynamic connectivity graphs, using minimum cut algorithms to detect cognitive state transitions in real time. The ecosystem includes crates for signal processing (`ruv-neural-signal`), graph construction (`ruv-neural-graph`), HNSW-indexed pattern memory (`ruv-neural-memory`), graph embeddings (`ruv-neural-embed`), cognitive state decoding (`ruv-neural-decoder`), and ESP32/WASM edge targets. Medical and research applications include early neurological disease detection via topology signatures, brain-computer interfaces, clinical neurofeedback, and non-invasive biomedical sensing -- bridging Wave's RF sensing architecture with the emerging field of quantum biomedical diagnostics.
 
 </details>
 
@@ -2034,10 +2034,10 @@ WebSocket: `ws://localhost:3001/ws/sensing` (real-time sensing + vital signs)
 
 | Hardware | CSI | Cost | Guide |
 |----------|-----|------|-------|
-| **ESP32-S3** | Native | ~$8 | [Tutorial #34](https://github.com/ruvnet/RuView/issues/34) |
+| **ESP32-S3** | Native | ~$8 | [Tutorial #34](https://github.com/ruvnet/Wave/issues/34) |
 | Intel 5300 | Firmware mod | ~$15 | Linux `iwl-csi` |
 | Atheros AR9580 | ath9k patch | ~$20 | Linux only |
-| Any Windows WiFi | RSSI only | $0 | [Tutorial #36](https://github.com/ruvnet/RuView/issues/36) |
+| Any Windows WiFi | RSSI only | $0 | [Tutorial #36](https://github.com/ruvnet/Wave/issues/36) |
 | Any macOS WiFi | RSSI only (CoreWLAN) | $0 | [ADR-025](docs/adr/ADR-025-macos-corewlan-wifi-sensing.md) |
 | Any Linux WiFi | RSSI only (`iw`) | $0 | Requires `iw` + `CAP_NET_ADMIN` |
 
@@ -2254,8 +2254,8 @@ POSE_MAX_PERSONS=10              # Max tracked individuals
 <summary><strong>Dev setup, code standards, PR process</strong></summary>
 
 ```bash
-git clone https://github.com/ruvnet/RuView.git
-cd RuView
+git clone https://github.com/ruvnet/Wave.git
+cd Wave
 
 # Rust development
 cd rust-port/wifi-densepose-rs
@@ -2302,7 +2302,7 @@ Multistatic sensing, persistent field model, and cross-viewpoint fusion — the 
 
 - **Project RuvSense (ADR-029)** — Multistatic mesh: TDM protocol, channel hopping (ch1/6/11), multi-band frame fusion, coherence gating, 17-keypoint Kalman tracker with re-ID; 10 new signal modules (5,300+ lines)
 - **RuvSense Persistent Field Model (ADR-030)** — 7 exotic sensing tiers: field normal modes (SVD), RF tomography, longitudinal drift detection, intention prediction, cross-room identity, gesture classification, adversarial detection
-- **Project RuView (ADR-031)** — Cross-viewpoint attention with geometric bias, Geometric Diversity Index, viewpoint fusion orchestrator; 5 new ruvector modules (2,200+ lines)
+- **Project Wave (ADR-031)** — Cross-viewpoint attention with geometric bias, Geometric Diversity Index, viewpoint fusion orchestrator; 5 new ruvector modules (2,200+ lines)
 - **TDM Hardware Protocol** — ESP32 sensing coordinator: sync beacons, slot scheduling, clock drift compensation (±10ppm), 20 Hz aggregate rate
 - **Channel-Hopping Firmware** — ESP32 firmware extended with hop table, timer-driven channel switching, NDP injection stub; NVS config for all TDM parameters; fully backward-compatible
 - **DDD Domain Model** — 6 bounded contexts, ubiquitous language, aggregate roots, domain events, full event bus specification
@@ -2353,7 +2353,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ## 📞 Support
 
-[GitHub Issues](https://github.com/ruvnet/RuView/issues) | [Discussions](https://github.com/ruvnet/RuView/discussions) | [PyPI](https://pypi.org/project/wifi-densepose/)
+[GitHub Issues](https://github.com/ruvnet/Wave/issues) | [Discussions](https://github.com/ruvnet/Wave/discussions) | [PyPI](https://pypi.org/project/wifi-densepose/)
 
 ---
 
@@ -2361,7 +2361,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 ## Raspberry Pi Full-Feature Mode
 
-RuView supports full ESP32 feature parity on Raspberry Pi 4 with Nexmon.
+Wave supports full ESP32 feature parity on Raspberry Pi 4 with Nexmon.
 
 1. Configure Nexmon CSI on each Pi node.
 2. Run `wifi-densepose-pi-node-agent` on each node.
@@ -2370,7 +2370,7 @@ RuView supports full ESP32 feature parity on Raspberry Pi 4 with Nexmon.
 ### Migration Notes (ESP32 -> Pi)
 
 - `0xC5110006` is the canonical WASM event packet magic.
-- `scripts/nexmon_to_ruview_bridge.py` is compatibility-only. Use the native Pi node agent for production.
+- `scripts/nexmon_to_wave_bridge.py` is compatibility-only. Use the native Pi node agent for production.
 - REST and WebSocket contracts remain unchanged.
 
 ### Quick Commands

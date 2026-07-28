@@ -11,7 +11,7 @@ export function ConsentGate({ onConsent, onDecline }: ConsentGateProps) {
       <div className="bg-white dark:bg-gray-900 rounded-lg p-6 max-w-md mx-4 shadow-xl">
         <h2 className="text-lg font-semibold mb-3">Cloud Data Consent</h2>
         <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">
-          This app will transmit AES-256 encrypted sensing data to RuView servers:
+          This app will transmit AES-256 encrypted sensing data to Wave servers:
         </p>
         <ul className="text-sm text-gray-600 dark:text-gray-300 mb-4 list-disc pl-5 space-y-1">
           <li>Vital signs (heart rate, breathing rate)</li>

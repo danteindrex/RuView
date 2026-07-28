@@ -59,8 +59,8 @@
   },
   "config": {
     "autoStart": false,
-    "logDir": "/Users/cohen/GitHub/ruvnet/RuView/rust-port/wifi-densepose-rs/crates/wifi-densepose-desktop/.claude-flow/logs",
-    "stateFile": "/Users/cohen/GitHub/ruvnet/RuView/rust-port/wifi-densepose-rs/crates/wifi-densepose-desktop/.claude-flow/daemon-state.json",
+    "logDir": "/Users/cohen/GitHub/ruvnet/Wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-desktop/.claude-flow/logs",
+    "stateFile": "/Users/cohen/GitHub/ruvnet/Wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-desktop/.claude-flow/daemon-state.json",
     "maxConcurrent": 2,
     "workerTimeoutMs": 300000,
     "resourceThresholds": {

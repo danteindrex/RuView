@@ -15,14 +15,14 @@ export function langfuseTraceUrl(traceId: string): string {
 }
 
 // feature/cloud-upload-consent: consent key
-export const CLOUD_CONSENT_KEY = 'ruview-cloud-consent-granted'
+export const CLOUD_CONSENT_KEY = 'wave-cloud-consent-granted'
 export function hasCloudConsent(): boolean {
   return localStorage.getItem(CLOUD_CONSENT_KEY) === 'true'
 }
 
 // feature/latentcsi-image-gen: vision API URL
 export function visionApiUrl(): string {
-  return (window as unknown as Record<string, unknown>)['__RUVIEW_CLOUD_ENDPOINT__'] as string
+  return (window as unknown as Record<string, unknown>)['__WAVE_CLOUD_ENDPOINT__'] as string
     || 'http://localhost:8001'
 }
 

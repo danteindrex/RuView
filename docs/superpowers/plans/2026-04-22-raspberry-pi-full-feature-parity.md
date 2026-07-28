@@ -34,7 +34,7 @@ This plan intentionally does **not** include ESP-IDF flashing/provisioning workf
 2. `rust-port/wifi-densepose-rs/crates/wifi-densepose-sensing-server/src/csi.rs`
 3. `rust-port/wifi-densepose-rs/crates/wifi-densepose-sensing-server/src/cli.rs`
 4. `rust-port/wifi-densepose-rs/crates/wifi-densepose-sensing-server/src/lib.rs`
-5. `scripts/nexmon_to_ruview_bridge.py`
+5. `scripts/nexmon_to_wave_bridge.py`
 6. `docs/user-guide.md`
 7. `README.md`
 8. `rust-port/wifi-densepose-rs/Cargo.toml` (workspace members)
@@ -57,8 +57,8 @@ This plan intentionally does **not** include ESP-IDF flashing/provisioning workf
 14. `rust-port/wifi-densepose-rs/crates/wifi-densepose-pi-node-agent/src/mmwave.rs`
 15. `rust-port/wifi-densepose-rs/crates/wifi-densepose-pi-node-agent/src/wasm_runtime.rs`
 16. `rust-port/wifi-densepose-rs/crates/wifi-densepose-pi-node-agent/tests/agent_pipeline_test.rs`
-17. `deploy/pi/systemd/ruview-pi-agent.service`
-18. `deploy/pi/systemd/ruview-sensing-server.service`
+17. `deploy/pi/systemd/wave-pi-agent.service`
+18. `deploy/pi/systemd/wave-sensing-server.service`
 19. `deploy/pi/install.sh`
 20. `docs/adr/ADR-090-pi-protocol-parity.md`
 21. `docs/pi-deployment-guide.md`
@@ -522,7 +522,7 @@ git commit -m "feat(pi-agent): add wasm runtime and v2 wasm packet emission"
 ### Task 9: Replace Bridge Default and Keep Compatibility Utility
 
 **Files:**
-- Modify: `scripts/nexmon_to_ruview_bridge.py`
+- Modify: `scripts/nexmon_to_wave_bridge.py`
 - Modify: `docs/user-guide.md`
 - Modify: `README.md`
 
@@ -544,13 +544,13 @@ else:
 
 - [ ] **Step 3: Validate script syntax**
 
-Run: `python -m py_compile scripts/nexmon_to_ruview_bridge.py`  
+Run: `python -m py_compile scripts/nexmon_to_wave_bridge.py`  
 Expected: no output, exit code 0
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add scripts/nexmon_to_ruview_bridge.py docs/user-guide.md README.md
+git add scripts/nexmon_to_wave_bridge.py docs/user-guide.md README.md
 git commit -m "chore(bridge): keep nexmon bridge as compatibility tool, not primary path"
 ```
 
@@ -559,8 +559,8 @@ git commit -m "chore(bridge): keep nexmon bridge as compatibility tool, not prim
 ### Task 10: Deployment, Services, and Multi-Node Operations on Pi
 
 **Files:**
-- Create: `deploy/pi/systemd/ruview-pi-agent.service`
-- Create: `deploy/pi/systemd/ruview-sensing-server.service`
+- Create: `deploy/pi/systemd/wave-pi-agent.service`
+- Create: `deploy/pi/systemd/wave-sensing-server.service`
 - Create: `deploy/pi/install.sh`
 - Modify: `docs/pi-deployment-guide.md` (create if missing)
 
@@ -570,7 +570,7 @@ git commit -m "chore(bridge): keep nexmon bridge as compatibility tool, not prim
 [Service]
 ExecStart=/usr/local/bin/wifi-densepose-pi-node-agent --listen 0.0.0.0:5500 --aggregator 10.0.0.5:5005
 Restart=always
-User=ruview
+User=wave
 ```
 
 - [ ] **Step 2: Create installation script**
@@ -579,14 +579,14 @@ User=ruview
 #!/usr/bin/env bash
 set -euo pipefail
 sudo install -m 0755 target/release/wifi-densepose-pi-node-agent /usr/local/bin/
-sudo install -m 0644 deploy/pi/systemd/ruview-pi-agent.service /etc/systemd/system/
+sudo install -m 0644 deploy/pi/systemd/wave-pi-agent.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now ruview-pi-agent
+sudo systemctl enable --now wave-pi-agent
 ```
 
 - [ ] **Step 3: Validate service files**
 
-Run: `systemd-analyze verify deploy/pi/systemd/ruview-pi-agent.service deploy/pi/systemd/ruview-sensing-server.service`  
+Run: `systemd-analyze verify deploy/pi/systemd/wave-pi-agent.service deploy/pi/systemd/wave-sensing-server.service`  
 Expected: no errors
 
 - [ ] **Step 4: Commit**

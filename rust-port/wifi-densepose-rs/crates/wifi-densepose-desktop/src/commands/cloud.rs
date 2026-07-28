@@ -13,7 +13,7 @@ pub async fn get_cloud_config() -> Result<serde_json::Value, String> {
     // Report the real configured state, not hardcoded flags: cloud is "enabled"
     // only when an endpoint is actually configured. Consent is not persisted
     // yet, so it is reported as null (unknown) rather than a fabricated false.
-    let endpoint = std::env::var("RUVIEW_CLOUD_ENDPOINT").unwrap_or_default();
+    let endpoint = std::env::var("WAVE_CLOUD_ENDPOINT").unwrap_or_default();
     Ok(serde_json::json!({
         "endpoint": endpoint,
         "consent_granted": serde_json::Value::Null,

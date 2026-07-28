@@ -1,6 +1,6 @@
 # Test Suite Analysis Report
 
-**Project:** wifi-densepose (ruview)
+**Project:** wifi-densepose (wave)
 **Date:** 2026-04-05
 **Analyst:** QE Test Architect (V3)
 **Scope:** All test suites across Python (v1), Rust (rust-port), and Mobile (ui/mobile)

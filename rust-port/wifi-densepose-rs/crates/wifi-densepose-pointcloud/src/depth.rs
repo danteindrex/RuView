@@ -252,12 +252,12 @@ mod tests {
 #[allow(dead_code)]
 fn find_midas_model() -> Result<String> {
     let paths = [
-        dirs::home_dir().unwrap_or_default().join(".local/share/ruview/midas_v21_small_256.onnx"),
-        dirs::home_dir().unwrap_or_default().join(".cache/ruview/midas_v21_small_256.onnx"),
-        std::path::PathBuf::from("/usr/local/share/ruview/midas_v21_small_256.onnx"),
+        dirs::home_dir().unwrap_or_default().join(".local/share/wave/midas_v21_small_256.onnx"),
+        dirs::home_dir().unwrap_or_default().join(".cache/wave/midas_v21_small_256.onnx"),
+        std::path::PathBuf::from("/usr/local/share/wave/midas_v21_small_256.onnx"),
     ];
     for p in &paths {
         if p.exists() { return Ok(p.to_string_lossy().to_string()); }
     }
-    anyhow::bail!("MiDaS ONNX model not found. Download:\n  wget https://github.com/isl-org/MiDaS/releases/download/v3_1/midas_v21_small_256.onnx -O ~/.local/share/ruview/midas_v21_small_256.onnx")
+    anyhow::bail!("MiDaS ONNX model not found. Download:\n  wget https://github.com/isl-org/MiDaS/releases/download/v3_1/midas_v21_small_256.onnx -O ~/.local/share/wave/midas_v21_small_256.onnx")
 }

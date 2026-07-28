@@ -12,7 +12,7 @@ Dual codebase: Python v1 (`v1/`) and Rust port (`rust-port/wifi-densepose-rs/`).
 | `wifi-densepose-core` | Core types, traits, error types, CSI frame primitives |
 | `wifi-densepose-signal` | SOTA signal processing + RuvSense multistatic sensing (14 modules) |
 | `wifi-densepose-nn` | Neural network inference (ONNX, PyTorch, Candle backends) |
-| `wifi-densepose-train` | Training pipeline with ruvector integration + ruview_metrics |
+| `wifi-densepose-train` | Training pipeline with ruvector integration + wave_metrics |
 | `wifi-densepose-mat` | Mass Casualty Assessment Tool — disaster survivor detection |
 | `wifi-densepose-hardware` | ESP32 aggregator, TDM protocol, channel hopping firmware |
 | `wifi-densepose-ruvector` | RuVector v2.0.4 integration + cross-viewpoint fusion (5 modules) |
@@ -27,7 +27,7 @@ Dual codebase: Python v1 (`v1/`) and Rust port (`rust-port/wifi-densepose-rs/`).
 | `wifi-densepose-desktop` | Tauri v2 desktop frontend for Wave WiFi DensePose |
 | `wifi-densepose-geo` | Geospatial satellite integration — free satellite tiles, DEM, OSM, temporal tracking |
 | `wifi-densepose-pointcloud` | Real-time dense point cloud from camera depth + WiFi CSI tomography |
-| `wifi-densepose-protocol` | Shared protocol definitions for RuView sensing nodes and hubs *(crate exists but not yet in workspace members)* |
+| `wifi-densepose-protocol` | Shared protocol definitions for Wave sensing nodes and hubs *(crate exists but not yet in workspace members)* |
 | `wifi-densepose-pi-node-agent` | Native Raspberry Pi Node Agent — nexmon CSI capture, mmWave, edge DSP, frame encoder, WASM runtime (primary production sensing path per ADR-090) |
 
 **Excluded from workspace** (build separately):
@@ -43,7 +43,7 @@ Dual codebase: Python v1 (`v1/`) and Rust port (`rust-port/wifi-densepose-rs/`).
 Raspberry Pi 4 nodes running Nexmon CSI are the **primary production sensing path**; ESP32 remains supported. Key facts:
 - Canonical UDP packet IDs: `0xC5110001` raw CSI, `0xC5110002` edge vitals, `0xC5110003` edge feature vector, `0xC5110004` fused vitals, `0xC5110005` compressed frame, `0xC5110006` WASM v2 events.
 - Sensing-server parsing is split into `protocol/packet.rs`, `protocol/esp32_legacy.rs`, `protocol/nexmon.rs`.
-- `ruview_pi_files/` — Pi setup docs/scripts (`nexmon_setup.md`, `nexmon_setup_auto.sh`, `nexmon_startup.sh`, `udp_streaming_setup.md`) and `nexmon_bridge.py` (Python UDP bridge — **compatibility-only**; the native pi-node-agent is the production path).
+- `wave_pi_files/` — Pi setup docs/scripts (`nexmon_setup.md`, `nexmon_setup_auto.sh`, `nexmon_startup.sh`, `udp_streaming_setup.md`) and `nexmon_bridge.py` (Python UDP bridge — **compatibility-only**; the native pi-node-agent is the production path).
 - Untracked vendored third-party trees (do not commit wholesale without review): `nexmon_csi/` (Nexmon CSI extractor + firmware patches), `vendor/brcmfmac-nexmon-dkms/` (DKMS brcmfmac driver, per-kernel patch dirs 4.19–6.12), `ven/` (midstream, ruvector, sublinear-time-solver sources).
 
 ### RuvSense Modules (`signal/src/ruvsense/`)
@@ -90,7 +90,7 @@ All 5 ruvector crates integrated in workspace:
 - ADR-028: ESP32 capability audit + witness verification (Accepted)
 - ADR-029: RuvSense multistatic sensing mode (Proposed)
 - ADR-030: RuvSense persistent field model (Proposed)
-- ADR-031: RuView sensing-first RF mode (Proposed)
+- ADR-031: Wave sensing-first RF mode (Proposed)
 - ADR-032: Multistatic mesh security hardening (Proposed)
 - ADR-081: Adaptive CSI mesh firmware/kernel (see `docs/adr/`)
 - ADR-090: Raspberry Pi protocol parity (Accepted — Pi 4 + Nexmon is primary production path)
@@ -249,7 +249,7 @@ Default branch: `main`. Untracked vendored trees `nexmon_csi/`, `ven/`, `vendor/
 - `rust-port/wifi-densepose-rs/crates/wifi-densepose-hardware/src/esp32/` — ESP32 TDM protocol
 - `firmware/esp32-csi-node/main/` — ESP32 C firmware (channel hopping, NVS config, TDM)
 - `ui-v2/src/` — Production desktop frontend (pages, components, lib/tauri-api.ts, lib/auth-store.ts)
-- `ruview_pi_files/` — Raspberry Pi nexmon setup scripts and Python UDP bridge
+- `wave_pi_files/` — Raspberry Pi nexmon setup scripts and Python UDP bridge
 - `v1/src/` — Python source (core, hardware, services, api)
 - `v1/data/proof/` — Deterministic CSI proof bundles
 - `.claude-flow/` — Claude Flow coordination state (committed for team sharing)

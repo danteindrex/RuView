@@ -5,7 +5,7 @@
 
 ## Context
 
-Node placement in RuView is currently manual: the drag-UI shipped, so operators
+Node placement in Wave is currently manual: the drag-UI shipped, so operators
 can position nodes on the floor plan by hand, but nothing measures where nodes
 actually are. Multistatic fusion quality (ADR-029/ADR-030) and tomography
 (voxel grid) degrade quickly with placement error, and asking operators to
@@ -32,8 +32,8 @@ Control messages ride the existing discovery socket (UDP :5006, ASCII,
 
 | Message | Action |
 |---------|--------|
-| `RUVIEW_RANGE\|AA:BB:CC:DD:EE:FF` | Initiate an FTM session to that peer MAC on the current channel. Non-blocking; nothing is acked on :5006 — the result flows to the aggregator as the range report below. |
-| `RUVIEW_FTM_RESPONDER\|on` / `RUVIEW_FTM_RESPONDER\|off` | Enable/disable FTM responder mode (persisted to NVS key `ftm_resp`). |
+| `WAVE_RANGE\|AA:BB:CC:DD:EE:FF` | Initiate an FTM session to that peer MAC on the current channel. Non-blocking; nothing is acked on :5006 — the result flows to the aggregator as the range report below. |
+| `WAVE_FTM_RESPONDER\|on` / `WAVE_FTM_RESPONDER\|off` | Enable/disable FTM responder mode (persisted to NVS key `ftm_resp`). |
 
 Range report (node → aggregator, UDP :5005, exactly 24 bytes, little-endian,
 magic `0xC5110008` — next in the `0xC5110001`–`0xC5110007` family):
@@ -93,7 +93,7 @@ semantics across the switch, so we choose the conservative default:
 ### Validation plan (pending)
 
 1. Flash two ESP32-S3 boards with this firmware.
-2. **Stock accuracy test**: responder on board A, `RUVIEW_RANGE` from board B
+2. **Stock accuracy test**: responder on board A, `WAVE_RANGE` from board B
    at known separations (1/3/5 m); record `distance_cm` spread.
 3. **Integrated test**: verify CSI frame rate (`0xC5110001` at the aggregator)
    before, during, and after (a) an initiator session and (b) a responder

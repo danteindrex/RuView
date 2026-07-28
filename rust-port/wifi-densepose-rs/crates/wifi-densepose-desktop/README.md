@@ -89,11 +89,11 @@ The UI follows a dark professional theme with the following design tokens:
 
 ## Download
 
-Pre-built binaries are available on the [Releases](https://github.com/ruvnet/RuView/releases) page.
+Pre-built binaries are available on the [Releases](https://github.com/ruvnet/Wave/releases) page.
 
 | Platform | Download | Status |
 |----------|----------|--------|
-| Windows x64 | [v0.3.0-alpha](https://github.com/ruvnet/RuView/releases/tag/v0.3.0-desktop-alpha) | Debug build |
+| Windows x64 | [v0.3.0-alpha](https://github.com/ruvnet/Wave/releases/tag/v0.3.0-desktop-alpha) | Debug build |
 | macOS | — | Planned |
 | Linux | — | Planned |
 
@@ -103,8 +103,8 @@ The current release is a **debug build** that loads the frontend from a local Vi
 
 ```bash
 # 1. Clone the repo (or download just the wifi-densepose-desktop folder)
-git clone https://github.com/ruvnet/RuView.git
-cd RuView/rust-port/wifi-densepose-rs/crates/wifi-densepose-desktop/ui-v2
+git clone https://github.com/ruvnet/Wave.git
+cd Wave/rust-port/wifi-densepose-rs/crates/wifi-densepose-desktop/ui-v2
 
 # 2. Install frontend dependencies
 npm install

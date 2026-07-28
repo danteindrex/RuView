@@ -1,13 +1,13 @@
-//! ruview-pointcloud — real-time dense point cloud from camera + WiFi CSI
+//! wave-pointcloud — real-time dense point cloud from camera + WiFi CSI
 //!
 //! Pipeline: Camera → Depth → Backproject → Fuse with WiFi occupancy → Stream
 //!
 //! Usage:
-//!   ruview-pointcloud serve               # HTTP + Three.js viewer
-//!   ruview-pointcloud capture --frames 1  # capture to PLY
-//!   ruview-pointcloud demo                # synthetic demo
-//!   ruview-pointcloud train               # calibration training
-//!   ruview-pointcloud csi-test            # send test CSI frames (ADR-018 binary)
+//!   wave-pointcloud serve               # HTTP + Three.js viewer
+//!   wave-pointcloud capture --frames 1  # capture to PLY
+//!   wave-pointcloud demo                # synthetic demo
+//!   wave-pointcloud train               # calibration training
+//!   wave-pointcloud csi-test            # send test CSI frames (ADR-018 binary)
 
 mod brain_bridge;
 mod camera;
@@ -25,7 +25,7 @@ use clap::{Parser, Subcommand};
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Parser)]
-#[command(name = "ruview-pointcloud", version = VERSION)]
+#[command(name = "wave-pointcloud", version = VERSION)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -60,7 +60,7 @@ enum Commands {
     Cameras,
     /// Training and calibration
     Train {
-        #[arg(long, default_value = "~/.local/share/ruview/training")]
+        #[arg(long, default_value = "~/.local/share/wave/training")]
         data_dir: String,
         /// Brain URL for submitting results
         #[arg(long)]
@@ -155,7 +155,7 @@ async fn main() -> Result<()> {
 
 async fn demo() -> Result<()> {
     println!("╔══════════════════════════════════════════════╗");
-    println!("║  RuView Dense Point Cloud — Demo             ║");
+    println!("║  Wave Dense Point Cloud — Demo             ║");
     println!("╚══════════════════════════════════════════════╝");
     println!();
 
@@ -183,7 +183,7 @@ async fn demo() -> Result<()> {
 
 async fn train(data_dir: &str, brain_url: Option<&str>) -> Result<()> {
     println!("╔══════════════════════════════════════════════╗");
-    println!("║  RuView Point Cloud — Training               ║");
+    println!("║  Wave Point Cloud — Training               ║");
     println!("╚══════════════════════════════════════════════╝");
     println!();
 

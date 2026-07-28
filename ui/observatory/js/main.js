@@ -1,5 +1,5 @@
 /**
- * RuView Observatory — Main Scene Orchestrator
+ * Wave Observatory — Main Scene Orchestrator
  *
  * Room-based WiFi sensing visualization with:
  * - Pool of 4 human wireframe figures (multi-person scenarios)
@@ -44,13 +44,13 @@ class Observatory {
 
     // Load saved settings
     try {
-      const ver = localStorage.getItem('ruview-settings-version');
+      const ver = localStorage.getItem('wave-settings-version');
       if (ver === SETTINGS_VERSION) {
-        const saved = localStorage.getItem('ruview-observatory-settings');
+        const saved = localStorage.getItem('wave-observatory-settings');
         if (saved) Object.assign(this.settings, JSON.parse(saved));
       } else {
-        localStorage.removeItem('ruview-observatory-settings');
-        localStorage.setItem('ruview-settings-version', SETTINGS_VERSION);
+        localStorage.removeItem('wave-observatory-settings');
+        localStorage.setItem('wave-settings-version', SETTINGS_VERSION);
       }
     } catch {}
 

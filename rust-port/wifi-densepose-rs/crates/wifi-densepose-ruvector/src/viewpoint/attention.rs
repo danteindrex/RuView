@@ -1,6 +1,6 @@
 //! Cross-viewpoint scaled dot-product attention with geometric bias (ADR-031).
 //!
-//! Implements the core RuView attention mechanism:
+//! Implements the core Wave attention mechanism:
 //!
 //! ```text
 //! Q = W_q * X,  K = W_k * X,  V = W_v * X
@@ -282,7 +282,7 @@ impl ProjectionWeights {
 
 /// Cross-viewpoint attention with geometric bias.
 ///
-/// Computes the full RuView attention pipeline:
+/// Computes the full Wave attention pipeline:
 ///
 /// 1. Project embeddings through W_q, W_k, W_v.
 /// 2. Compute attention scores: `A = softmax((Q * K^T + G_bias) / sqrt(d))`.

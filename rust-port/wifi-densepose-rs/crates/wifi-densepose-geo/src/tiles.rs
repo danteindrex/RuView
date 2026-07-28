@@ -53,7 +53,7 @@ pub async fn fetch_tile(provider: &TileProvider, coord: &TileCoord, cache: &Tile
     let url = provider.url(coord);
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
-        .user_agent("RuView/0.1 (https://github.com/ruvnet/RuView)")
+        .user_agent("Wave/0.1 (https://github.com/ruvnet/Wave)")
         .build()?;
 
     let resp = client.get(&url).send().await?;

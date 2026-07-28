@@ -1,6 +1,6 @@
 //! Brain integration — store geospatial context in ruOS brain.
 //!
-//! Brain URL is read from `RUVIEW_BRAIN_URL` env var (default
+//! Brain URL is read from `WAVE_BRAIN_URL` env var (default
 //! `http://127.0.0.1:9876`). The resolved URL is logged once on first use.
 
 use crate::fuse;
@@ -13,7 +13,7 @@ const DEFAULT_BRAIN_URL: &str = "http://127.0.0.1:9876";
 pub(crate) fn brain_url() -> &'static str {
     static BRAIN_URL: OnceLock<String> = OnceLock::new();
     BRAIN_URL.get_or_init(|| {
-        let url = std::env::var("RUVIEW_BRAIN_URL")
+        let url = std::env::var("WAVE_BRAIN_URL")
             .unwrap_or_else(|_| DEFAULT_BRAIN_URL.to_string());
         eprintln!("  wifi-densepose-geo: using brain URL {url}");
         url

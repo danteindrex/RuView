@@ -44,7 +44,7 @@ pub fn log_path() -> PathBuf {
     let base = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
-    let dir = base.join("RuView").join("wave-cli");
+    let dir = base.join("Wave").join("wave-cli");
     let _ = std::fs::create_dir_all(&dir);
     dir.join("server.log")
 }

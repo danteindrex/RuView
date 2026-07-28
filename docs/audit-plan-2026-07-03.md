@@ -1,4 +1,4 @@
-# RuView Action Plan — ESP32 + Raspberry Pi Dual Support
+# Wave Action Plan — ESP32 + Raspberry Pi Dual Support
 
 Verified against the confirmed audit findings. Execution order within each group matters (earlier items unblock later ones).
 
@@ -102,22 +102,22 @@ Verified against the confirmed audit findings. Execution order within each group
 
 ### 2.11 Firmware discovery responder (:5006) — make node registration work
 - **Where:** New `firmware/esp32-csi-node/main/discovery_responder.c` (+ CMakeLists.txt), spawned from `main.c` after line 162; protocol spec in `wifi-densepose-desktop/src/commands/discovery.rs:24, 227-279`
-- **What:** ~60-line FreeRTOS task binding UDP :5006, answering `RUVIEW_DISCOVER` with `RUVIEW_BEACON|<mac>|<node_id>|<version>|esp32s3|node|<tdm_slot>|<tdm_total>` (all fields already in scope in main.c). Optionally register ESP-IDF mdns `_ruview._udp`. Design the same socket to accept a future `RUVIEW_HUB|<ip>|<port>` announcement (see 2.12). Ship in next firmware tag.
+- **What:** ~60-line FreeRTOS task binding UDP :5006, answering `WAVE_DISCOVER` with `WAVE_BEACON|<mac>|<node_id>|<version>|esp32s3|node|<tdm_slot>|<tdm_total>` (all fields already in scope in main.c). Optionally register ESP-IDF mdns `_wave._udp`. Design the same socket to accept a future `WAVE_HUB|<ip>|<port>` announcement (see 2.12). Ship in next firmware tag.
 - **Size:** M (firmware + release cycle)
 
 ### 2.12 DHCP fragility: hub re-announcement + provisioning warnings
 - **Where:** `firmware/esp32-csi-node/main/stream_sender.c:33-59`, `scripts/setup-esp32-node.ps1:70-76`, sensing-server (new periodic broadcast)
-- **What:** Short term: setup-esp32-node.ps1 prints a "TargetIp must stay stable — set a DHCP reservation" warning. Firmware: reuse the :5006 socket (2.11) to accept `RUVIEW_HUB|ip|port` broadcasts from sensing-server and update `s_dest_addr` at runtime; server broadcasts periodically when it has zero senders. Both deployed nodes are one DHCP lease rotation from silent total failure.
+- **What:** Short term: setup-esp32-node.ps1 prints a "TargetIp must stay stable — set a DHCP reservation" warning. Firmware: reuse the :5006 socket (2.11) to accept `WAVE_HUB|ip|port` broadcasts from sensing-server and update `s_dest_addr` at runtime; server broadcasts periodically when it has zero senders. Both deployed nodes are one DHCP lease rotation from silent total failure.
 - **Size:** M
 
-### 2.13 Fix start-ruview.ps1 port mismatch
-- **Where:** `scripts/start-ruview.ps1:32, 39, 42, 44` and comment lines 7-9
+### 2.13 Fix start-wave.ps1 port mismatch
+- **Where:** `scripts/start-wave.ps1:32, 39, 42, 44` and comment lines 7-9
 - **What:** `--http-port 8080` (or drop flag), health-check/UI URL → :8080, rewrite the comment to name the real conflicts (8765/5005/5500). Probe `http://localhost:8080/health` first and skip with a clear message if the desktop's managed server is running.
 - **Size:** S
 
 ### 2.14 Desktop provisioning: shell out to the proven provision.py path; fix NVS keys
 - **Where:** `wifi-densepose-desktop/src/commands/provision.rs:23, 62-123, 143, 191, 243-357`, `src/commands/discovery.rs:452-456`; ground truth `firmware/esp32-csi-node/main/nvs_config.c:112-268` and `provision.py:44-97`
-- **What:** The serial RUVIEW_NVS protocol has zero firmware counterpart and the key names are wrong (wifi_ssid vs ssid, tdm_total vs tdm_nodes, etc.). Immediate: hide/disable the desktop Provision/read/erase/configure_esp32_wifi buttons so users aren't routed into guaranteed timeouts. Then rewrite provision commands to generate a real NVS partition image with the firmware's `csi_cfg` key names and flash at 0x9000 via espflash-rs (or bundled esptool), port provision.py's #391 wifi-credentials guard, align node numbering to 1-based, and add a cross-check test asserting provision.rs key list == nvs_config.c key list.
+- **What:** The serial WAVE_NVS protocol has zero firmware counterpart and the key names are wrong (wifi_ssid vs ssid, tdm_total vs tdm_nodes, etc.). Immediate: hide/disable the desktop Provision/read/erase/configure_esp32_wifi buttons so users aren't routed into guaranteed timeouts. Then rewrite provision commands to generate a real NVS partition image with the firmware's `csi_cfg` key names and flash at 0x9000 via espflash-rs (or bundled esptool), port provision.py's #391 wifi-credentials guard, align node numbering to 1-based, and add a cross-check test asserting provision.rs key list == nvs_config.c key list.
 - **Size:** L
 
 ---

@@ -17,7 +17,7 @@ pub struct DeploymentStatus {
     pub online: Option<bool>,
 }
 
-/// Frappe resource response shape for RuView Deployment
+/// Frappe resource response shape for Wave Deployment
 #[derive(Debug, Deserialize)]
 struct FrappeDeployment {
     deployment_id: Option<String>,
@@ -91,7 +91,7 @@ pub async fn register_deployment(app: tauri::AppHandle) -> Result<String, String
         "longitude": info.longitude,
         "tenant_id": info.tenant_id,
     });
-    let resp = fc::post_method("ruview_care.ruview_care.api.register_deployment")
+    let resp = fc::post_method("wave_care.wave_care.api.register_deployment")
         .json(&body)
         .send()
         .await
@@ -108,7 +108,7 @@ pub async fn list_deployments(tenant_id: String) -> Result<Vec<DeploymentStatus>
     let fields = json!(["deployment_id","deployment_name","location_name","latitude","longitude",
                          "tenant_id","last_seen","node_count","active_risk_level","status"])
         .to_string();
-    let resp = fc::get_resource("RuView Deployment")
+    let resp = fc::get_resource("Wave Deployment")
         .query(&[("filters", &filters), ("fields", &fields), ("limit", &"500".to_string())])
         .send()
         .await
@@ -121,7 +121,7 @@ pub async fn list_deployments(tenant_id: String) -> Result<Vec<DeploymentStatus>
 /// Get aggregate status across all deployments for a tenant
 #[tauri::command]
 pub async fn get_deployments_aggregate(tenant_id: String) -> Result<serde_json::Value, String> {
-    let resp = fc::get_method("ruview_care.ruview_care.api.get_deployments_summary")
+    let resp = fc::get_method("wave_care.wave_care.api.get_deployments_summary")
         .query(&[("tenant_id", &tenant_id)])
         .send()
         .await

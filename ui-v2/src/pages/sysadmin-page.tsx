@@ -106,7 +106,7 @@ export function SysAdminPage({
               <div>
                 <h2 className="text-base font-semibold mb-1">Cloud Sync</h2>
                 <p className="text-sm text-muted-foreground">
-                  Upload encrypted sensing sessions to RuView cloud for AI-powered insights.
+                  Upload encrypted sensing sessions to Wave cloud for AI-powered insights.
                 </p>
               </div>
 

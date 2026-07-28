@@ -26,7 +26,7 @@ const SERIAL_TIMEOUT_MS: u64 = 5000;
 const NVS_PARTITION: &str = "nvs";
 
 /// Magic bytes for provisioning protocol.
-const PROVISION_MAGIC: &[u8] = b"RUVIEW_NVS";
+const PROVISION_MAGIC: &[u8] = b"WAVE_NVS";
 
 /// Provision NVS configuration to an ESP32 via serial port.
 ///
@@ -146,7 +146,7 @@ pub async fn read_nvs(
     let (mut reader, mut writer) = tokio::io::split(port_settings);
 
     // Send read command
-    tokio::io::AsyncWriteExt::write_all(&mut writer, b"RUVIEW_NVS_READ\n").await
+    tokio::io::AsyncWriteExt::write_all(&mut writer, b"WAVE_NVS_READ\n").await
         .map_err(|e| format!("Failed to send read command: {}", e))?;
 
     // Read size header
@@ -194,7 +194,7 @@ pub async fn erase_nvs(
     let (mut reader, mut writer) = tokio::io::split(port_settings);
 
     // Send erase command
-    tokio::io::AsyncWriteExt::write_all(&mut writer, b"RUVIEW_NVS_ERASE\n").await
+    tokio::io::AsyncWriteExt::write_all(&mut writer, b"WAVE_NVS_ERASE\n").await
         .map_err(|e| format!("Failed to send erase command: {}", e))?;
 
     // Wait for confirmation
@@ -316,7 +316,7 @@ pub async fn provision_esp32_nvs(
         .unwrap_or(0);
     let mut tmp = std::env::temp_dir();
     tmp.push(format!(
-        "ruview-nvs-{}-{}-{}.bin",
+        "wave-nvs-{}-{}-{}.bin",
         checksum,
         std::process::id(),
         unique
@@ -442,7 +442,7 @@ print(text[-1500:])
 
     let mut tmp = std::env::temp_dir();
     tmp.push(format!(
-        "ruview-serial-check-{}-{}.py",
+        "wave-serial-check-{}-{}.py",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -744,13 +744,13 @@ mod tests {
     #[test]
     fn test_provision_header() {
         let header = ProvisionHeader {
-            magic: *b"RUVIEW_NVS",
+            magic: *b"WAVE_NVS",
             version: 1,
             size: 256,
         };
 
         let bytes = bincode_header(&header);
         assert_eq!(bytes.len(), 15);
-        assert_eq!(&bytes[0..10], b"RUVIEW_NVS");
+        assert_eq!(&bytes[0..10], b"WAVE_NVS");
     }
 }

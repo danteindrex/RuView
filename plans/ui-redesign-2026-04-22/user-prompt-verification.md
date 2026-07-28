@@ -1,7 +1,7 @@
 # User Prompt Verification Artifact
 
 Date: 2026-04-22
-Workspace: `C:\Users\user\Documents\RuView`
+Workspace: `C:\Users\user\Documents\Wave`
 
 This file stores the exact user prompt to use as the verification baseline for all redesign decisions.
 

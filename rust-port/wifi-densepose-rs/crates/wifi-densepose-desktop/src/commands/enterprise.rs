@@ -184,7 +184,7 @@ pub async fn whapi_send_test(
     access_token: String,
     auth: State<'_, Arc<AuthManager>>,
 ) -> Result<(), String> {
-    whapi_send_alert(access_token, "🚨 RuView Enterprise: Test notification successful.".into(), auth).await
+    whapi_send_alert(access_token, "🚨 Wave Enterprise: Test notification successful.".into(), auth).await
 }
 
 #[tauri::command]

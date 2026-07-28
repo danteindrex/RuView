@@ -49,7 +49,7 @@ Pi (Nexmon) dual support.
   silently excluded the entire frontend data/auth layer from the repo.
 - **Observatory: live view read fields the server never sends** — new
   live-data mapper consumes `pose_keypoints`, `location_hint`, bbox.
-- **scripts/start-ruview.ps1** aligned to the server's real port (8080).
+- **scripts/start-wave.ps1** aligned to the server's real port (8080).
 
 ### Added
 - **Server: both UDP listeners (5005 ESP32 + 5500 Nexmon) always on** — nodes
@@ -58,8 +58,8 @@ Pi (Nexmon) dual support.
 - **Server: explicit `id:x,y,z` node-position map** (Pi node_base compatible)
   with normalized location-hint weighting.
 - **Firmware: discovery responder (UDP :5006)** — answers the desktop's
-  `RUVIEW_DISCOVER` broadcast so node registration finally works, and accepts
-  `RUVIEW_HUB|ip|port` re-announcements to survive hub DHCP address changes
+  `WAVE_DISCOVER` broadcast so node registration finally works, and accepts
+  `WAVE_HUB|ip|port` re-announcements to survive hub DHCP address changes
   (persisted to NVS).
 - **Firmware: WASM output v2 migrated to magic 0xC5110007** (server accepts
   both during transition).
@@ -207,7 +207,7 @@ Model release (no new firmware binary). Firmware remains at v0.6.0-esp32.
   - `scripts/record-csi-udp.py` — Lightweight ESP32 CSI UDP recorder (no Rust build required).
 - **ruvector optimizations (O6-O10)** — Subcarrier selection (70→35, 50% reduction), attention-weighted subcarriers, Stoer-Wagner min-cut person separation, multi-SPSA gradient estimation, Mac M4 Pro training via Tailscale.
 - **Scalable WiFlow presets** — `lite` (189K params, ~19 min) through `full` (7.7M params, ~8 hrs) to match dataset size.
-- **Pre-trained WiFlow v1 model** — 92.9% PCK@20, 974 KB, 186,946 params. Published to [HuggingFace](https://huggingface.co/ruv/ruview) under `wiflow-v1/`.
+- **Pre-trained WiFlow v1 model** — 92.9% PCK@20, 974 KB, 186,946 params. Published to [HuggingFace](https://huggingface.co/ruv/wave) under `wiflow-v1/`.
 
 ### Validated
 - **92.9% PCK@20** pose accuracy from a 5-minute data collection session with one $9 ESP32-S3 and one laptop webcam.
@@ -216,7 +216,7 @@ Model release (no new firmware binary). Firmware remains at v0.6.0-esp32.
 ## [v0.6.0-esp32] — 2026-04-03
 
 ### Added
-- **Pre-trained CSI sensing weights published** — First official pre-trained models on [HuggingFace](https://huggingface.co/ruv/ruview). `model.safetensors` (48 KB), `model-q4.bin` (8 KB 4-bit), `model-q2.bin` (4 KB), `presence-head.json`, per-node LoRA adapters.
+- **Pre-trained CSI sensing weights published** — First official pre-trained models on [HuggingFace](https://huggingface.co/ruv/wave). `model.safetensors` (48 KB), `model-q4.bin` (8 KB 4-bit), `model-q2.bin` (4 KB), `presence-head.json`, per-node LoRA adapters.
 - **17 sensing applications** — Sleep monitor, apnea detector, stress monitor, gait analyzer, RF tomography, passive radar, material classifier, through-wall detector, device fingerprint, and more. Each as a standalone `scripts/*.js`.
 - **ADRs 069-078** — 10 new architecture decisions covering Cognitum Seed integration, self-supervised pretraining, ruvllm pipeline, WiFlow architecture, channel hopping, SNN, MinCut person separation, CNN spectrograms, novel RF applications, multi-frequency mesh.
 - **Kalman tracker** (PR #341 by @taylorjdawson) — temporal smoothing of pose keypoints.

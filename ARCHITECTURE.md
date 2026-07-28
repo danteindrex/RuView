@@ -1,4 +1,4 @@
-# Architecture — WiFi-DensePose (RuView)
+# Architecture — WiFi-DensePose (Wave)
 
 *Grounded in: `graphify-out/GRAPH_REPORT.md`, `docker/docker-compose.yml`, `rust-port/wifi-densepose-rs/Cargo.toml`, `v1/src/api/main.py`, `ui/index.html`, individual crate `Cargo.toml` and `src/` files. Last updated: 2026-06-20.*
 
@@ -33,7 +33,7 @@ A WiFi-based human pose estimation and vital-sign sensing platform. Physical WiF
 | **UI** | Browser frontend — dashboard, live pose visualisation, sensing tab | Vanilla JS / HTML | none | Served from sensing-server :3000 via `ServeDir` |
 | **Tauri desktop** (`wifi-densepose-desktop`) | Native desktop wrapper for the UI | Rust / Tauri v2 | same as sensing-server | Local app (macOS/Windows/Linux) |
 | **Raspberry Pi node agent** (`wifi-densepose-pi-node-agent`) | Pi-based sensing node with native kernel nexmon CSI | Rust | none | Network node; sends UDP frames to hub |
-| **Point cloud** (`wifi-densepose-pointcloud`) | Dense 3-D point cloud from camera depth + RF tomography | Rust | none | CLI binary `ruview-pointcloud` |
+| **Point cloud** (`wifi-densepose-pointcloud`) | Dense 3-D point cloud from camera depth + RF tomography | Rust | none | CLI binary `wave-pointcloud` |
 | **Geo** (`wifi-densepose-geo`) | Satellite tile, DEM, OSM integration; temporal tracking | Rust | none | Library crate |
 | **WASM edge** (`wifi-densepose-wasm-edge`) | Lightweight no_std inference on edge MCUs | Rust / WASM | none | `wasm32-unknown-unknown`; excluded from workspace |
 | **ruv-neural** | Sub-workspace of 11 neural crates (graph transformer, embeddings, etc.) | Rust | none | Library; built separately |
@@ -165,7 +165,7 @@ cargo build --workspace
 | ADR-028 | ESP32 capability audit + witness verification | Accepted |
 | ADR-029 | RuvSense multistatic sensing mode | Proposed |
 | ADR-030 | RuvSense persistent field model | Proposed |
-| ADR-031 | RuView sensing-first RF mode | Proposed |
+| ADR-031 | Wave sensing-first RF mode | Proposed |
 | ADR-040 | WASM edge crate (`no_std`, excluded from workspace) | Accepted |
 | ADR-072 | WiFlow architecture (TCN + axial attention) | Accepted |
 | ADR-090 | Pi protocol parity | Accepted |

@@ -9,7 +9,7 @@ use std::process::Command;
 use crate::nvs::{generate_nvs_csi_cfg, Esp32NvsConfig};
 
 /// Public GitHub repo + tag that publishes the ESP32 firmware release.
-pub const FIRMWARE_REPO: &str = "ruvnet/RuView";
+pub const FIRMWARE_REPO: &str = "ruvnet/Wave";
 pub const DEFAULT_TAG: &str = "v0.8.3-esp32";
 
 /// The 4 release assets + flash offsets for the 8 MB S3 layout.
@@ -22,13 +22,13 @@ const ASSETS: [(&str, &str); 4] = [
 
 const NVS_OFFSET: &str = "0x9000";
 
-/// Firmware download cache: `%LOCALAPPDATA%\RuView\firmware\<tag>` (Windows) or
-/// `$TMPDIR/RuView-firmware/<tag>`.
+/// Firmware download cache: `%LOCALAPPDATA%\Wave\firmware\<tag>` (Windows) or
+/// `$TMPDIR/Wave-firmware/<tag>`.
 fn cache_dir(tag: &str) -> Result<PathBuf> {
     let base = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
-    let dir = base.join("RuView").join("firmware").join(tag);
+    let dir = base.join("Wave").join("firmware").join(tag);
     std::fs::create_dir_all(&dir)?;
     Ok(dir)
 }

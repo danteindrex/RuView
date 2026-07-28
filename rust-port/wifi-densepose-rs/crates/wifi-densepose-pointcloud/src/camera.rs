@@ -74,7 +74,7 @@ fn capture_ffmpeg(config: &CameraConfig, tmp: &PathBuf) -> Result<Frame> {
             "-frames:v", "1",
             "-f", "rawvideo",
             "-pix_fmt", "rgb24",
-            tmp.to_str().unwrap_or("/tmp/ruview-frame.raw"),
+            tmp.to_str().unwrap_or("/tmp/wave-frame.raw"),
         ])
         .output()?;
 
@@ -171,7 +171,7 @@ fn decode_jpeg_to_rgb(path: &PathBuf, _width: u32, _height: u32) -> Result<Frame
 }
 
 fn tmp_path() -> PathBuf {
-    std::env::temp_dir().join(format!("ruview-frame-{}.raw", std::process::id()))
+    std::env::temp_dir().join(format!("wave-frame-{}.raw", std::process::id()))
 }
 
 /// Check if a camera is available on this system.

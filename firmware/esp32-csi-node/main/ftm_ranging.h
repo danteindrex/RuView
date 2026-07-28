@@ -3,10 +3,10 @@
  * @brief 802.11 FTM (Fine Timing Measurement) ranging — ADR-091.
  *
  * Lets the sensing server command node-to-node distance measurements:
- *  - Initiator: "RUVIEW_RANGE|<mac>" on UDP :5006 starts an FTM session to
+ *  - Initiator: "WAVE_RANGE|<mac>" on UDP :5006 starts an FTM session to
  *    the peer on the current channel; the result is reported to the
  *    aggregator (:5005) as a 24-byte packet with magic 0xC5110008.
- *  - Responder: "RUVIEW_FTM_RESPONDER|on/off" toggles a hidden SoftAP
+ *  - Responder: "WAVE_FTM_RESPONDER|on/off" toggles a hidden SoftAP
  *    (APSTA mode) with ftm_responder=true so peers can range against us.
  *
  * Responder default is OFF (conservative): the node's primary job is

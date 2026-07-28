@@ -30,7 +30,7 @@ int stream_sender_init_with(const char *ip, uint16_t port);
 /**
  * Re-target the UDP destination at runtime (thread-safe).
  * Called by the discovery responder when the hub broadcasts a
- * RUVIEW_HUB announcement (e.g. after a DHCP address change).
+ * WAVE_HUB announcement (e.g. after a DHCP address change).
  *
  * @param ip   New aggregator IP address string.
  * @param port New aggregator UDP port.

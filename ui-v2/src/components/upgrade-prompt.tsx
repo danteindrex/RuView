@@ -14,7 +14,7 @@ export function UpgradePrompt({ feature, requiredPlan, className = '' }: Upgrade
         Upgrade to the {planLabel} plan to access {feature} and other advanced features.
       </p>
       <a
-        href="mailto:sales@ruview.io"
+        href="mailto:sales@wave.io"
         className="bg-blue-600 text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-blue-700"
       >
         Contact Sales — {planLabel} Plan

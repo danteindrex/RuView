@@ -533,7 +533,7 @@ export function SettingsPage({ theme, onThemeChange }: SettingsPageProps) {
                   <Input
                     value={frappeUrl}
                     onChange={(e) => setFrappeUrl(e.target.value)}
-                    placeholder="https://ruview.yourhospital.com"
+                    placeholder="https://wave.yourhospital.com"
                   />
                 </div>
                 <div className="space-y-2">

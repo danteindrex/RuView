@@ -98,7 +98,7 @@ void nvs_config_load(nvs_config_t *cfg)
 
     /* ADR-091: FTM responder default OFF — the STA->APSTA switch has an
      * unvalidated coexistence risk with continuous CSI capture, so the
-     * responder is on-demand (RUVIEW_FTM_RESPONDER|on) unless opted in. */
+     * responder is on-demand (WAVE_FTM_RESPONDER|on) unless opted in. */
     cfg->ftm_responder = 0;
 
     /* Try to override from NVS */

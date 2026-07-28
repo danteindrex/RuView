@@ -60,7 +60,7 @@ than today.
 ## Phase 0 — Lock the input contract (read, not reverse-engineer)
 
 Read the authoritative training/feature-assembly script (the model card points to
-`ruvnet/RuView` scripts, e.g. `deep-scan.js`) to confirm the exact **8-feature
+`ruvnet/Wave` scripts, e.g. `deep-scan.js`) to confirm the exact **8-feature
 order + normalization**. Output: a documented `FeatureVector8` spec.
 *Blocker for correctness — a wrong order/scale = meaningless output.*
 

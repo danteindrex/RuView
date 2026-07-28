@@ -3,20 +3,20 @@
 //! Periodically summarizes the sensor pipeline state and stores it
 //! as brain memories for the agent to reason about.
 //!
-//! The brain URL is read from the `RUVIEW_BRAIN_URL` env var on first use,
+//! The brain URL is read from the `WAVE_BRAIN_URL` env var on first use,
 //! defaulting to `http://127.0.0.1:9876`.
 
 use crate::csi_pipeline::PipelineOutput;
 use anyhow::Result;
 use std::sync::OnceLock;
 
-/// Default brain URL if `RUVIEW_BRAIN_URL` is not set.
+/// Default brain URL if `WAVE_BRAIN_URL` is not set.
 const DEFAULT_BRAIN_URL: &str = "http://127.0.0.1:9876";
 
 fn brain_url() -> &'static str {
     static BRAIN_URL: OnceLock<String> = OnceLock::new();
     BRAIN_URL.get_or_init(|| {
-        let url = std::env::var("RUVIEW_BRAIN_URL")
+        let url = std::env::var("WAVE_BRAIN_URL")
             .unwrap_or_else(|_| DEFAULT_BRAIN_URL.to_string());
         eprintln!("  brain_bridge: using brain URL {url}");
         url

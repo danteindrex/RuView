@@ -2,21 +2,21 @@
  * @file discovery_responder.c
  * @brief UDP discovery responder for the Wave desktop console (port 5006).
  *
- * Answers RUVIEW_DISCOVER broadcasts with a RUVIEW_BEACON reply so the
+ * Answers WAVE_DISCOVER broadcasts with a WAVE_BEACON reply so the
  * desktop app can register this node without knowing its IP.  The same
- * socket accepts "RUVIEW_HUB|<ip>|<port>" announcements from the sensing
+ * socket accepts "WAVE_HUB|<ip>|<port>" announcements from the sensing
  * server and re-targets the CSI stream at runtime -- this heals nodes when
  * the hub PC receives a new DHCP lease.  The new target is persisted to
  * NVS so it survives reboot.
  *
  * ADR-091 extends the same socket with FTM ranging control:
- *   "RUVIEW_RANGE|<peer_mac>"     -> initiate an FTM session (no ack here;
+ *   "WAVE_RANGE|<peer_mac>"     -> initiate an FTM session (no ack here;
  *                                    the report goes to the aggregator)
- *   "RUVIEW_FTM_RESPONDER|on/off" -> toggle FTM responder mode
+ *   "WAVE_FTM_RESPONDER|on/off" -> toggle FTM responder mode
  *
  * Beacon field order MUST match parse_beacon_response in
  * wifi-densepose-desktop/src/commands/discovery.rs:
- *   RUVIEW_BEACON|<mac>|<node_id>|<version>|<chip>|<role>|<tdm_slot>|<tdm_total>
+ *   WAVE_BEACON|<mac>|<node_id>|<version>|<chip>|<role>|<tdm_slot>|<tdm_total>
  */
 
 #include "discovery_responder.h"
@@ -70,18 +70,18 @@ static void persist_target(const char *ip, uint16_t port)
 }
 
 /**
- * Handle a "RUVIEW_HUB|<ip>|<port>" announcement (ADR-032 note: the LAN is
+ * Handle a "WAVE_HUB|<ip>|<port>" announcement (ADR-032 note: the LAN is
  * trusted here -- same trust boundary as OTA/WASM upload HTTP endpoints).
  * @param msg NUL-terminated datagram text (modified in place by strtok_r).
  */
 static void handle_hub_announce(char *msg)
 {
     char *saveptr = NULL;
-    strtok_r(msg, "|", &saveptr);              /* Skip "RUVIEW_HUB". */
+    strtok_r(msg, "|", &saveptr);              /* Skip "WAVE_HUB". */
     char *ip = strtok_r(NULL, "|", &saveptr);
     char *port_str = strtok_r(NULL, "|", &saveptr);
     if (ip == NULL || port_str == NULL) {
-        ESP_LOGW(TAG, "Malformed RUVIEW_HUB announcement");
+        ESP_LOGW(TAG, "Malformed WAVE_HUB announcement");
         return;
     }
 
@@ -110,7 +110,7 @@ static void handle_hub_announce(char *msg)
 }
 
 /**
- * Handle a "RUVIEW_RANGE|AA:BB:CC:DD:EE:FF" request (ADR-091).
+ * Handle a "WAVE_RANGE|AA:BB:CC:DD:EE:FF" request (ADR-091).
  * Non-blocking: nothing is acked on :5006 — the range report flows to the
  * aggregator (:5005) as a 24-byte packet with magic 0xC5110008.
  */
@@ -119,7 +119,7 @@ static void handle_range_request(const char *msg)
     uint8_t mac[6];
     if (sscanf(msg + 13, "%2hhx:%2hhx:%2hhx:%2hhx:%2hhx:%2hhx",
                &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]) != 6) {
-        ESP_LOGW(TAG, "Malformed RUVIEW_RANGE request: %s", msg);
+        ESP_LOGW(TAG, "Malformed WAVE_RANGE request: %s", msg);
         return;
     }
     /* Failure/busy cases are reported to the aggregator by ftm_ranging. */
@@ -127,9 +127,9 @@ static void handle_range_request(const char *msg)
 }
 
 /**
- * Handle "RUVIEW_FTM_RESPONDER|on" / "RUVIEW_FTM_RESPONDER|off" (ADR-091).
+ * Handle "WAVE_FTM_RESPONDER|on" / "WAVE_FTM_RESPONDER|off" (ADR-091).
  * On success the setting is persisted to NVS key "ftm_resp" so it survives
- * reboot (same pattern as the RUVIEW_HUB target persistence).
+ * reboot (same pattern as the WAVE_HUB target persistence).
  */
 static void handle_ftm_responder(const char *msg)
 {
@@ -140,7 +140,7 @@ static void handle_ftm_responder(const char *msg)
     } else if (strcmp(arg, "off") == 0) {
         enable = false;
     } else {
-        ESP_LOGW(TAG, "Malformed RUVIEW_FTM_RESPONDER request: %s", msg);
+        ESP_LOGW(TAG, "Malformed WAVE_FTM_RESPONDER request: %s", msg);
         return;
     }
 
@@ -163,7 +163,7 @@ static void handle_ftm_responder(const char *msg)
     nvs_close(handle);
 }
 
-/** Build the RUVIEW_BEACON reply from live node state. */
+/** Build the WAVE_BEACON reply from live node state. */
 static int build_beacon(char *out, size_t out_len)
 {
     uint8_t mac[6] = {0};
@@ -171,7 +171,7 @@ static int build_beacon(char *out, size_t out_len)
     const esp_app_desc_t *app = esp_app_get_description();
 
     return snprintf(out, out_len,
-        "RUVIEW_BEACON|%02X:%02X:%02X:%02X:%02X:%02X|%u|%s|%s|node|%u|%u",
+        "WAVE_BEACON|%02X:%02X:%02X:%02X:%02X:%02X|%u|%s|%s|node|%u|%u",
         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
         (unsigned)g_nvs_config.node_id,
         app->version,
@@ -228,7 +228,7 @@ static void discovery_task(void *arg)
             rx[--len] = '\0';
         }
 
-        if (strncmp(rx, "RUVIEW_DISCOVER", 15) == 0) {
+        if (strncmp(rx, "WAVE_DISCOVER", 15) == 0) {
             int n = build_beacon(beacon, sizeof(beacon));
             if (n > 0 && n < (int)sizeof(beacon)) {
                 if (sendto(sock, beacon, n, 0,
@@ -236,11 +236,11 @@ static void discovery_task(void *arg)
                     ESP_LOGW(TAG, "Beacon reply failed: errno %d", errno);
                 }
             }
-        } else if (strncmp(rx, "RUVIEW_HUB|", 11) == 0) {
+        } else if (strncmp(rx, "WAVE_HUB|", 11) == 0) {
             handle_hub_announce(rx);
-        } else if (strncmp(rx, "RUVIEW_RANGE|", 13) == 0) {
+        } else if (strncmp(rx, "WAVE_RANGE|", 13) == 0) {
             handle_range_request(rx);
-        } else if (strncmp(rx, "RUVIEW_FTM_RESPONDER|", 21) == 0) {
+        } else if (strncmp(rx, "WAVE_FTM_RESPONDER|", 21) == 0) {
             handle_ftm_responder(rx);
         }
         /* Anything else: silently ignore (unknown broadcast traffic). */

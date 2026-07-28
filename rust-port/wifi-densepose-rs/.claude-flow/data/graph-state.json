@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "updatedAt": 1784438907138,
-  "nodeCount": 19,
+  "updatedAt": 1785225804855,
+  "nodeCount": 20,
   "nodes": {
     "mem-esp32-s3-node-setup----": {
       "id": "mem-esp32-s3-node-setup----",
@@ -135,28 +135,36 @@
       "confidence": 0.5,
       "accessCount": 0,
       "createdAt": 1784438907133
+    },
+    "insight-1785225662050-vxin": {
+      "id": "insight-1785225662050-vxin",
+      "category": "insights",
+      "confidence": 0.5,
+      "accessCount": 0,
+      "createdAt": 1785225662050
     }
   },
   "edges": [],
   "pageRanks": {
-    "mem-esp32-s3-node-setup----": 0.052631578947368404,
-    "mem-MEMORY-memory-index": 0.052631578947368404,
-    "mem-ai-unavailable-messaging----": 0.052631578947368404,
-    "mem-llm-only-extraction-policy----": 0.052631578947368404,
-    "mem-aws-cli-gitbash-slash-mangling----": 0.052631578947368404,
-    "mem-cross-tenant-push-notification-leak----": 0.052631578947368404,
-    "mem-dev-env-monolith-migration----": 0.052631578947368404,
-    "mem-dev-login-broken-unseeded-db----": 0.052631578947368404,
-    "mem-director-settings-missing-read-grant----": 0.052631578947368404,
-    "mem-frontend-dev-deploy-s3----": 0.052631578947368404,
-    "mem-kb-openai-migration----": 0.052631578947368404,
-    "mem-legacy-folder-sole-backend-source----": 0.052631578947368404,
-    "mem-main-dev-cluster-plan----": 0.052631578947368404,
-    "mem-pii-masking-spreads-mongoose-doc----": 0.052631578947368404,
-    "mem-prod-docdb-cutover----": 0.052631578947368404,
-    "mem-prod-runs-legacy-compose-on-ec2----": 0.052631578947368404,
-    "mem-role-edit-500-access-matrix-migration----": 0.052631578947368404,
-    "mem-store-orphaned-module-tenant-strip----": 0.052631578947368404,
-    "mem-taha-api-testing-gotchas----": 0.052631578947368404
+    "mem-esp32-s3-node-setup----": 0.05000000000000001,
+    "mem-MEMORY-memory-index": 0.05000000000000001,
+    "mem-ai-unavailable-messaging----": 0.05000000000000001,
+    "mem-llm-only-extraction-policy----": 0.05000000000000001,
+    "mem-aws-cli-gitbash-slash-mangling----": 0.05000000000000001,
+    "mem-cross-tenant-push-notification-leak----": 0.05000000000000001,
+    "mem-dev-env-monolith-migration----": 0.05000000000000001,
+    "mem-dev-login-broken-unseeded-db----": 0.05000000000000001,
+    "mem-director-settings-missing-read-grant----": 0.05000000000000001,
+    "mem-frontend-dev-deploy-s3----": 0.05000000000000001,
+    "mem-kb-openai-migration----": 0.05000000000000001,
+    "mem-legacy-folder-sole-backend-source----": 0.05000000000000001,
+    "mem-main-dev-cluster-plan----": 0.05000000000000001,
+    "mem-pii-masking-spreads-mongoose-doc----": 0.05000000000000001,
+    "mem-prod-docdb-cutover----": 0.05000000000000001,
+    "mem-prod-runs-legacy-compose-on-ec2----": 0.05000000000000001,
+    "mem-role-edit-500-access-matrix-migration----": 0.05000000000000001,
+    "mem-store-orphaned-module-tenant-strip----": 0.05000000000000001,
+    "mem-taha-api-testing-gotchas----": 0.05000000000000001,
+    "insight-1785225662050-vxin": 0.05000000000000001
   }
 }

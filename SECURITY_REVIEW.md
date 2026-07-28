@@ -1,4 +1,4 @@
-# Security Review — wifi-densepose / RuView (2026-06-20)
+# Security Review — wifi-densepose / Wave (2026-06-20)
 
 **Scope**: Entire folder, git-independent, folder-wide (not a diff/branch review).  
 **Agents**: 5 parallel sub-agents. Git repo: yes.  
@@ -6,7 +6,7 @@
 1. Python — `v1/`, `wifi_densepose/`, `data/`
 2. Rust workspace — `rust-port/wifi-densepose-rs/`
 3. Frontend — `ui/`, `assets/`, `examples/`
-4. Firmware/edge — `firmware/`, `nexmon_csi/`, `ruview_pi_files/`, `deploy/`, `vendor/`
+4. Firmware/edge — `firmware/`, `nexmon_csi/`, `wave_pi_files/`, `deploy/`, `vendor/`
 5. Infra/root — `docker/`, `.github/workflows/`, `scripts/`, `monitoring/`, `logging/`, all loose root files
 
 ---
@@ -249,7 +249,7 @@
 
 #### L-3: Nexmon CSI Config File Written Without Permission Restriction
 - **Severity**: Low
-- **File**: `ruview_pi_files/nexmon_startup.sh:69`, `ruview_pi_files/nexmon_setup_auto.sh:341-343`
+- **File**: `wave_pi_files/nexmon_startup.sh:69`, `wave_pi_files/nexmon_setup_auto.sh:341-343`
 - **Evidence**: Config written to `~/.config/nexmon/csi_config` without `chmod 600`.
 - **Fix**: Add `chmod 600 "$CONFIG_SAVE_FILE"` after writing.
 

@@ -1,7 +1,7 @@
 //! Server-side FTM ranging orchestration.
 //!
 //! Commands sensing nodes to range each other over the UDP control port
-//! (`node_ip:5006`, ASCII `RUVIEW_FTM_RESPONDER|on/off` + `RUVIEW_RANGE|<mac>`),
+//! (`node_ip:5006`, ASCII `WAVE_FTM_RESPONDER|on/off` + `WAVE_RANGE|<mac>`),
 //! collects the resulting `0xC5110008` range reports from the CSI UDP
 //! listener, averages a pairwise distance matrix, solves the node
 //! constellation with classical multidimensional scaling, and auto-populates
@@ -366,7 +366,7 @@ async fn run_cycle_inner(
             debug!("Skipping target node {}: MAC unknown", target.id);
             continue;
         };
-        send_control(&socket, target.ip, "RUVIEW_FTM_RESPONDER|on").await;
+        send_control(&socket, target.ip, "WAVE_FTM_RESPONDER|on").await;
         tokio::time::sleep(RESPONDER_SETTLE).await;
 
         for initiator in &nodes {
@@ -389,7 +389,7 @@ async fn run_cycle_inner(
                 }
             }
         }
-        send_control(&socket, target.ip, "RUVIEW_FTM_RESPONDER|off").await;
+        send_control(&socket, target.ip, "WAVE_FTM_RESPONDER|off").await;
     }
 
     let distances = summarize_pairs(&samples);
@@ -447,7 +447,7 @@ async fn range_pair(
     target_id: u8,
     target_mac: &[u8; 6],
 ) -> Result<f64, RangeError> {
-    let cmd = format!("RUVIEW_RANGE|{}", format_mac(target_mac));
+    let cmd = format!("WAVE_RANGE|{}", format_mac(target_mac));
     let mut last_err = String::from("no report received");
     for attempt in 0..=RANGE_RETRIES {
         if attempt > 0 {
@@ -512,12 +512,12 @@ async fn send_control(socket: &UdpSocket, ip: IpAddr, msg: &str) {
     }
 }
 
-/// Broadcast RUVIEW_DISCOVER and collect RUVIEW_BEACON|mac|node_id|... replies
+/// Broadcast WAVE_DISCOVER and collect WAVE_BEACON|mac|node_id|... replies
 /// for DISCOVERY_WINDOW, yielding node_id -> (mac, ip).
 async fn discover_macs(socket: &UdpSocket) -> HashMap<u8, ([u8; 6], IpAddr)> {
     let mut found = HashMap::new();
     let broadcast: SocketAddr = SocketAddr::from(([255, 255, 255, 255], CONTROL_PORT));
-    if let Err(e) = socket.send_to(b"RUVIEW_DISCOVER", broadcast).await {
+    if let Err(e) = socket.send_to(b"WAVE_DISCOVER", broadcast).await {
         warn!("Discovery broadcast failed: {e}");
         return found;
     }
@@ -545,11 +545,11 @@ async fn discover_macs(socket: &UdpSocket) -> HashMap<u8, ([u8; 6], IpAddr)> {
     found
 }
 
-/// Parse "RUVIEW_BEACON|<mac>|<node_id>|..." into (node_id, mac).
+/// Parse "WAVE_BEACON|<mac>|<node_id>|..." into (node_id, mac).
 fn parse_beacon(data: &[u8]) -> Option<(u8, [u8; 6])> {
     let text = std::str::from_utf8(data).ok()?;
     let mut parts = text.split('|');
-    if parts.next()? != "RUVIEW_BEACON" {
+    if parts.next()? != "WAVE_BEACON" {
         return None;
     }
     let mac = parse_mac(parts.next()?)?;
@@ -846,10 +846,10 @@ mod tests {
     #[test]
     fn beacon_parsing() {
         assert_eq!(
-            parse_beacon(b"RUVIEW_BEACON|AA:BB:CC:DD:EE:FF|7|0.3.0|esp32s3|node|0|4"),
+            parse_beacon(b"WAVE_BEACON|AA:BB:CC:DD:EE:FF|7|0.3.0|esp32s3|node|0|4"),
             Some((7, [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]))
         );
-        assert_eq!(parse_beacon(b"RUVIEW_BEACON|AA:BB:CC:DD:EE:FF"), None);
+        assert_eq!(parse_beacon(b"WAVE_BEACON|AA:BB:CC:DD:EE:FF"), None);
         assert_eq!(parse_beacon(b"OTHER|AA:BB:CC:DD:EE:FF|7"), None);
     }
 

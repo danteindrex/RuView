@@ -1,0 +1,124 @@
+[
+  {
+    "timestamp": 1785225662063,
+    "nodes": 20,
+    "edges": 0,
+    "pageRankSum": 1.0000000000000004,
+    "confidences": [
+      0.455,
+      0.455,
+      0.455,
+      0.455,
+      0.455,
+      0.455,
+      0.455,
+      0.455,
+      0.455,
+      0.455,
+      0.455,
+      0.455,
+      0.455,
+      0.455,
+      0.455,
+      0.455,
+      0.455,
+      0.455,
+      0.455,
+      0.5
+    ],
+    "accessCounts": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "topPatterns": [
+      {
+        "id": "insight-1785225662050-vxin",
+        "summary": "Frequently edited: unknown (108x)",
+        "confidence": 0.5,
+        "pageRank": 0.05000000000000001,
+        "accessCount": 0
+      },
+      {
+        "id": "mem-esp32-s3-node-setup----",
+        "summary": "---",
+        "confidence": 0.455,
+        "pageRank": 0.05000000000000001,
+        "accessCount": 0
+      },
+      {
+        "id": "mem-MEMORY-memory-index",
+        "summary": "Memory Index",
+        "confidence": 0.455,
+        "pageRank": 0.05000000000000001,
+        "accessCount": 0
+      },
+      {
+        "id": "mem-ai-unavailable-messaging----",
+        "summary": "---",
+        "confidence": 0.455,
+        "pageRank": 0.05000000000000001,
+        "accessCount": 0
+      },
+      {
+        "id": "mem-llm-only-extraction-policy----",
+        "summary": "---",
+        "confidence": 0.455,
+        "pageRank": 0.05000000000000001,
+        "accessCount": 0
+      },
+      {
+        "id": "mem-MEMORY-memory-index",
+        "summary": "Memory Index",
+        "confidence": 0.455,
+        "pageRank": 0.05000000000000001,
+        "accessCount": 0
+      },
+      {
+        "id": "mem-aws-cli-gitbash-slash-mangling----",
+        "summary": "---",
+        "confidence": 0.455,
+        "pageRank": 0.05000000000000001,
+        "accessCount": 0
+      },
+      {
+        "id": "mem-cross-tenant-push-notification-leak----",
+        "summary": "---",
+        "confidence": 0.455,
+        "pageRank": 0.05000000000000001,
+        "accessCount": 0
+      },
+      {
+        "id": "mem-dev-env-monolith-migration----",
+        "summary": "---",
+        "confidence": 0.455,
+        "pageRank": 0.05000000000000001,
+        "accessCount": 0
+      },
+      {
+        "id": "mem-dev-login-broken-unseeded-db----",
+        "summary": "---",
+        "confidence": 0.455,
+        "pageRank": 0.05000000000000001,
+        "accessCount": 0
+      }
+    ]
+  }
+]

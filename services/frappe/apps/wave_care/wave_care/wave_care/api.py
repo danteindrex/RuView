@@ -1,0 +1,296 @@
+"""
+Frappe whitelisted API methods — called by the FastAPI insight-api bridge.
+Authentication via api_key + api_secret query params or Authorization header.
+
+All endpoints are POST unless noted. Frappe auto-routes these to:
+  POST /api/method/wave_care.wave_care.api.<function_name>
+"""
+import frappe
+from frappe import _
+
+@frappe.whitelist(allow_guest=False)
+def register_deployment(deployment_id, deployment_name, location_name,
+                        latitude=None, longitude=None, tenant_id=None,
+                        node_count=None, tauri_version=None):
+    """Upsert a deployment record. Called on every Tauri app startup."""
+    existing = frappe.db.get_value("Wave Deployment", {"deployment_id": deployment_id})
+    if existing:
+        doc = frappe.get_doc("Wave Deployment", existing)
+        doc.deployment_name = deployment_name
+        doc.location_name = location_name
+        if latitude:
+            doc.latitude = float(latitude)
+        if longitude:
+            doc.longitude = float(longitude)
+        if tenant_id:
+            doc.tenant_id = tenant_id
+        if tauri_version:
+            doc.tauri_version = tauri_version
+        doc.update_heartbeat(node_count=int(node_count) if node_count else None)
+    else:
+        doc = frappe.get_doc({
+            "doctype": "Wave Deployment",
+            "deployment_id": deployment_id,
+            "deployment_name": deployment_name,
+            "location_name": location_name,
+            "latitude": float(latitude) if latitude else None,
+            "longitude": float(longitude) if longitude else None,
+            "tenant_id": tenant_id,
+            "tauri_version": tauri_version,
+            "node_count": int(node_count) if node_count else 0,
+            "status": "Online",
+            "active_risk_level": "low",
+        })
+        doc.insert(ignore_permissions=True)
+    frappe.db.commit()
+    return {"status": "ok", "name": doc.name}
+
+@frappe.whitelist(allow_guest=False)
+def bind_patient(node_ip, patient, deployment_id=None):
+    """Bind a sensing node to an ERPNext Healthcare Patient so its vitals are
+    written to that patient's clinical record. Reuses the ERPNext `Patient`
+    DocType — we do not reinvent patient identity."""
+    if not frappe.db.exists("Patient", patient):
+        frappe.throw(_("Patient {0} not found").format(patient))
+    node = frappe.db.get_value("Sensing Node", {"node_ip": node_ip})
+    if not node:
+        frappe.throw(_("Sensing Node {0} not found").format(node_ip))
+    doc = frappe.get_doc("Sensing Node", node)
+    doc.patient = patient
+    doc.save(ignore_permissions=True)
+    frappe.db.commit()
+    return {"status": "ok", "node": node, "patient": patient}
+
+
+@frappe.whitelist(allow_guest=False)
+def ingest_vitals(patient, heart_rate=None, respiratory_rate=None,
+                  temperature=None, source="Wave WiFi-CSI"):
+    """Write a vitals reading into ERPNext Healthcare's **Vital Signs** DocType
+    for a Patient — the standard clinical record. Reuses the ERPNext Healthcare
+    module instead of a bespoke store. Only real measured values are written."""
+    if not frappe.db.exists("Patient", patient):
+        frappe.throw(_("Patient {0} not found").format(patient))
+    doc = frappe.get_doc({
+        "doctype": "Vital Signs",
+        "patient": patient,
+        "signs_date": frappe.utils.today(),
+        "signs_time": frappe.utils.nowtime(),
+    })
+    # Only set vitals that were actually measured (> 0) — never a fabricated 0.
+    if heart_rate and float(heart_rate) > 0:
+        doc.pulse = float(heart_rate)
+    if respiratory_rate and float(respiratory_rate) > 0:
+        doc.respiratory_rate = float(respiratory_rate)
+    if temperature and float(temperature) > 0:
+        doc.temperature = float(temperature)
+    doc.insert(ignore_permissions=True)
+    frappe.db.commit()
+    return {"status": "ok", "vital_signs": doc.name, "patient": patient}
+
+
+@frappe.whitelist(allow_guest=False)
+def ingest_session(session_id, deployment_id, vital_summary=None,
+                   pose_anomalies=None, duration_seconds=0, csi_snr_db=0):
+    """Create a CSI Session record from the insight-api ingest endpoint."""
+    import json
+    dep_name = frappe.db.get_value("Wave Deployment", {"deployment_id": deployment_id})
+    if not dep_name:
+        frappe.throw(f"Unknown deployment_id: {deployment_id}")
+    vitals = json.loads(vital_summary) if isinstance(vital_summary, str) else (vital_summary or {})
+    anomalies = json.loads(pose_anomalies) if isinstance(pose_anomalies, str) else (pose_anomalies or [])
+    doc = frappe.get_doc({
+        "doctype": "CSI Session",
+        "session_id": session_id,
+        "deployment": dep_name,
+        "duration_seconds": int(duration_seconds),
+        "csi_snr_db": float(csi_snr_db),
+        "hr_mean": vitals.get("hr_mean", 0),
+        "br_mean": vitals.get("br_mean", 0),
+        "presence_ratio": vitals.get("presence_ratio", 1.0) * 100,
+        "pose_anomalies": ", ".join(anomalies) if anomalies else "",
+        "anomaly_count": len(anomalies),
+    })
+    doc.insert(ignore_permissions=True)
+    frappe.db.commit()
+    return {"status": "ok", "name": doc.name}
+
+@frappe.whitelist(allow_guest=False)
+def ingest_insight(session_id, report: dict):
+    """Store an InsightReport from the LangGraph pipeline."""
+    import json
+    if isinstance(report, str):
+        report = json.loads(report)
+    session_name = frappe.db.get_value("CSI Session", {"session_id": session_id})
+    dep_name = frappe.db.get_value("CSI Session", session_name, "deployment") if session_name else None
+    risk = report.get("risk", {})
+    vitals = report.get("vitals", {})
+    trend = report.get("trend", {})
+    doc = frappe.get_doc({
+        "doctype": "Insight Report",
+        "session": session_name,
+        "deployment": dep_name,
+        "risk_score": risk.get("composite_score", 0),
+        "risk_level": risk.get("risk_level", "low"),
+        "hr_classification": vitals.get("hr_classification", ""),
+        "br_classification": vitals.get("br_classification", ""),
+        "fall_risk_score": risk.get("fall_risk", 0) * 100,
+        "trend_direction": trend.get("trend_direction", "stable"),
+        "summary": report.get("summary", ""),
+        "action_items": "\n".join(report.get("action_items", [])),
+        "agent_trace_id": report.get("agent_trace_id", ""),
+        "confidence": report.get("confidence", 0) * 100,
+    })
+    doc.insert(ignore_permissions=True)
+    frappe.db.commit()
+    return {"status": "ok", "name": doc.name}
+
+@frappe.whitelist(allow_guest=False)
+def get_deployments_summary(tenant_id=None):
+    """Aggregate stats for the Tauri Enterprise dashboard."""
+    filters = {}
+    if tenant_id:
+        filters["tenant_id"] = tenant_id
+    deps = frappe.get_all("Wave Deployment", filters=filters,
+                          fields=["name", "status", "active_risk_level"])
+    total = len(deps)
+    online = sum(1 for d in deps if d.status == "Online")
+    high_risk = sum(1 for d in deps if d.active_risk_level in ("high", "critical"))
+    risk_map = {"low": 10, "moderate": 40, "high": 70, "critical": 90}
+    avg = sum(risk_map.get(d.active_risk_level or "low", 10) for d in deps) / total if total else 0
+    return {"total": total, "online": online, "offline": total - online,
+            "high_risk": high_risk, "avg_risk_score": round(avg, 1)}
+
+@frappe.whitelist(allow_guest=False)
+def ingest_csi_session(session_id: str, deployment_id: str, vital_summary=None,
+                        pose_anomalies=None, duration_seconds=0, csi_snr_db=0,
+                        hmac_signature=None):
+    """
+    Primary ingest endpoint called directly by the Tauri app (no FastAPI needed).
+    Stores as CSI Session DocType then auto-enqueues the LangGraph pipeline.
+    """
+    import json
+    import hmac as hmac_mod
+    import hashlib
+    import os
+
+    configured_key = os.getenv("INGEST_SIGNING_KEY") or \
+        frappe.db.get_single_value("Wave Settings", "ingest_signing_key")
+    if configured_key and hmac_signature:
+        payload_str = f"{session_id}:{deployment_id}:{duration_seconds}"
+        expected = hmac_mod.new(configured_key.encode(), payload_str.encode(), hashlib.sha256).hexdigest()
+        if not hmac_mod.compare_digest(expected, hmac_signature):
+            frappe.throw("Invalid HMAC signature", frappe.AuthenticationError)
+
+    vitals = json.loads(vital_summary) if isinstance(vital_summary, str) else (vital_summary or {})
+    anomalies = json.loads(pose_anomalies) if isinstance(pose_anomalies, str) else (pose_anomalies or [])
+
+    dep_name = frappe.db.get_value("Wave Deployment", {"deployment_id": deployment_id})
+    if not dep_name:
+        frappe.throw(f"Unknown deployment_id: {deployment_id}")
+
+    session = frappe.get_doc({
+        "doctype": "CSI Session",
+        "session_id": session_id,
+        "deployment": dep_name,
+        "duration_seconds": int(duration_seconds),
+        "csi_snr_db": float(csi_snr_db),
+        "hr_mean": vitals.get("hr_mean", 0),
+        "br_mean": vitals.get("br_mean", 0),
+        "presence_ratio": vitals.get("presence_ratio", 1.0) * 100,
+        "pose_anomalies": ", ".join(anomalies) if anomalies else "",
+        "anomaly_count": len(anomalies),
+    })
+    session.insert(ignore_permissions=True)
+    frappe.db.commit()
+
+    frappe.enqueue(
+        "wave_care.wave_care.insight_pipeline.run_pipeline",
+        session_name=session.name,
+        queue="long",
+        timeout=300,
+    )
+    return {"status": "ok", "session_name": session.name, "insight_queued": True}
+
+
+@frappe.whitelist(allow_guest=False)
+def run_insight(session_name: str):
+    """
+    Manually trigger (or re-trigger) the LangGraph pipeline for a CSI Session.
+    Returns job info. Tauri polls get_insight_by_session_id for the result.
+    """
+    job = frappe.enqueue(
+        "wave_care.wave_care.insight_pipeline.run_pipeline",
+        session_name=session_name,
+        queue="long",
+        timeout=300,
+    )
+    return {"job_id": job.id, "session_name": session_name}
+
+
+@frappe.whitelist(allow_guest=False)
+def get_insight_by_session_id(session_id: str):
+    """Look up the latest Insight Report for a given session_id (from Tauri)."""
+    session_name = frappe.db.get_value("CSI Session", {"session_id": session_id}, "name")
+    if not session_name:
+        return None
+    reports = frappe.get_all(
+        "Insight Report",
+        filters={"session": session_name},
+        fields=["name", "risk_score", "risk_level", "hr_classification", "br_classification",
+                "fall_risk_score", "trend_direction", "summary", "action_items", "confidence",
+                "creation"],
+        order_by="creation desc",
+        limit=1,
+    )
+    return reports[0] if reports else None
+
+
+@frappe.whitelist(allow_guest=False)
+def get_analytics_trends(deployment_id=None, limit=20):
+    """HR/BR trend data for the last N sessions. Optionally filtered by deployment."""
+    filters = {}
+    if deployment_id:
+        dep_name = frappe.db.get_value("Wave Deployment", {"deployment_id": deployment_id})
+        if dep_name:
+            filters["deployment"] = dep_name
+    sessions = frappe.get_all(
+        "CSI Session",
+        filters=filters,
+        fields=["session_id", "session_time", "hr_mean", "br_mean", "presence_ratio"],
+        order_by="session_time desc",
+        limit=int(limit),
+    )
+    # Pair with risk level from latest Insight Report per session
+    trends = []
+    for s in reversed(sessions):
+        session_name = frappe.db.get_value("CSI Session", {"session_id": s.session_id})
+        report = frappe.db.get_value(
+            "Insight Report", {"session": session_name},
+            ["risk_level", "risk_score"], as_dict=True
+        ) if session_name else {}
+        trends.append({
+            "timestamp": str(s.session_time),
+            "hr_mean": float(s.hr_mean or 0),
+            "br_mean": float(s.br_mean or 0),
+            "presence_ratio": float(s.presence_ratio or 0),
+            "risk_level": (report or {}).get("risk_level", "low"),
+            "risk_score": float((report or {}).get("risk_score", 0)),
+        })
+    return {"trends": trends}
+
+
+@frappe.whitelist(allow_guest=False)
+def get_risk_distribution(deployment_id=None):
+    """Count of Insight Reports by risk level (for bar chart)."""
+    filters = {}
+    if deployment_id:
+        dep_name = frappe.db.get_value("Wave Deployment", {"deployment_id": deployment_id})
+        if dep_name:
+            filters["deployment"] = dep_name
+    reports = frappe.get_all("Insight Report", filters=filters, fields=["risk_level"])
+    distribution = {"low": 0, "moderate": 0, "high": 0, "critical": 0}
+    for r in reports:
+        level = r.risk_level or "low"
+        distribution[level] = distribution.get(level, 0) + 1
+    total = sum(distribution.values())
+    return {"distribution": distribution, "total": total}

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide deploys RuView in full-feature Raspberry Pi mode:
+This guide deploys Wave in full-feature Raspberry Pi mode:
 
 1. Pi node agent ingests Nexmon CSI.
 2. Node agent emits canonical packets (`0xC5110001..0xC5110006`).
@@ -45,7 +45,7 @@ bash deploy/pi/install.sh
 Validate unit files:
 
 ```bash
-systemd-analyze verify deploy/pi/systemd/ruview-pi-agent.service deploy/pi/systemd/ruview-sensing-server.service
+systemd-analyze verify deploy/pi/systemd/wave-pi-agent.service deploy/pi/systemd/wave-sensing-server.service
 ```
 
 ## Verification Matrix

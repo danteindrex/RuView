@@ -281,7 +281,7 @@ export function PiNodesPage() {
           </div>
           <div className="space-y-2 md:col-span-3">
             <Label htmlFor="workspace-path">Rust Workspace Path</Label>
-            <Input id="workspace-path" value={workspacePath} onChange={(e) => setWorkspacePath(e.target.value)} placeholder="C:\\Users\\user\\Documents\\RuView\\rust-port\\wifi-densepose-rs" />
+            <Input id="workspace-path" value={workspacePath} onChange={(e) => setWorkspacePath(e.target.value)} placeholder="C:\\Users\\user\\Documents\\Wave\\rust-port\\wifi-densepose-rs" />
           </div>
         </div>
 

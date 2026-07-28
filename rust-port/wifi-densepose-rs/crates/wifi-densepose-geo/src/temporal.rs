@@ -151,7 +151,7 @@ pub async fn detect_tile_changes(
 
 /// Post a change event to the local ruOS brain.
 ///
-/// Brain URL honours `RUVIEW_BRAIN_URL` via [`crate::brain::brain_url`].
+/// Brain URL honours `WAVE_BRAIN_URL` via [`crate::brain::brain_url`].
 async fn store_change_event(cache_key: &str, result: &TileChangeResult) -> Result<()> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
@@ -281,7 +281,7 @@ mod tests {
 
     #[test]
     fn test_detect_tile_changes_identical() {
-        let cache = TileCache::new("/tmp/ruview-test-tile-changes");
+        let cache = TileCache::new("/tmp/wave-test-tile-changes");
         let data = vec![1u8, 2, 3, 4, 5];
         // Prime the cache.
         cache.put("test_tile_ident", &data).unwrap();
@@ -297,7 +297,7 @@ mod tests {
 
     #[test]
     fn test_detect_tile_changes_fully_different() {
-        let cache = TileCache::new("/tmp/ruview-test-tile-changes");
+        let cache = TileCache::new("/tmp/wave-test-tile-changes");
         let old = vec![0u8; 100];
         let new = vec![255u8; 100];
         cache.put("test_tile_diff", &old).unwrap();

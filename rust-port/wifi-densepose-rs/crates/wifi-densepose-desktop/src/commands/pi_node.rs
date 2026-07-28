@@ -8,23 +8,23 @@ use tauri::{AppHandle, Emitter, State};
 use crate::commands::auth::AuthManager;
 use crate::commands::guard;
 
-const DEFAULT_SERVICE_NAME: &str = "ruview-pi-node-agent";
+const DEFAULT_SERVICE_NAME: &str = "wave-pi-node-agent";
 const DEFAULT_BINARY_PATH: &str = "/usr/local/bin/wifi-densepose-pi-node-agent";
-const DEFAULT_ENV_PATH: &str = "/etc/ruview/pi-node-agent.env";
+const DEFAULT_ENV_PATH: &str = "/etc/wave/pi-node-agent.env";
 
 /// The full Nexmon CSI installer + the monitor-mode boot restore script,
 /// embedded so the desktop app is self-contained (no dependency on the repo
 /// tree at runtime). Line endings are normalized to LF before upload — a
 /// Windows checkout may carry CRLF, which bash on the Pi would choke on.
-const NEXMON_SETUP_SH: &str = include_str!("../../../../../../ruview_pi_files/nexmon_setup_auto.sh");
-const NEXMON_STARTUP_SH: &str = include_str!("../../../../../../ruview_pi_files/nexmon_startup.sh");
+const NEXMON_SETUP_SH: &str = include_str!("../../../../../../wave_pi_files/nexmon_setup_auto.sh");
+const NEXMON_STARTUP_SH: &str = include_str!("../../../../../../wave_pi_files/nexmon_startup.sh");
 
 /// Marker the installer script prints immediately before `sudo reboot`. Used to
 /// distinguish an intentional mid-install reboot (success) from an SSH failure.
-const NEXMON_REBOOT_MARKER: &str = "RUVIEW_NEXMON_REBOOT";
+const NEXMON_REBOOT_MARKER: &str = "WAVE_NEXMON_REBOOT";
 
 /// systemd unit name for the boot-time monitor-mode restore.
-const NEXMON_STARTUP_SERVICE: &str = "ruview-nexmon-startup";
+const NEXMON_STARTUP_SERVICE: &str = "wave-nexmon-startup";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PiNodeTarget {
@@ -259,38 +259,38 @@ fn env_line(key: &str, value: impl ToString) -> String {
 
 fn agent_env(config: &PiAgentConfig) -> String {
     let mut env = String::new();
-    env.push_str(&env_line("RUVIEW_PI_AGENT_LISTEN", &config.listen));
-    env.push_str(&env_line("RUVIEW_PI_AGENT_AGGREGATOR", &config.aggregator));
-    env.push_str(&env_line("RUVIEW_PI_AGENT_NODE_BASE", config.node_base));
-    env.push_str(&env_line("RUVIEW_PI_AGENT_TIER", config.tier));
-    env.push_str(&env_line("RUVIEW_PI_AGENT_DEFAULT_RSSI", config.default_rssi));
-    env.push_str(&env_line("RUVIEW_PI_AGENT_NOISE_FLOOR", config.noise_floor));
+    env.push_str(&env_line("WAVE_PI_AGENT_LISTEN", &config.listen));
+    env.push_str(&env_line("WAVE_PI_AGENT_AGGREGATOR", &config.aggregator));
+    env.push_str(&env_line("WAVE_PI_AGENT_NODE_BASE", config.node_base));
+    env.push_str(&env_line("WAVE_PI_AGENT_TIER", config.tier));
+    env.push_str(&env_line("WAVE_PI_AGENT_DEFAULT_RSSI", config.default_rssi));
+    env.push_str(&env_line("WAVE_PI_AGENT_NOISE_FLOOR", config.noise_floor));
     // Never deploy a node in mmWave mock mode — this build ships only real
     // sensor data. Force the flag off regardless of the persisted setting so a
     // node can't be brought up fabricating presence/mmWave readings.
     if config.mmwave_mock {
         tracing::warn!("pi-agent mmwave_mock was requested but is force-disabled (no fabricated data)");
     }
-    env.push_str(&env_line("RUVIEW_PI_AGENT_MMWAVE_MOCK", false));
-    env.push_str(&env_line("RUVIEW_PI_AGENT_ENABLE_WASM", config.enable_wasm));
+    env.push_str(&env_line("WAVE_PI_AGENT_MMWAVE_MOCK", false));
+    env.push_str(&env_line("WAVE_PI_AGENT_ENABLE_WASM", config.enable_wasm));
     env.push_str(&env_line(
-        "RUVIEW_PI_AGENT_WASM_PATH",
+        "WAVE_PI_AGENT_WASM_PATH",
         config.wasm_path.as_deref().unwrap_or(""),
     ));
-    env.push_str(&env_line("RUVIEW_PI_AGENT_WASM_MODULE_ID", config.wasm_module_id));
+    env.push_str(&env_line("WAVE_PI_AGENT_WASM_MODULE_ID", config.wasm_module_id));
     env
 }
 
 fn service_unit(binary_path: &str, env_path: &str) -> String {
     format!(
         r#"[Unit]
-Description=RuView Raspberry Pi Node Agent
+Description=Wave Raspberry Pi Node Agent
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 EnvironmentFile={}
-ExecStart=/bin/sh -c 'args="--listen $RUVIEW_PI_AGENT_LISTEN --aggregator $RUVIEW_PI_AGENT_AGGREGATOR --node-base $RUVIEW_PI_AGENT_NODE_BASE --tier $RUVIEW_PI_AGENT_TIER --default-rssi $RUVIEW_PI_AGENT_DEFAULT_RSSI --noise-floor $RUVIEW_PI_AGENT_NOISE_FLOOR --wasm-module-id $RUVIEW_PI_AGENT_WASM_MODULE_ID"; if [ "$RUVIEW_PI_AGENT_MMWAVE_MOCK" = "true" ]; then args="$args --mmwave-mock"; fi; if [ "$RUVIEW_PI_AGENT_ENABLE_WASM" = "true" ]; then args="$args --enable-wasm"; fi; if [ -n "$RUVIEW_PI_AGENT_WASM_PATH" ]; then args="$args --wasm-path $RUVIEW_PI_AGENT_WASM_PATH"; fi; exec {} $args'
+ExecStart=/bin/sh -c 'args="--listen $WAVE_PI_AGENT_LISTEN --aggregator $WAVE_PI_AGENT_AGGREGATOR --node-base $WAVE_PI_AGENT_NODE_BASE --tier $WAVE_PI_AGENT_TIER --default-rssi $WAVE_PI_AGENT_DEFAULT_RSSI --noise-floor $WAVE_PI_AGENT_NOISE_FLOOR --wasm-module-id $WAVE_PI_AGENT_WASM_MODULE_ID"; if [ "$WAVE_PI_AGENT_MMWAVE_MOCK" = "true" ]; then args="$args --mmwave-mock"; fi; if [ "$WAVE_PI_AGENT_ENABLE_WASM" = "true" ]; then args="$args --enable-wasm"; fi; if [ -n "$WAVE_PI_AGENT_WASM_PATH" ]; then args="$args --wasm-path $WAVE_PI_AGENT_WASM_PATH"; fi; exec {} $args'
 Restart=on-failure
 RestartSec=2
 
@@ -447,7 +447,7 @@ fn normalize_lf(s: &str) -> String {
 fn nexmon_startup_unit(user: &str, home: &str) -> String {
     format!(
         r#"[Unit]
-Description=RuView Nexmon monitor-mode restore
+Description=Wave Nexmon monitor-mode restore
 After=network.target
 
 [Service]
@@ -455,7 +455,7 @@ Type=oneshot
 RemainAfterExit=yes
 User={user}
 Environment=HOME={home}
-ExecStart=/bin/bash {home}/.ruview/nexmon_startup.sh --no-tcpdump
+ExecStart=/bin/bash {home}/.wave/nexmon_startup.sh --no-tcpdump
 
 [Install]
 WantedBy=multi-user.target
@@ -511,11 +511,11 @@ pub async fn pi_node_install_nexmon(
 
     // 2. Passwordless sudo (the script issues many non-interactive sudo calls).
     emit("Checking passwordless sudo…");
-    let sudo = run_ssh(target, "sudo -n true 2>/dev/null && echo RUVIEW_SUDO_OK || echo RUVIEW_SUDO_NO").await?;
-    if !sudo.stdout.contains("RUVIEW_SUDO_OK") {
+    let sudo = run_ssh(target, "sudo -n true 2>/dev/null && echo WAVE_SUDO_OK || echo WAVE_SUDO_NO").await?;
+    if !sudo.stdout.contains("WAVE_SUDO_OK") {
         let msg = "Passwordless sudo is required for the Nexmon install. On the Pi run: \
-                   echo \"$USER ALL=(ALL) NOPASSWD:ALL\" | sudo tee /etc/sudoers.d/ruview && \
-                   sudo chmod 440 /etc/sudoers.d/ruview"
+                   echo \"$USER ALL=(ALL) NOPASSWD:ALL\" | sudo tee /etc/sudoers.d/wave && \
+                   sudo chmod 440 /etc/sudoers.d/wave"
             .to_string();
         emit(&format!("BLOCKED: {msg}"));
         return Err(msg);
@@ -536,16 +536,16 @@ pub async fn pi_node_install_nexmon(
 
     // 3. Upload the (LF-normalized) scripts.
     emit("Uploading Nexmon setup scripts…");
-    run_ssh(target, "mkdir -p ~/.ruview").await?;
-    upload_text(target, &normalize_lf(NEXMON_SETUP_SH), "~/.ruview/nexmon_setup_auto.sh").await?;
-    upload_text(target, &normalize_lf(NEXMON_STARTUP_SH), "~/.ruview/nexmon_startup.sh").await?;
-    run_ssh(target, "chmod +x ~/.ruview/nexmon_setup_auto.sh ~/.ruview/nexmon_startup.sh").await?;
+    run_ssh(target, "mkdir -p ~/.wave").await?;
+    upload_text(target, &normalize_lf(NEXMON_SETUP_SH), "~/.wave/nexmon_setup_auto.sh").await?;
+    upload_text(target, &normalize_lf(NEXMON_STARTUP_SH), "~/.wave/nexmon_startup.sh").await?;
+    run_ssh(target, "chmod +x ~/.wave/nexmon_setup_auto.sh ~/.wave/nexmon_startup.sh").await?;
 
     // 4. Stream the install (steps 1–14); it ends by rebooting.
     emit("Starting Nexmon install — this takes ~20–40 min and reboots the Pi partway.");
     let outcome = run_ssh_streaming(
         target,
-        "bash ~/.ruview/nexmon_setup_auto.sh",
+        "bash ~/.wave/nexmon_setup_auto.sh",
         &app,
         "pi-nexmon-progress",
         Some(NEXMON_REBOOT_MARKER),
@@ -569,8 +569,8 @@ pub async fn pi_node_install_nexmon(
     let mut back = false;
     for _ in 0..36 {
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-        if let Ok(r) = run_ssh(target, "echo RUVIEW_UP").await {
-            if r.success && r.stdout.contains("RUVIEW_UP") {
+        if let Ok(r) = run_ssh(target, "echo WAVE_UP").await {
+            if r.success && r.stdout.contains("WAVE_UP") {
                 back = true;
                 break;
             }
@@ -588,7 +588,7 @@ pub async fn pi_node_install_nexmon(
     emit("Running post-reboot verification…");
     let _ = run_ssh_streaming(
         target,
-        "bash ~/.ruview/nexmon_setup_auto.sh --post-reboot",
+        "bash ~/.wave/nexmon_setup_auto.sh --post-reboot",
         &app,
         "pi-nexmon-progress",
         None,
@@ -614,7 +614,7 @@ pub async fn pi_node_install_nexmon(
     emit("Enabling monitor mode now…");
     let _ = run_ssh_streaming(
         target,
-        "bash ~/.ruview/nexmon_startup.sh --no-tcpdump",
+        "bash ~/.wave/nexmon_startup.sh --no-tcpdump",
         &app,
         "pi-nexmon-progress",
         None,
@@ -644,7 +644,7 @@ echo "user=$(id -un 2>/dev/null || true)"
 echo "kernel=$(uname -a 2>/dev/null || true)"
 echo "nexutil=$(command -v nexutil 2>/dev/null || echo missing)"
 echo "agent_binary=$(command -v wifi-densepose-pi-node-agent 2>/dev/null || test -x /usr/local/bin/wifi-densepose-pi-node-agent && echo /usr/local/bin/wifi-densepose-pi-node-agent || echo missing)"
-echo "service=$(systemctl is-active ruview-pi-node-agent 2>/dev/null || true)"
+echo "service=$(systemctl is-active wave-pi-node-agent 2>/dev/null || true)"
 echo "wifi_ifaces=$(iw dev 2>/dev/null | awk '/Interface/ {print $2}' | tr '\n' ',' || true)"
 echo "udp_5500=$(ss -lun 2>/dev/null | grep -c ':5500' || true)"
 "#;
@@ -823,7 +823,7 @@ pub async fn pi_node_push_config(
             std::path::Path::new(env_path)
                 .parent()
                 .and_then(|path| path.to_str())
-                .unwrap_or("/etc/ruview")
+                .unwrap_or("/etc/wave")
         ),
         shell_quote(env_path)
     );
@@ -844,14 +844,14 @@ pub async fn pi_node_install_service(
     let payload = format!("###ENV###\n{}###UNIT###\n{}", agent_env(&request.config), service_unit(binary_path, env_path));
     let script = format!(
         r#"set -eu
-cat > /tmp/ruview-pi-node-agent.payload
+cat > /tmp/wave-pi-node-agent.payload
 sudo mkdir -p {env_dir}
-awk 'BEGIN{{mode=0}} /^###ENV###$/{{mode=1; next}} /^###UNIT###$/{{mode=2; next}} mode==1{{print}}' /tmp/ruview-pi-node-agent.payload | sudo tee {env_path} >/dev/null
+awk 'BEGIN{{mode=0}} /^###ENV###$/{{mode=1; next}} /^###UNIT###$/{{mode=2; next}} mode==1{{print}}' /tmp/wave-pi-node-agent.payload | sudo tee {env_path} >/dev/null
 if ! test -x {binary_path}; then
   echo "missing_binary={binary_path}"
 fi
-awk 'BEGIN{{mode=0}} /^###UNIT###$/{{mode=1; next}} mode==1{{print}}' /tmp/ruview-pi-node-agent.payload > /tmp/ruview-pi-node-agent.service
-sudo mv /tmp/ruview-pi-node-agent.service {unit_path}
+awk 'BEGIN{{mode=0}} /^###UNIT###$/{{mode=1; next}} mode==1{{print}}' /tmp/wave-pi-node-agent.payload > /tmp/wave-pi-node-agent.service
+sudo mv /tmp/wave-pi-node-agent.service {unit_path}
 sudo systemctl daemon-reload
 sudo systemctl enable {service_name}.service
 sudo systemctl status {service_name}.service --no-pager --lines=20 || true
@@ -860,7 +860,7 @@ sudo systemctl status {service_name}.service --no-pager --lines=20 || true
             std::path::Path::new(env_path)
                 .parent()
                 .and_then(|path| path.to_str())
-                .unwrap_or("/etc/ruview")
+                .unwrap_or("/etc/wave")
         ),
         env_path = shell_quote(env_path),
         binary_path = shell_quote(binary_path),
@@ -920,8 +920,8 @@ mod tests {
             wasm_module_id: 1,
         });
 
-        assert!(env.contains("RUVIEW_PI_AGENT_LISTEN='0.0.0.0:5500'"));
-        assert!(env.contains("RUVIEW_PI_AGENT_ENABLE_WASM='true'"));
+        assert!(env.contains("WAVE_PI_AGENT_LISTEN='0.0.0.0:5500'"));
+        assert!(env.contains("WAVE_PI_AGENT_ENABLE_WASM='true'"));
     }
 
     // The `ip -o -4 addr show` sample lines below are representative of real
@@ -997,6 +997,6 @@ mod tests {
         let unit = nexmon_startup_unit("pi", "/home/pi");
         assert!(unit.contains("User=pi"));
         assert!(unit.contains("Environment=HOME=/home/pi"));
-        assert!(unit.contains("/home/pi/.ruview/nexmon_startup.sh --no-tcpdump"));
+        assert!(unit.contains("/home/pi/.wave/nexmon_startup.sh --no-tcpdump"));
     }
 }

@@ -1,3 +1,0 @@
-include ruview_care/modules.txt
-recursive-include ruview_care *.json *.js *.css *.html *.py *.md
-recursive-exclude ruview_care/public/node_modules *

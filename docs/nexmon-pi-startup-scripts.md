@@ -1,6 +1,6 @@
 # Nexmon Pi Startup Scripts
 
-These scripts automate the exact Raspberry Pi 4B + RuView flow:
+These scripts automate the exact Raspberry Pi 4B + Wave flow:
 - one-time Nexmon CSI firmware setup
 - per-boot CSI runtime startup + bridge to laptop
 - Windows launcher for `sensing-server` with port cleanup
@@ -10,7 +10,7 @@ These scripts automate the exact Raspberry Pi 4B + RuView flow:
 From the Pi shell:
 
 ```bash
-cd /home/dante/RuView
+cd /home/dante/Wave
 chmod +x scripts/pi/setup_nexmon_csi_pi4.sh scripts/pi/start_nexmon_bridge.sh
 ./scripts/pi/setup_nexmon_csi_pi4.sh
 sudo reboot
@@ -21,7 +21,7 @@ sudo reboot
 Replace `192.168.1.8` with your laptop IP:
 
 ```bash
-cd /home/dante/RuView
+cd /home/dante/Wave
 ./scripts/pi/start_nexmon_bridge.sh --out-host 192.168.1.8 --out-port 5015 --channel 1/20
 ```
 
@@ -34,14 +34,14 @@ Optional diagnostics only (no bridge start):
 ## 3) Start server on laptop (PowerShell)
 
 ```powershell
-Set-Location "C:\Users\user\Documents\RuView"
-.\scripts\windows\start_ruview_server.ps1 -UdpPort 5015 -HttpPort 3000 -WsPort 3001 -Source esp32
+Set-Location "C:\Users\user\Documents\Wave"
+.\scripts\windows\start_wave_server.ps1 -UdpPort 5015 -HttpPort 3000 -WsPort 3001 -Source esp32
 ```
 
 With model:
 
 ```powershell
-.\scripts\windows\start_ruview_server.ps1 -UdpPort 5015 -HttpPort 3000 -WsPort 3001 -Source esp32 -ModelPath ".\data\models\trained-pretrain-20260302_173607.rvf"
+.\scripts\windows\start_wave_server.ps1 -UdpPort 5015 -HttpPort 3000 -WsPort 3001 -Source esp32 -ModelPath ".\data\models\trained-pretrain-20260302_173607.rvf"
 ```
 
 ## 4) Live UI

@@ -5,10 +5,10 @@ services:
     image: mariadb:10.6
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-ruview_root}
-      MYSQL_DATABASE: ${DB_NAME:-ruview_frappe}
-      MYSQL_USER: ${DB_USER:-ruview}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-ruview_pass}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-wave_root}
+      MYSQL_DATABASE: ${DB_NAME:-wave_frappe}
+      MYSQL_USER: ${DB_USER:-wave}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-wave_pass}
     volumes:
       - db_data:/var/lib/mysql
     command:
@@ -33,20 +33,21 @@ services:
     restart: unless-stopped
     depends_on: [db, redis-cache, redis-queue, redis-socketio]
     ports:
-      - "8080:8080"
+      # Host 4080 (8080 is reserved by another app on this machine — do not use it).
+      - "4080:8080"
     environment:
-      FRAPPE_SITE_NAME: ${FRAPPE_SITE:-ruview.localhost}
+      FRAPPE_SITE_NAME: ${FRAPPE_SITE:-wave.localhost}
       DB_HOST: db
       DB_PORT: "3306"
-      DB_NAME: ${DB_NAME:-ruview_frappe}
-      DB_USER: ${DB_USER:-ruview}
-      DB_PASSWORD: ${DB_PASSWORD:-ruview_pass}
+      DB_NAME: ${DB_NAME:-wave_frappe}
+      DB_USER: ${DB_USER:-wave}
+      DB_PASSWORD: ${DB_PASSWORD:-wave_pass}
       REDIS_CACHE: redis-cache:6379
       REDIS_QUEUE: redis-queue:6379
       REDIS_SOCKETIO: redis-socketio:6379
     volumes:
       - frappe_sites:/home/frappe/frappe-bench/sites
-      - ./apps/ruview_care:/home/frappe/frappe-bench/apps/ruview_care
+      - ./apps/wave_care:/home/frappe/frappe-bench/apps/wave_care
 
 volumes:
   db_data:

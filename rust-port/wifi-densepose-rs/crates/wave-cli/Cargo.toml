@@ -2,7 +2,7 @@
 name = "wave-cli"
 version.workspace = true
 edition.workspace = true
-description = "Wave / RuView management CLI — manage the sensing system, nodes, and hardware from the command line"
+description = "Wave management CLI — manage the sensing system, nodes, and hardware from the command line"
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -50,7 +50,7 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 uuid = { version = "1", features = ["v4"] }
 
 # Frappe/enterprise config: the OS keychain, same service the desktop uses
-# (`ruview-frappe`), so credentials set here are picked up by the app and vice-versa.
+# (`wave-frappe`), so credentials set here are picked up by the app and vice-versa.
 keyring = "2"
 
 # License activation: same hardware fingerprint the desktop binds (SHA-256 of the

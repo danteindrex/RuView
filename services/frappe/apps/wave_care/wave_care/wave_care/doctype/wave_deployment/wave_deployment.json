@@ -1,0 +1,49 @@
+{
+  "name": "Wave Deployment",
+  "module": "Wave Care",
+  "doctype": "DocType",
+  "is_submittable": 0,
+  "track_changes": 1,
+  "field_order": [
+    "deployment_id", "deployment_name", "column_break_1",
+    "status", "active_risk_level", "section_break_location",
+    "location_name", "column_break_2", "latitude", "longitude",
+    "section_break_tenant", "customer", "project", "column_break_3",
+    "tenant_id", "section_break_telemetry",
+    "last_seen", "node_count", "column_break_4",
+    "registered_at", "tauri_version"
+  ],
+  "fields": [
+    {"fieldname": "deployment_id", "label": "Deployment ID", "fieldtype": "Data", "reqd": 1, "unique": 1, "read_only": 1, "in_list_view": 1},
+    {"fieldname": "deployment_name", "label": "Deployment Name", "fieldtype": "Data", "reqd": 1, "in_list_view": 1, "in_global_search": 1},
+    {"fieldname": "column_break_1", "fieldtype": "Column Break"},
+    {"fieldname": "status", "label": "Status", "fieldtype": "Select", "options": "\nOnline\nOffline\nDegraded", "default": "Offline", "in_list_view": 1},
+    {"fieldname": "active_risk_level", "label": "Active Risk Level", "fieldtype": "Select", "options": "\nlow\nmoderate\nhigh\ncritical", "default": "low", "in_list_view": 1},
+    {"fieldname": "section_break_location", "fieldtype": "Section Break", "label": "Location"},
+    {"fieldname": "location_name", "label": "Location", "fieldtype": "Data", "in_list_view": 1, "in_global_search": 1},
+    {"fieldname": "column_break_2", "fieldtype": "Column Break"},
+    {"fieldname": "latitude", "label": "Latitude", "fieldtype": "Float", "precision": 6},
+    {"fieldname": "longitude", "label": "Longitude", "fieldtype": "Float", "precision": 6},
+    {"fieldname": "section_break_tenant", "fieldtype": "Section Break", "label": "Tenant / Organization"},
+    {"fieldname": "customer", "label": "Hospital (Customer)", "fieldtype": "Link", "options": "Customer"},
+    {"fieldname": "project", "label": "Site (Project)", "fieldtype": "Link", "options": "Project"},
+    {"fieldname": "column_break_3", "fieldtype": "Column Break"},
+    {"fieldname": "tenant_id", "label": "Tenant ID", "fieldtype": "Data"},
+    {"fieldname": "section_break_telemetry", "fieldtype": "Section Break", "label": "Telemetry"},
+    {"fieldname": "last_seen", "label": "Last Seen", "fieldtype": "Datetime"},
+    {"fieldname": "node_count", "label": "Active Nodes", "fieldtype": "Int"},
+    {"fieldname": "column_break_4", "fieldtype": "Column Break"},
+    {"fieldname": "registered_at", "label": "First Registered", "fieldtype": "Datetime"},
+    {"fieldname": "tauri_version", "label": "App Version", "fieldtype": "Data"}
+  ],
+  "permissions": [
+    {"role": "Wave Enterprise Admin", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1},
+    {"role": "Wave Clinical Staff",   "read": 1},
+    {"role": "Wave Operator",         "read": 1, "write": 1},
+    {"role": "Wave Viewer",           "read": 1}
+  ],
+  "sort_field": "deployment_name",
+  "sort_order": "ASC",
+  "title_field": "deployment_name",
+  "search_fields": "deployment_name,location_name,deployment_id"
+}

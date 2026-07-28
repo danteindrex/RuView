@@ -24,7 +24,7 @@ pub async fn run_insight_pipeline(request: QueryRequest) -> Result<serde_json::V
         "duration_seconds": request.duration_seconds,
         "csi_snr_db": request.csi_snr_db,
     });
-    let resp = fc::post_method("ruview_care.ruview_care.api.ingest_csi_session")
+    let resp = fc::post_method("wave_care.wave_care.api.ingest_csi_session")
         .json(&body)
         .send()
         .await
@@ -36,7 +36,7 @@ pub async fn run_insight_pipeline(request: QueryRequest) -> Result<serde_json::V
 /// Returns null (JSON) until the pipeline completes.
 #[tauri::command]
 pub async fn get_session_insight(session_id: String) -> Result<serde_json::Value, String> {
-    let resp = fc::get_method("ruview_care.ruview_care.api.get_insight_by_session_id")
+    let resp = fc::get_method("wave_care.wave_care.api.get_insight_by_session_id")
         .query(&[("session_id", &session_id)])
         .send()
         .await
@@ -47,7 +47,7 @@ pub async fn get_session_insight(session_id: String) -> Result<serde_json::Value
 /// HR/BR trend data across recent sessions (sparkline data)
 #[tauri::command]
 pub async fn get_analytics_trends() -> Result<serde_json::Value, String> {
-    let resp = fc::get_method("ruview_care.ruview_care.api.get_analytics_trends")
+    let resp = fc::get_method("wave_care.wave_care.api.get_analytics_trends")
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -57,7 +57,7 @@ pub async fn get_analytics_trends() -> Result<serde_json::Value, String> {
 /// Risk level distribution across all sessions (bar chart data)
 #[tauri::command]
 pub async fn get_risk_distribution() -> Result<serde_json::Value, String> {
-    let resp = fc::get_method("ruview_care.ruview_care.api.get_risk_distribution")
+    let resp = fc::get_method("wave_care.wave_care.api.get_risk_distribution")
         .send()
         .await
         .map_err(|e| e.to_string())?;
