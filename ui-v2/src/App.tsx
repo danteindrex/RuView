@@ -23,6 +23,7 @@ import { SysAdminPage } from "@/pages/sysadmin-page";
 import CsiVisionPage from "@/pages/csi-vision-page";
 import { ModelsPage } from "@/pages/models-page";
 import { DeploymentsPage } from "@/pages/deployments-page";
+import PatientFlowPage from "@/pages/patient-flow-page";
 import { Badge } from "@/components/ui/badge";
 import { tauriApi } from "@/lib/tauri-api";
 import { useAuthStore } from "@/lib/auth-store";
@@ -38,7 +39,7 @@ import { Shield, ShieldAlert, ShieldCheck, Users, AlertCircle, Settings2, Lock, 
 type PageId =
   | "dashboard" | "medical" | "security" | "pose3d"
   | "settings" | "users" | "roles" | "tenants" | "sysadmin"
-  | "csi-vision" | "models" | "deployments";
+  | "csi-vision" | "models" | "deployments" | "patient-flow";
 
 /** All pages — filtered at runtime by permission hook */
 const ALL_PAGES: ShellPage[] = [
@@ -54,6 +55,7 @@ const ALL_PAGES: ShellPage[] = [
   { id: "tenants", label: "Tenancy Oversight", icon: Building2 },
   { id: "sysadmin", label: "System Admin", icon: Terminal },
   { id: "deployments", label: "Deployments", icon: MapPin },
+  { id: "patient-flow", label: "Patient Flow", icon: Users },
 ];
 
 function loadTheme(): "light" | "dark" {
@@ -283,6 +285,7 @@ export default function App() {
       {activePage === "users" ? <UsersPage tenantId={navigationTenantId} /> : null}
       {activePage === "roles" ? <RolesPage /> : null}
       {activePage === "deployments" ? <DeploymentsPage /> : null}
+      {activePage === "patient-flow" ? <PatientFlowPage /> : null}
       {activePage === "tenants" ? (
         <TenantsPage
           onNavigateToUsers={(tid) => {
