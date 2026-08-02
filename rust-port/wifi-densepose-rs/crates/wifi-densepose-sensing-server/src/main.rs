@@ -16,6 +16,7 @@ mod enrollment;
 pub mod protocol;
 mod field_bridge;
 mod zone_reporter;
+mod node_zone_map;
 mod ftm_orchestrator;
 pub mod middleware;
 mod multistatic_bridge;
@@ -666,6 +667,9 @@ struct AppStateInner {
     enrollment_store: enrollment::EnrollmentStore,
     /// Forwards zone enter/exit events to Frappe wave_care API.
     zone_reporter: std::sync::Arc<zone_reporter::ZoneReporter>,
+    /// Maps sensing node identifiers to Frappe Zone zone_ids.
+    /// Keyed by node_id string (e.g. "1", "10"); refreshed every 5 minutes.
+    node_zone_map: node_zone_map::NodeZoneMap,
     /// Last known zone per tracked person (keyed by PersonDetection.id).
     /// Used to detect zone transitions each sensing tick.
     person_room: HashMap<u32, String>,
@@ -1786,11 +1790,17 @@ async fn windows_wifi_task(state: SharedState, tick_ms: u64) {
         // Populate persons from the sensing update (Kalman-smoothed via tracker).
         let raw_persons = derive_pose_from_sensing(&update);
         let mut last_tracker_instant = s.last_tracker_instant.take();
-        let tracked = tracker_bridge::tracker_update(
+        let mut tracked = tracker_bridge::tracker_update(
             &mut s.pose_tracker, &mut last_tracker_instant, raw_persons,
         );
         s.last_tracker_instant = last_tracker_instant;
         if !tracked.is_empty() {
+            // Zone is looked up by deployment_id (set to node_id string in Frappe Zone config).
+            // WiFi path has no physical node; falls back to "wifi".
+            let zone = node_zone_map::zone_for_node_sync(&s.node_zone_map, "wifi");
+            for p in &mut tracked {
+                p.zone = zone.clone();
+            }
             update.persons = Some(tracked);
         }
 
@@ -1966,11 +1976,17 @@ async fn windows_wifi_fallback_tick(state: &SharedState, seq: u32) {
 
     let raw_persons = derive_pose_from_sensing(&update);
     let mut last_tracker_instant = s.last_tracker_instant.take();
-    let tracked = tracker_bridge::tracker_update(
+    let mut tracked = tracker_bridge::tracker_update(
         &mut s.pose_tracker, &mut last_tracker_instant, raw_persons,
     );
     s.last_tracker_instant = last_tracker_instant;
     if !tracked.is_empty() {
+        // Zone is looked up by deployment_id (set to node_id string in Frappe Zone config).
+        // WiFi path has no physical node; falls back to "wifi".
+        let zone = node_zone_map::zone_for_node_sync(&s.node_zone_map, "wifi");
+        for p in &mut tracked {
+            p.zone = zone.clone();
+        }
         update.persons = Some(tracked);
     }
 
@@ -4850,11 +4866,19 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
 
                     let raw_persons = derive_pose_from_sensing(&update);
                     let mut last_tracker_instant = s.last_tracker_instant.take();
-                    let tracked = tracker_bridge::tracker_update(
+                    let mut tracked = tracker_bridge::tracker_update(
                         &mut s.pose_tracker, &mut last_tracker_instant, raw_persons,
                     );
                     s.last_tracker_instant = last_tracker_instant;
                     if !tracked.is_empty() {
+                        // Zone is looked up by deployment_id (set to node_id string in Frappe Zone config)
+                        let zone = node_zone_map::zone_for_node_sync(
+                            &s.node_zone_map,
+                            &vitals.node_id.to_string(),
+                        );
+                        for p in &mut tracked {
+                            p.zone = zone.clone();
+                        }
                         update.persons = Some(tracked);
                     }
 
@@ -5262,11 +5286,19 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
 
                     let raw_persons = derive_pose_from_sensing(&update);
                     let mut last_tracker_instant = s.last_tracker_instant.take();
-                    let tracked = tracker_bridge::tracker_update(
+                    let mut tracked = tracker_bridge::tracker_update(
                         &mut s.pose_tracker, &mut last_tracker_instant, raw_persons,
                     );
                     s.last_tracker_instant = last_tracker_instant;
                     if !tracked.is_empty() {
+                        // Zone is looked up by deployment_id (set to node_id string in Frappe Zone config)
+                        let zone = node_zone_map::zone_for_node_sync(
+                            &s.node_zone_map,
+                            &node_id.to_string(),
+                        );
+                        for p in &mut tracked {
+                            p.zone = zone.clone();
+                        }
                         update.persons = Some(tracked);
                     }
 
@@ -6110,6 +6142,7 @@ async fn main() {
         // Patient enrollment + zone tracking (wired into sensing loop)
         enrollment_store: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         zone_reporter: std::sync::Arc::new(zone_reporter::ZoneReporter::new()),
+        node_zone_map: node_zone_map::create_and_start(300), // refresh every 5 min
         person_room: HashMap::new(),
     }));
 
