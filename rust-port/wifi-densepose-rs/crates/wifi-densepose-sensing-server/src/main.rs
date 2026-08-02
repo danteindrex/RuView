@@ -661,6 +661,14 @@ struct AppStateInner {
     /// State of the currently scheduled auto-stop, if any: `(captured_generation,
     /// start_instant, duration_secs)`. `None` when no timed calibration is pending.
     calibration_auto_stop: Option<(u64, std::time::Instant, u64)>,
+    // ── Patient enrollment + zone tracking ─────────────────────────────────
+    /// Patient CSI enrollment store — shared with the /enroll HTTP handler.
+    enrollment_store: enrollment::EnrollmentStore,
+    /// Forwards zone enter/exit events to Frappe wave_care API.
+    zone_reporter: std::sync::Arc<zone_reporter::ZoneReporter>,
+    /// Last known zone per tracked person (keyed by PersonDetection.id).
+    /// Used to detect zone transitions each sensing tick.
+    person_room: HashMap<u32, String>,
 }
 
 /// If no CSI frame arrives within this duration, source reverts to offline.
@@ -1786,15 +1794,56 @@ async fn windows_wifi_task(state: SharedState, tick_ms: u64) {
             update.persons = Some(tracked);
         }
 
+        // ── Enrollment push + zone transition detection ──────────────
+        let enroll_store = s.enrollment_store.clone();
+        let zone_rep = s.zone_reporter.clone();
+        let mut zone_events: Vec<(String, String, String)> = Vec::new();
+        if let Some(ref persons) = update.persons {
+            for p in persons {
+                let new_zone = p.zone.clone();
+                let prev = s.person_room.get(&p.id).cloned().unwrap_or_default();
+                if prev != new_zone {
+                    if !prev.is_empty() {
+                        zone_events.push((p.id.to_string(), prev, "exit".to_string()));
+                    }
+                    zone_events.push((p.id.to_string(), new_zone.clone(), "enter".to_string()));
+                    s.person_room.insert(p.id, new_zone);
+                }
+            }
+        }
+        let track_embeddings: Vec<Vec<f32>> = s.pose_tracker.active_tracks()
+            .iter()
+            .map(|t| t.embedding.clone())
+            .collect();
+
         if let Ok(json) = serde_json::to_string(&update) {
             let _ = s.tx.send(json);
         }
         s.latest_update = Some(update);
+        // ── Release write lock before async I/O ─────────────────────
+        drop(s);
 
         debug!(
             "Multi-BSSID tick #{tick}: {obs_count} BSSIDs, quality={:.2}, verdict={:?}",
             enhanced.signal_quality.score, enhanced.verdict
         );
+
+        {
+            let store = enroll_store.lock().await;
+            let tokens: Vec<String> = store.keys().cloned().collect();
+            drop(store);
+            for embedding in &track_embeddings {
+                for token in &tokens {
+                    enrollment::push_enrollment_frame(&enroll_store, token, embedding.clone()).await;
+                }
+            }
+        }
+        for (person_id, zone_id, event_type) in zone_events {
+            let zr = zone_rep.clone();
+            tokio::spawn(async move {
+                zr.report_zone_event(&person_id, &zone_id, &event_type, None, None).await;
+            });
+        }
     }
 }
 
@@ -1925,10 +1974,51 @@ async fn windows_wifi_fallback_tick(state: &SharedState, seq: u32) {
         update.persons = Some(tracked);
     }
 
+    // ── Enrollment push + zone transition detection ──────────────────
+    let enroll_store = s.enrollment_store.clone();
+    let zone_rep = s.zone_reporter.clone();
+    let mut zone_events: Vec<(String, String, String)> = Vec::new();
+    if let Some(ref persons) = update.persons {
+        for p in persons {
+            let new_zone = p.zone.clone();
+            let prev = s.person_room.get(&p.id).cloned().unwrap_or_default();
+            if prev != new_zone {
+                if !prev.is_empty() {
+                    zone_events.push((p.id.to_string(), prev, "exit".to_string()));
+                }
+                zone_events.push((p.id.to_string(), new_zone.clone(), "enter".to_string()));
+                s.person_room.insert(p.id, new_zone);
+            }
+        }
+    }
+    let track_embeddings: Vec<Vec<f32>> = s.pose_tracker.active_tracks()
+        .iter()
+        .map(|t| t.embedding.clone())
+        .collect();
+
     if let Ok(json) = serde_json::to_string(&update) {
         let _ = s.tx.send(json);
     }
     s.latest_update = Some(update);
+    // ── Release write lock before async I/O ─────────────────────────
+    drop(s);
+
+    {
+        let store = enroll_store.lock().await;
+        let tokens: Vec<String> = store.keys().cloned().collect();
+        drop(store);
+        for embedding in &track_embeddings {
+            for token in &tokens {
+                enrollment::push_enrollment_frame(&enroll_store, token, embedding.clone()).await;
+            }
+        }
+    }
+    for (person_id, zone_id, event_type) in zone_events {
+        let zr = zone_rep.clone();
+        tokio::spawn(async move {
+            zr.report_zone_event(&person_id, &zone_id, &event_type, None, None).await;
+        });
+    }
 }
 
 /// Probe if Windows WiFi is connected
@@ -4768,11 +4858,54 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                         update.persons = Some(tracked);
                     }
 
+                    // ── Enrollment push + zone transition detection ──────
+                    let enroll_store = s.enrollment_store.clone();
+                    let zone_rep = s.zone_reporter.clone();
+                    // Collect active embeddings and detect zone changes.
+                    let mut zone_events: Vec<(String, String, String)> = Vec::new();
+                    if let Some(ref persons) = update.persons {
+                        for p in persons {
+                            let new_zone = p.zone.clone();
+                            let prev = s.person_room.get(&p.id).cloned().unwrap_or_default();
+                            if prev != new_zone {
+                                if !prev.is_empty() {
+                                    zone_events.push((p.id.to_string(), prev, "exit".to_string()));
+                                }
+                                zone_events.push((p.id.to_string(), new_zone.clone(), "enter".to_string()));
+                                s.person_room.insert(p.id, new_zone);
+                            }
+                        }
+                    }
+                    // Collect track embeddings for enrollment.
+                    let track_embeddings: Vec<Vec<f32>> = s.pose_tracker.active_tracks()
+                        .iter()
+                        .map(|t| t.embedding.clone())
+                        .collect();
+                    // ── Release write lock before async I/O ─────────────
                     if let Ok(json) = serde_json::to_string(&update) {
                         let _ = s.tx.send(json);
                     }
                     s.latest_update = Some(update);
                     s.edge_vitals = Some(vitals);
+                    drop(s);
+                    // Push embeddings to any active enrollment windows.
+                    {
+                        let store = enroll_store.lock().await;
+                        let tokens: Vec<String> = store.keys().cloned().collect();
+                        drop(store);
+                        for embedding in &track_embeddings {
+                            for token in &tokens {
+                                enrollment::push_enrollment_frame(&enroll_store, token, embedding.clone()).await;
+                            }
+                        }
+                    }
+                    // Fire-and-forget zone events.
+                    for (person_id, zone_id, event_type) in zone_events {
+                        let zr = zone_rep.clone();
+                        tokio::spawn(async move {
+                            zr.report_zone_event(&person_id, &zone_id, &event_type, None, None).await;
+                        });
+                    }
                     continue;
                 }
 
@@ -5137,6 +5270,28 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                         update.persons = Some(tracked);
                     }
 
+                    // ── Enrollment push + zone transition detection ──────
+                    let enroll_store = s.enrollment_store.clone();
+                    let zone_rep = s.zone_reporter.clone();
+                    let mut zone_events: Vec<(String, String, String)> = Vec::new();
+                    if let Some(ref persons) = update.persons {
+                        for p in persons {
+                            let new_zone = p.zone.clone();
+                            let prev = s.person_room.get(&p.id).cloned().unwrap_or_default();
+                            if prev != new_zone {
+                                if !prev.is_empty() {
+                                    zone_events.push((p.id.to_string(), prev, "exit".to_string()));
+                                }
+                                zone_events.push((p.id.to_string(), new_zone.clone(), "enter".to_string()));
+                                s.person_room.insert(p.id, new_zone);
+                            }
+                        }
+                    }
+                    let track_embeddings: Vec<Vec<f32>> = s.pose_tracker.active_tracks()
+                        .iter()
+                        .map(|t| t.embedding.clone())
+                        .collect();
+
                     if let Ok(json) = serde_json::to_string(&update) {
                         let _ = s.tx.send(json);
                     }
@@ -5153,6 +5308,24 @@ async fn udp_receiver_task(state: SharedState, udp_port: u16) {
                         if evicted > 0 {
                             info!("Evicted {} stale node(s), {} active", evicted, s.node_states.len());
                         }
+                    }
+                    // ── Release write lock before async I/O ─────────────
+                    drop(s);
+                    {
+                        let store = enroll_store.lock().await;
+                        let tokens: Vec<String> = store.keys().cloned().collect();
+                        drop(store);
+                        for embedding in &track_embeddings {
+                            for token in &tokens {
+                                enrollment::push_enrollment_frame(&enroll_store, token, embedding.clone()).await;
+                            }
+                        }
+                    }
+                    for (person_id, zone_id, event_type) in zone_events {
+                        let zr = zone_rep.clone();
+                        tokio::spawn(async move {
+                            zr.report_zone_event(&person_id, &zone_id, &event_type, None, None).await;
+                        });
                     }
                 }
             }
@@ -5934,14 +6107,15 @@ async fn main() {
         inference_compat: None,
         calibration_generation: 0,
         calibration_auto_stop: None,
+        // Patient enrollment + zone tracking (wired into sensing loop)
+        enrollment_store: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+        zone_reporter: std::sync::Arc::new(zone_reporter::ZoneReporter::new()),
+        person_room: HashMap::new(),
     }));
 
-    // Patient CSI enrollment store (patient_token → buffered embedding frames).
-    let enrollment_store: enrollment::EnrollmentStore =
-        Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
-
-    // Zone reporter — forwards cross-room events to Frappe wave_care API.
-    let _zone_reporter = zone_reporter::ZoneReporter::new();
+    // Clone the enrollment store Arc out of state for the /enroll route.
+    // The sensing loop writes into the same Arc via state.enrollment_store.
+    let enrollment_store = state.read().await.enrollment_store.clone();
 
     // Start background tasks based on source. BOTH UDP listeners run in
     // every mode (ADR-090): ESP32 nodes stream to :5005 and Pi/Nexmon nodes
