@@ -1,0 +1,26 @@
+{
+  "name": "CSI Enrollment",
+  "module": "Wave Care",
+  "doctype": "DocType",
+  "track_changes": 1,
+  "fields": [
+    {"fieldname": "patient_visit",        "label": "Patient Visit",        "fieldtype": "Link",     "options": "Patient Visit", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "patient_token",        "label": "Patient Token",        "fieldtype": "Data",     "reqd": 1},
+    {"fieldname": "node_id",              "label": "Node ID",              "fieldtype": "Data",     "reqd": 1},
+    {"fieldname": "enrollment_timestamp", "label": "Enrollment Timestamp", "fieldtype": "Datetime", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "embedding_vector",     "label": "Embedding Vector",     "fieldtype": "Long Text","reqd": 1},
+    {"fieldname": "embedding_dimension",  "label": "Embedding Dimension",  "fieldtype": "Int"},
+    {"fieldname": "confidence_score",     "label": "Confidence Score",     "fieldtype": "Float"},
+    {"fieldname": "status",               "label": "Status",               "fieldtype": "Select",   "options": "Pending\nComplete\nFailed", "default": "Pending", "in_list_view": 1}
+  ],
+  "permissions": [
+    {"role": "Wave Enterprise Admin", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1},
+    {"role": "Wave Clinical Staff",   "read": 1, "export": 1},
+    {"role": "Wave Operator",         "read": 1, "write": 1, "create": 1},
+    {"role": "Wave Viewer",           "read": 1},
+    {"role": "Wave Flow Manager",     "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "enrollment_timestamp",
+  "sort_order": "DESC",
+  "title_field": "patient_token"
+}

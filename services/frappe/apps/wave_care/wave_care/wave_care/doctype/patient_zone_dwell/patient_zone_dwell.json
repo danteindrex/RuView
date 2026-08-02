@@ -1,0 +1,29 @@
+{
+  "name": "Patient Zone Dwell",
+  "module": "Wave Care",
+  "doctype": "DocType",
+  "track_changes": 1,
+  "fields": [
+    {"fieldname": "patient_visit",  "label": "Patient Visit",  "fieldtype": "Link",     "options": "Patient Visit", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "patient_token",  "label": "Patient Token",  "fieldtype": "Data"},
+    {"fieldname": "zone",           "label": "Zone",           "fieldtype": "Link",     "options": "Zone", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "zone_name",      "label": "Zone Name",      "fieldtype": "Data",     "fetch_from": "zone.zone_name", "read_only": 1, "in_list_view": 1},
+    {"fieldname": "time_in",        "label": "Time In",        "fieldtype": "Datetime", "reqd": 1},
+    {"fieldname": "time_out",       "label": "Time Out",       "fieldtype": "Datetime"},
+    {"fieldname": "dwell_seconds",  "label": "Dwell (s)",      "fieldtype": "Int",      "read_only": 1},
+    {"fieldname": "section_break_vitals", "label": "Vitals During Dwell", "fieldtype": "Section Break"},
+    {"fieldname": "vital_hr_mean",  "label": "HR Mean (bpm)",  "fieldtype": "Float"},
+    {"fieldname": "vital_br_mean",  "label": "BR Mean (rpm)",  "fieldtype": "Float"}
+  ],
+  "permissions": [
+    {"role": "Wave Enterprise Admin", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1},
+    {"role": "Wave Clinical Staff",   "read": 1, "export": 1},
+    {"role": "Wave Operator",         "read": 1, "write": 1, "create": 1},
+    {"role": "Wave Viewer",           "read": 1},
+    {"role": "Wave Flow Manager",     "read": 1, "write": 1, "create": 1},
+    {"role": "Wave Receptionist",     "read": 1}
+  ],
+  "sort_field": "time_in",
+  "sort_order": "DESC",
+  "title_field": "zone_name"
+}

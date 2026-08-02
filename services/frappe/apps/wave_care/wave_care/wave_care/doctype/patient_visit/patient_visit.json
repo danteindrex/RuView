@@ -1,0 +1,30 @@
+{
+  "name": "Patient Visit",
+  "module": "Wave Care",
+  "doctype": "DocType",
+  "track_changes": 1,
+  "fields": [
+    {"fieldname": "patient",               "label": "Patient",              "fieldtype": "Link",      "options": "Patient", "reqd": 1, "in_list_view": 1},
+    {"fieldname": "visit_date",            "label": "Visit Date",           "fieldtype": "Date",      "reqd": 1, "in_list_view": 1},
+    {"fieldname": "check_in_time",         "label": "Check-in Time",        "fieldtype": "Datetime",  "reqd": 1},
+    {"fieldname": "check_out_time",        "label": "Check-out Time",       "fieldtype": "Datetime"},
+    {"fieldname": "status",                "label": "Status",               "fieldtype": "Select",    "options": "Active\nCompleted\nAbandoned", "default": "Active", "in_list_view": 1},
+    {"fieldname": "total_duration_seconds","label": "Total Duration (s)",   "fieldtype": "Int",       "read_only": 1},
+    {"fieldname": "section_break_csi",     "label": "CSI Enrollment",       "fieldtype": "Section Break"},
+    {"fieldname": "enrollment_embedding",  "label": "Enrollment Embedding", "fieldtype": "Long Text"},
+    {"fieldname": "enrollment_node_id",    "label": "Enrollment Node ID",   "fieldtype": "Data"},
+    {"fieldname": "enrollment_confidence", "label": "Enrollment Confidence","fieldtype": "Float"},
+    {"fieldname": "patient_token",         "label": "Patient Token",        "fieldtype": "Data",      "unique": 1}
+  ],
+  "permissions": [
+    {"role": "Wave Enterprise Admin", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1},
+    {"role": "Wave Clinical Staff",   "read": 1, "export": 1},
+    {"role": "Wave Operator",         "read": 1, "write": 1, "create": 1},
+    {"role": "Wave Viewer",           "read": 1},
+    {"role": "Wave Flow Manager",     "read": 1, "write": 1, "create": 1},
+    {"role": "Wave Receptionist",     "read": 1, "write": 1, "create": 1}
+  ],
+  "sort_field": "check_in_time",
+  "sort_order": "DESC",
+  "title_field": "patient"
+}

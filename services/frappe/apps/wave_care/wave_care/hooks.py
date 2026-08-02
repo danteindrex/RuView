@@ -17,6 +17,8 @@ roles = [
     {"role_name": "Wave Clinical Staff",    "desk_access": 1},
     {"role_name": "Wave Operator",          "desk_access": 1},
     {"role_name": "Wave Viewer",            "desk_access": 1},
+    {"role_name": "Wave Flow Manager",      "desk_access": 1},
+    {"role_name": "Wave Receptionist",      "desk_access": 1},
 ]
 
 # Scheduled tasks

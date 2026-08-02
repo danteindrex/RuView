@@ -1,0 +1,25 @@
+{
+  "name": "Zone",
+  "module": "Wave Care",
+  "doctype": "DocType",
+  "track_changes": 1,
+  "fields": [
+    {"fieldname": "zone_id",       "label": "Zone ID",       "fieldtype": "Data",   "reqd": 1, "unique": 1, "in_list_view": 1},
+    {"fieldname": "zone_name",     "label": "Zone Name",     "fieldtype": "Data",   "reqd": 1, "in_list_view": 1},
+    {"fieldname": "deployment_id", "label": "Deployment",    "fieldtype": "Link",   "options": "Wave Deployment", "reqd": 1},
+    {"fieldname": "zone_type",     "label": "Zone Type",     "fieldtype": "Select", "options": "Waiting\nConsultation\nProcedure\nExit\nOther", "default": "Waiting", "in_list_view": 1},
+    {"fieldname": "capacity",      "label": "Capacity",      "fieldtype": "Int",    "default": 20},
+    {"fieldname": "enabled",       "label": "Enabled",       "fieldtype": "Check",  "default": 1}
+  ],
+  "permissions": [
+    {"role": "Wave Enterprise Admin", "read": 1, "write": 1, "create": 1, "delete": 1, "export": 1},
+    {"role": "Wave Clinical Staff",   "read": 1, "export": 1},
+    {"role": "Wave Operator",         "read": 1, "write": 1, "create": 1},
+    {"role": "Wave Viewer",           "read": 1},
+    {"role": "Wave Flow Manager",     "read": 1, "write": 1, "create": 1, "delete": 1},
+    {"role": "Wave Receptionist",     "read": 1}
+  ],
+  "sort_field": "zone_name",
+  "sort_order": "ASC",
+  "title_field": "zone_name"
+}
