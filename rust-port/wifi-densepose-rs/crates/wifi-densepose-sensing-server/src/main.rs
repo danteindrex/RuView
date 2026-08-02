@@ -12,8 +12,10 @@
 mod adaptive_classifier;
 pub mod cli;
 pub mod csi;
+mod enrollment;
 pub mod protocol;
 mod field_bridge;
+mod zone_reporter;
 mod ftm_orchestrator;
 pub mod middleware;
 mod multistatic_bridge;
@@ -5934,6 +5936,13 @@ async fn main() {
         calibration_auto_stop: None,
     }));
 
+    // Patient CSI enrollment store (patient_token → buffered embedding frames).
+    let enrollment_store: enrollment::EnrollmentStore =
+        Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+
+    // Zone reporter — forwards cross-room events to Frappe wave_care API.
+    let _zone_reporter = zone_reporter::ZoneReporter::new();
+
     // Start background tasks based on source. BOTH UDP listeners run in
     // every mode (ADR-090): ESP32 nodes stream to :5005 and Pi/Nexmon nodes
     // to :5500, and either kind can power on after the server starts. When a
@@ -6083,6 +6092,14 @@ async fn main() {
         // appropriate: this server binds loopback/LAN for a single local UI.
         .layer(tower_http::cors::CorsLayer::permissive())
         .with_state(state.clone());
+
+    // Patient enrollment endpoint has its own state type (EnrollmentStore) so
+    // it must be stated independently and then merged after both routers are
+    // fully typed (Router<()>).
+    let enroll_router = Router::new()
+        .route("/enroll", axum::routing::post(enrollment::handle_enroll))
+        .with_state(enrollment_store.clone());
+    let http_app = http_app.merge(enroll_router);
 
     let http_addr = SocketAddr::from((bind_ip, args.http_port));
     let http_listener = tokio::net::TcpListener::bind(http_addr).await

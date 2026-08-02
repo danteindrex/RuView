@@ -21,3 +21,4 @@ pub mod users;
 pub mod wasm;
 pub mod cloud;
 pub mod deployment;
+pub mod patient_flow;

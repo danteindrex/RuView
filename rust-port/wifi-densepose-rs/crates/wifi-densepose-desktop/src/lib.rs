@@ -18,6 +18,7 @@ use commands::enterprise;
 use commands::cloud as cloud_cmd;
 use commands::deployment as deployment_cmd;
 use commands::frappe_config as frappe_config_cmd;
+use commands::patient_flow as patient_flow_cmd;
 use std::sync::Arc;
 use tauri::Manager;
 
@@ -240,6 +241,13 @@ pub fn run() {
             // Frappe connection config
             frappe_config_cmd::get_frappe_config,
             frappe_config_cmd::set_frappe_config,
+            // Patient Flow Intelligence
+            patient_flow_cmd::register_patient_arrival,
+            patient_flow_cmd::get_active_patients,
+            patient_flow_cmd::checkout_patient_visit,
+            patient_flow_cmd::get_zone_analytics,
+            patient_flow_cmd::get_patient_journey,
+            patient_flow_cmd::simulate_queue_capacity,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

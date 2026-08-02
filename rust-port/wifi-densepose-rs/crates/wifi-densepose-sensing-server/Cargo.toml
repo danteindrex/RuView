@@ -57,6 +57,7 @@ rcgen = "0.13"
 rustls-pemfile = "2"
 jsonwebtoken = "9"
 anyhow = "1.0"
+reqwest = { version = "0.12", default-features = false, features = ["json", "native-tls"] }
 opentelemetry = "0.23"
 opentelemetry_sdk = { version = "0.23", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.16", features = ["http-proto", "reqwest-client"] }

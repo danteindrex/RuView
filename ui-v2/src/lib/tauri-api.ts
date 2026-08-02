@@ -326,4 +326,87 @@ export const tauriApi = {
       apiSecret: config.apiSecret,
     });
   },
+
+  // Patient Flow Intelligence
+  registerPatientArrival(params: {
+    patientId: string;
+    nodeId: string;
+    sensingServerUrl: string;
+    enrollmentDurationSeconds?: number;
+  }) {
+    return invokeTauri<{
+      patient_token: string;
+      visit_name: string;
+      check_in_time: string;
+      enrollment_status: string;
+    }>("register_patient_arrival", {
+      patientId: params.patientId,
+      nodeId: params.nodeId,
+      sensingServerUrl: params.sensingServerUrl,
+      enrollmentDurationSeconds: params.enrollmentDurationSeconds ?? 10,
+    });
+  },
+  getActivePatients() {
+    return invokeTauri<{
+      active_count: number;
+      patients: Array<{
+        patient: string;
+        patient_token: string;
+        check_in_time: string;
+        current_zone: string;
+        zone_since: string | null;
+      }>;
+    }>("get_active_patients");
+  },
+  checkoutPatientVisit(patientToken: string) {
+    return invokeTauri<{ status: string; visit_name: string }>(
+      "checkout_patient_visit",
+      { patientToken }
+    );
+  },
+  getZoneAnalytics(zoneId: string, days?: number) {
+    return invokeTauri<{
+      zone_id: string;
+      sample_count: number;
+      wait_p50_seconds: number;
+      wait_p90_seconds: number;
+      wait_mean_seconds: number;
+      throughput_per_day: number;
+      current_occupancy: number;
+    }>("get_zone_analytics", { zoneId, days });
+  },
+  getPatientJourney(visitDate?: string) {
+    return invokeTauri<{
+      date: string;
+      visit_count: number;
+      sankey_links: Array<{ from: string; to: string; value: number }>;
+      journeys: unknown[];
+    }>("get_patient_journey", { visitDate });
+  },
+  simulateQueueCapacity(params: {
+    zoneId: string;
+    currentServers: number;
+    arrivalRatePerHour: number;
+    meanServiceMinutes: number;
+  }) {
+    return invokeTauri<{
+      zone_id: string;
+      scenarios: Record<
+        string,
+        {
+          utilization: number;
+          mean_wait_seconds: number;
+          wait_p50_seconds: number;
+          wait_p90_seconds: number;
+          feasible: boolean;
+        }
+      >;
+      recommendation: string;
+    }>("simulate_queue_capacity", {
+      zoneId: params.zoneId,
+      currentServers: params.currentServers,
+      arrivalRatePerHour: params.arrivalRatePerHour,
+      meanServiceMinutes: params.meanServiceMinutes,
+    });
+  },
 };
