@@ -187,6 +187,81 @@ pub async fn get_patient_journey(
     fc::unwrap_message(resp).await
 }
 
+// ── Zone CRUD ────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ZoneRecord {
+    pub name: Option<String>,
+    pub zone_id: String,
+    pub zone_name: String,
+    pub deployment_id: String,
+    pub zone_type: String,
+    pub capacity: u32,
+    pub enabled: bool,
+}
+
+fn zone_from_value(d: &serde_json::Value) -> ZoneRecord {
+    ZoneRecord {
+        name: d["name"].as_str().map(String::from),
+        zone_id: d["zone_id"].as_str().unwrap_or("").to_string(),
+        zone_name: d["zone_name"].as_str().unwrap_or("").to_string(),
+        deployment_id: d["deployment_id"].as_str().unwrap_or("").to_string(),
+        zone_type: d["zone_type"].as_str().unwrap_or("Waiting").to_string(),
+        capacity: d["capacity"].as_u64().unwrap_or(20) as u32,
+        enabled: d["enabled"].as_u64().unwrap_or(1) == 1,
+    }
+}
+
+#[tauri::command]
+pub async fn list_zones() -> Result<Vec<ZoneRecord>, String> {
+    let fields = serde_json::json!(
+        ["name","zone_id","zone_name","deployment_id","zone_type","capacity","enabled"]
+    ).to_string();
+    let resp = fc::get_resource("Zone")
+        .query(&[("fields", &fields), ("limit", &"500".to_string())])
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let data = fc::unwrap_data(resp).await?;
+    let docs: Vec<serde_json::Value> = serde_json::from_value(data).map_err(|e| e.to_string())?;
+    Ok(docs.iter().map(zone_from_value).collect())
+}
+
+#[tauri::command]
+pub async fn create_zone(zone: ZoneRecord) -> Result<ZoneRecord, String> {
+    let body = serde_json::json!({
+        "zone_id": zone.zone_id,
+        "zone_name": zone.zone_name,
+        "deployment_id": zone.deployment_id,
+        "zone_type": zone.zone_type,
+        "capacity": zone.capacity,
+        "enabled": if zone.enabled { 1 } else { 0 },
+    });
+    let resp = fc::post_resource("Zone").json(&body).send().await.map_err(|e| e.to_string())?;
+    let doc = fc::unwrap_data_single(resp).await?;
+    Ok(zone_from_value(&doc))
+}
+
+#[tauri::command]
+pub async fn update_zone(doc_name: String, zone: ZoneRecord) -> Result<(), String> {
+    let body = serde_json::json!({
+        "zone_name": zone.zone_name,
+        "deployment_id": zone.deployment_id,
+        "zone_type": zone.zone_type,
+        "capacity": zone.capacity,
+        "enabled": if zone.enabled { 1 } else { 0 },
+    });
+    let resp = fc::put_resource("Zone", &doc_name).json(&body).send().await.map_err(|e| e.to_string())?;
+    fc::unwrap_data_single(resp).await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_zone(doc_name: String) -> Result<(), String> {
+    let resp = fc::delete_resource("Zone", &doc_name).send().await.map_err(|e| e.to_string())?;
+    if resp.status().is_success() { Ok(()) } else { Err(format!("Delete failed: {}", resp.status())) }
+}
+
 // ── Queue simulation ─────────────────────────────────────────────────────────
 
 #[tauri::command]

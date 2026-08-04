@@ -248,6 +248,10 @@ pub fn run() {
             patient_flow_cmd::get_zone_analytics,
             patient_flow_cmd::get_patient_journey,
             patient_flow_cmd::simulate_queue_capacity,
+            patient_flow_cmd::list_zones,
+            patient_flow_cmd::create_zone,
+            patient_flow_cmd::update_zone,
+            patient_flow_cmd::delete_zone,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

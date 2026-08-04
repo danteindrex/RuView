@@ -76,3 +76,44 @@ pub async fn unwrap_data(resp: reqwest::Response) -> Result<Value, String> {
         Err(format!("Frappe error: {}", status))
     }
 }
+
+/// Unwrap single-document response from Frappe resource POST/PUT (`{"data": {...}}`).
+pub async fn unwrap_data_single(resp: reqwest::Response) -> Result<Value, String> {
+    let status = resp.status();
+    let body: Value = resp.json().await.map_err(|e| e.to_string())?;
+    if status.is_success() {
+        Ok(body.get("data").cloned().unwrap_or(body))
+    } else {
+        let msg = body
+            .get("exception")
+            .or(body.get("message"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("Frappe error")
+            .to_string();
+        Err(msg)
+    }
+}
+
+/// POST to create a new Frappe resource document.
+pub fn post_resource(doctype: &str) -> RequestBuilder {
+    let encoded = doctype.replace(' ', "%20");
+    let url = format!("{}/api/resource/{}", frappe_url(), encoded);
+    let req = client().post(url);
+    if let Some(auth) = auth_header() { req.header("Authorization", auth) } else { req }
+}
+
+/// PUT to update an existing Frappe resource document.
+pub fn put_resource(doctype: &str, doc_name: &str) -> RequestBuilder {
+    let encoded = doctype.replace(' ', "%20");
+    let url = format!("{}/api/resource/{}/{}", frappe_url(), encoded, doc_name);
+    let req = client().put(url);
+    if let Some(auth) = auth_header() { req.header("Authorization", auth) } else { req }
+}
+
+/// DELETE a Frappe resource document.
+pub fn delete_resource(doctype: &str, doc_name: &str) -> RequestBuilder {
+    let encoded = doctype.replace(' ', "%20");
+    let url = format!("{}/api/resource/{}/{}", frappe_url(), encoded, doc_name);
+    let req = client().delete(url);
+    if let Some(auth) = auth_header() { req.header("Authorization", auth) } else { req }
+}

@@ -409,4 +409,16 @@ export const tauriApi = {
       meanServiceMinutes: params.meanServiceMinutes,
     });
   },
+  listZones() {
+    return invokeTauri<Array<{ name: string | null; zone_id: string; zone_name: string; deployment_id: string; zone_type: string; capacity: number; enabled: boolean }>>("list_zones");
+  },
+  createZone(zone: { zone_id: string; zone_name: string; deployment_id: string; zone_type: string; capacity: number; enabled: boolean }) {
+    return invokeTauri<{ name: string | null; zone_id: string; zone_name: string; deployment_id: string; zone_type: string; capacity: number; enabled: boolean }>("create_zone", { zone });
+  },
+  updateZone(docName: string, zone: { zone_id: string; zone_name: string; deployment_id: string; zone_type: string; capacity: number; enabled: boolean }) {
+    return invokeTauri<void>("update_zone", { docName, zone });
+  },
+  deleteZone(docName: string) {
+    return invokeTauri<void>("delete_zone", { docName });
+  },
 };

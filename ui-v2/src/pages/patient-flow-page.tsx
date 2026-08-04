@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Users, Clock, Activity, BarChart3, UserPlus, LogOut } from "lucide-react";
+import { Users, Clock, Activity, BarChart3, UserPlus, LogOut, MapPin } from "lucide-react";
 
 // ── Type definitions matching the Rust commands ─────────────────────────────
 
@@ -38,36 +38,17 @@ interface SimScenario {
   feasible: boolean;
 }
 
-// ── Local typed facade for patient-flow commands (added by parallel Rust agent)
-// TODO: remove once tauriApi is updated and re-exported with these methods
-const api = tauriApi as unknown as {
-  getActivePatients(): Promise<{ patients: ActivePatient[]; active_count: number }>;
-  registerPatientArrival(a: {
-    patientId: string;
-    nodeId: string;
-    sensingServerUrl: string;
-    enrollmentDurationSeconds: number;
-  }): Promise<{ patient_token: string; enrollment_status: string }>;
-  getZoneAnalytics(zoneId: string, days: number): Promise<ZoneAnalytics>;
-  getPatientJourney(): Promise<{ sankey_links: Array<{ from: string; to: string; value: number }> }>;
-  simulateQueueCapacity(a: {
-    zoneId: string;
-    currentServers: number;
-    arrivalRatePerHour: number;
-    meanServiceMinutes: number;
-  }): Promise<{ scenarios: Record<string, SimScenario>; recommendation: string }>;
-  checkoutPatientVisit(token: string): Promise<void>;
-};
+// ── Zone record type ─────────────────────────────────────────────────────────
 
-// ── Constants ────────────────────────────────────────────────────────────────
-
-const ZONES = [
-  { id: "waiting-room", label: "Waiting Room" },
-  { id: "consultation-1", label: "Consultation Room 1" },
-  { id: "consultation-2", label: "Consultation Room 2" },
-  { id: "triage", label: "Triage" },
-  { id: "exit", label: "Exit" },
-];
+interface ZoneRecord {
+  name: string | null;
+  zone_id: string;
+  zone_name: string;
+  deployment_id: string;
+  zone_type: string;
+  capacity: number;
+  enabled: boolean;
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -109,7 +90,7 @@ export default function PatientFlowPage() {
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
 
   // Simulation state
-  const [simZone, setSimZone] = useState("waiting-room");
+  const [simZone, setSimZone] = useState("");
   const [simServers, setSimServers] = useState(2);
   const [simArrival, setSimArrival] = useState(20);
   const [simService, setSimService] = useState(8);
@@ -117,12 +98,20 @@ export default function PatientFlowPage() {
   const [simRecommendation, setSimRecommendation] = useState("");
   const [simLoading, setSimLoading] = useState(false);
 
+  // Zone management state
+  const [zones, setZones] = useState<ZoneRecord[]>([]);
+  const [zonesLoading, setZonesLoading] = useState(false);
+  const [showAddZone, setShowAddZone] = useState(false);
+  const [newZone, setNewZone] = useState({ zone_id: "", zone_name: "", deployment_id: "", zone_type: "Waiting", capacity: 20, enabled: true });
+  const [zoneError, setZoneError] = useState<string | null>(null);
+  const [zoneSaving, setZoneSaving] = useState(false);
+
   // ── Data loading ─────────────────────────────────────────────────────────
 
   const loadActivePatients = useCallback(async () => {
     setLoadingActive(true);
     try {
-      const result = await api.getActivePatients();
+      const result = await tauriApi.getActivePatients();
       setActivePatients(result.patients);
       setActiveCount(result.active_count);
     } catch {
@@ -132,11 +121,26 @@ export default function PatientFlowPage() {
     }
   }, []);
 
+  const loadZones = useCallback(async () => {
+    setZonesLoading(true);
+    try {
+      const result = await tauriApi.listZones();
+      setZones(result);
+      const first = result.find((z) => z.enabled);
+      if (first && !simZone) setSimZone(first.zone_id);
+    } catch {
+      // Frappe not configured
+    } finally {
+      setZonesLoading(false);
+    }
+  }, [simZone]);
+
   useEffect(() => {
     void loadActivePatients();
+    void loadZones();
     const interval = setInterval(() => void loadActivePatients(), 10_000);
     return () => clearInterval(interval);
-  }, [loadActivePatients]);
+  }, [loadActivePatients, loadZones]);
 
   // ── Registration ─────────────────────────────────────────────────────────
 
@@ -150,7 +154,7 @@ export default function PatientFlowPage() {
       setEnrollCountdown((c) => Math.max(0, c - 1));
     }, 1000);
     try {
-      const result = await api.registerPatientArrival({
+      const result = await tauriApi.registerPatientArrival({
         patientId: patientId.trim(),
         nodeId,
         sensingServerUrl: sensingUrl,
@@ -173,8 +177,8 @@ export default function PatientFlowPage() {
     setLoadingAnalytics(true);
     try {
       const [a, j] = await Promise.all([
-        api.getZoneAnalytics(selectedZone, selectedDays),
-        api.getPatientJourney(),
+        tauriApi.getZoneAnalytics(selectedZone, selectedDays),
+        tauriApi.getPatientJourney(),
       ]);
       setAnalytics(a);
       setJourneyLinks(j.sankey_links);
@@ -190,7 +194,7 @@ export default function PatientFlowPage() {
   async function runSimulation() {
     setSimLoading(true);
     try {
-      const result = await api.simulateQueueCapacity({
+      const result = await tauriApi.simulateQueueCapacity({
         zoneId: simZone,
         currentServers: simServers,
         arrivalRatePerHour: simArrival,
@@ -207,9 +211,11 @@ export default function PatientFlowPage() {
 
   // ── Zone grid ────────────────────────────────────────────────────────────
 
-  const byZone = ZONES.map((z) => ({
+  const byZone = zones.filter((z) => z.enabled).map((z) => ({
     ...z,
-    patients: activePatients.filter((p) => p.current_zone === z.label || p.current_zone === z.id),
+    patients: activePatients.filter(
+      (p) => p.current_zone === z.zone_name || p.current_zone === z.zone_id
+    ),
   }));
 
   // ── Render ───────────────────────────────────────────────────────────────
@@ -286,7 +292,7 @@ export default function PatientFlowPage() {
       </div>
 
       <Tabs defaultValue="active">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="active" className="gap-2">
             <Activity className="h-4 w-4" /> Live Floor
           </TabsTrigger>
@@ -295,6 +301,9 @@ export default function PatientFlowPage() {
           </TabsTrigger>
           <TabsTrigger value="simulation" className="gap-2">
             <BarChart3 className="h-4 w-4" /> Simulation
+          </TabsTrigger>
+          <TabsTrigger value="zones" className="gap-2">
+            <MapPin className="h-4 w-4" /> Zones
           </TabsTrigger>
         </TabsList>
 
@@ -307,11 +316,11 @@ export default function PatientFlowPage() {
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {byZone.filter((z) => z.patients.length > 0 || z.id !== "exit").map((zone) => (
-                <Card key={zone.id} className={zone.patients.length > 0 ? "border-primary/40" : ""}>
+              {byZone.filter((z) => z.patients.length > 0 || z.zone_type !== "Exit").map((zone) => (
+                <Card key={zone.zone_id} className={zone.patients.length > 0 ? "border-primary/40" : ""}>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm font-semibold flex justify-between">
-                      {zone.label}
+                      {zone.zone_name}
                       <Badge variant={zone.patients.length > 0 ? "default" : "outline"}>
                         {zone.patients.length}
                       </Badge>
@@ -333,7 +342,7 @@ export default function PatientFlowPage() {
                                 className="h-5 w-5"
                                 title="Check out"
                                 onClick={async () => {
-                                  await api.checkoutPatientVisit(p.patient_token);
+                                  await tauriApi.checkoutPatientVisit(p.patient_token);
                                   void loadActivePatients();
                                 }}
                               >
@@ -357,10 +366,10 @@ export default function PatientFlowPage() {
             <div className="space-y-1 flex-1">
               <Label className="text-xs font-bold uppercase tracking-wider">Zone</Label>
               <Select value={selectedZone} onValueChange={setSelectedZone}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Select zone" /></SelectTrigger>
                 <SelectContent>
-                  {ZONES.slice(0, 4).map((z) => (
-                    <SelectItem key={z.id} value={z.id}>{z.label}</SelectItem>
+                  {zones.map((z) => (
+                    <SelectItem key={z.zone_id} value={z.zone_id}>{z.zone_name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -432,10 +441,10 @@ export default function PatientFlowPage() {
                 <div className="space-y-1">
                   <Label className="text-xs font-bold uppercase tracking-wider">Zone</Label>
                   <Select value={simZone} onValueChange={setSimZone}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Select zone" /></SelectTrigger>
                     <SelectContent>
-                      {ZONES.slice(0, 4).map((z) => (
-                        <SelectItem key={z.id} value={z.id}>{z.label}</SelectItem>
+                      {zones.map((z) => (
+                        <SelectItem key={z.zone_id} value={z.zone_id}>{z.zone_name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -543,6 +552,142 @@ export default function PatientFlowPage() {
                 )}
               </CardContent>
             </Card>
+          )}
+        </TabsContent>
+
+        {/* ── ZONES MANAGEMENT ───────────────────────────────────────────────── */}
+        <TabsContent value="zones" className="mt-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Map sensing nodes to named clinic zones. The deployment ID must match the node IP or
+              identifier configured on the sensing server.
+            </p>
+            <Button size="sm" className="gap-2" onClick={() => setShowAddZone((v) => !v)}>
+              <MapPin className="h-4 w-4" />
+              {showAddZone ? "Cancel" : "Add Zone"}
+            </Button>
+          </div>
+
+          {showAddZone && (
+            <Card>
+              <CardHeader><CardTitle className="text-sm">New Zone</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold uppercase tracking-wider">Zone ID</Label>
+                    <Input
+                      placeholder="e.g. waiting-room"
+                      value={newZone.zone_id}
+                      onChange={(e) => setNewZone((z) => ({ ...z, zone_id: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold uppercase tracking-wider">Display Name</Label>
+                    <Input
+                      placeholder="e.g. Waiting Room"
+                      value={newZone.zone_name}
+                      onChange={(e) => setNewZone((z) => ({ ...z, zone_name: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold uppercase tracking-wider">Node IP / Deployment ID</Label>
+                    <Input
+                      placeholder="e.g. 192.168.1.42"
+                      value={newZone.deployment_id}
+                      onChange={(e) => setNewZone((z) => ({ ...z, deployment_id: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold uppercase tracking-wider">Zone Type</Label>
+                    <Select value={newZone.zone_type} onValueChange={(v) => setNewZone((z) => ({ ...z, zone_type: v }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Waiting">Waiting</SelectItem>
+                        <SelectItem value="Consultation">Consultation</SelectItem>
+                        <SelectItem value="Procedure">Procedure</SelectItem>
+                        <SelectItem value="Pharmacy">Pharmacy</SelectItem>
+                        <SelectItem value="Exit">Exit</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-bold uppercase tracking-wider">Capacity</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={newZone.capacity}
+                      onChange={(e) => setNewZone((z) => ({ ...z, capacity: Number(e.target.value) }))}
+                    />
+                  </div>
+                </div>
+                {zoneError && <p className="text-sm text-destructive">{zoneError}</p>}
+                <Button
+                  className="w-full"
+                  disabled={zoneSaving || !newZone.zone_id.trim() || !newZone.zone_name.trim()}
+                  onClick={async () => {
+                    setZoneSaving(true);
+                    setZoneError(null);
+                    try {
+                      await tauriApi.createZone(newZone);
+                      setNewZone({ zone_id: "", zone_name: "", deployment_id: "", zone_type: "Waiting", capacity: 20, enabled: true });
+                      setShowAddZone(false);
+                      void loadZones();
+                    } catch (e) {
+                      setZoneError(String(e));
+                    } finally {
+                      setZoneSaving(false);
+                    }
+                  }}
+                >
+                  {zoneSaving ? "Saving..." : "Create Zone"}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {zonesLoading ? (
+            <p className="text-sm text-muted-foreground py-4">Loading zones...</p>
+          ) : zones.length === 0 ? (
+            <div className="text-center py-16 text-muted-foreground">
+              <MapPin className="h-10 w-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm">No zones configured. Add a zone to start tracking patient flow.</p>
+            </div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {zones.map((z) => (
+                <Card key={z.zone_id}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex justify-between items-start">
+                      <span>{z.zone_name}</span>
+                      <Badge variant="outline" className="text-xs shrink-0 ml-2">{z.zone_type}</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      <p><span className="font-semibold">ID:</span> {z.zone_id}</p>
+                      <p><span className="font-semibold">Node:</span> {z.deployment_id || "—"}</p>
+                      <p><span className="font-semibold">Capacity:</span> {z.capacity}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 text-xs mt-1"
+                      onClick={async () => {
+                        if (!z.name) return;
+                        try {
+                          await tauriApi.deleteZone(z.name);
+                          void loadZones();
+                        } catch (e) {
+                          setZoneError(String(e));
+                        }
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           )}
         </TabsContent>
       </Tabs>
